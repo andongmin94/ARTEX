@@ -119,6 +119,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
+import { ApiError } from "@/lib/api-error";
 import { getLocalStorageValue, setLocalStorageValue } from "@/lib/local-storage.client";
 import { type SortDirection, useStoredSortPreference } from "@/lib/sort-preference";
 import type {
@@ -1349,6 +1350,8 @@ function TaskNameEditor({ task, onRename }: { task: Task; onRename: (task: Task,
           onChange={(event) => setName(event.target.value)}
           onBlur={() => void finishEditing()}
           onKeyDown={(event) => {
+            // 한글 조합 확정 Enter는 저장/생성으로 처리하지 않습니다.
+            if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
             if (event.key === "Enter") {
               event.preventDefault();
               event.currentTarget.blur();
@@ -1677,7 +1680,7 @@ function TaskArchivesPanel({ onChanged }: { onChanged: () => void }) {
         let restored = false;
         states.forEach((state, index) => {
           if (state.status !== "rejected" || !(state.reason instanceof Error)) return;
-          if (!state.reason.message.includes("보관본이 존재하지 않습니다")) return;
+          if (!(state.reason instanceof ApiError) || state.reason.status !== 404) return;
           pendingRestoreIDs.current.delete(pending[index]);
           restored = true;
         });
@@ -2523,6 +2526,8 @@ function CategoryPicker({
           placeholder={selectedIDs.length ? "" : "분류를 검색하거나 새 이름을 입력하고 Enter로 생성"}
           onKeyDown={(e) => {
             // 完全无匹配时回车 = 创建；有匹配项时保留 base-ui 的「回车选中高亮项」。
+            // 한글 조합 확정 Enter는 저장/생성으로 처리하지 않습니다.
+            if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
             if (e.key === "Enter" && matchCount === 0 && trimmed) {
               e.preventDefault();
               void createAndSelect();
@@ -2955,6 +2960,8 @@ function CategoryManagementSheet({
                         placeholder="예: 외부망 평가"
                         maxLength={80}
                         onKeyDown={(event) => {
+                          // 한글 조합 확정 Enter는 저장/생성으로 처리하지 않습니다.
+                          if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
                           if (event.key === "Enter") void saveCategory();
                         }}
                       />

@@ -43,6 +43,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { ApiError } from "@/lib/api-error";
 import type { Agent, SkillItem, MCPServer, SkillCall, MissingSkill } from "@/lib/types";
 
 function fmtTime(ts?: string) {
@@ -367,7 +368,7 @@ export default function SkillsPage() {
     } catch (e) {
       const msg = (e as Error).message;
       // offer overwrite when the skill already exists
-      if (!overwrite && msg.includes("이미 존재합니다")) {
+      if (!overwrite && e instanceof ApiError && e.status === 409) {
         if (window.confirm(`${msg}
 
 동일한 이름의 스킬을 덮어쓸까요?`)) {

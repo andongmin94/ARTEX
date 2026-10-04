@@ -910,6 +910,8 @@ const ConversationItem = React.memo(function ConversationItem({
             if (!cancelRenameRef.current) onCommitRename(conv.id, renameText);
           }}
           onKeyDown={(e) => {
+            // 한글 조합 확정 Enter는 저장/생성으로 처리하지 않습니다.
+            if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
             if (e.key === "Enter") onCommitRename(conv.id, renameText);
             if (e.key === "Escape") {
               e.preventDefault();

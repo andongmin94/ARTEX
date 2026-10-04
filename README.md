@@ -35,7 +35,6 @@ Node.js 22 이상을 설치한 환경에서 다음 명령을 실행하세요.
 ```bash
 git clone https://github.com/andongmin94/ARTEX.git
 cd ARTEX
-git switch feat/korean-localization
 cd web
 npm ci
 NEXT_PUBLIC_MOCK=1 npm run dev
@@ -145,6 +144,9 @@ HTTP 증거는 정상 대조군, 취약점 입증, 추가 검증, 보조 증거�
 
 재검증 기록은 취약점 상세와 세션에서 확인합니다. 원본에서 제공하지 않는 재검증 내역의 보고서·보관 패키지 포함이나 자동 패킷 연결 기능을 이 번역이 추가하지는 않습니다.
 
+
+상세 사용법: [다중 트래픽 증거](docs/finding-traffic-evidence.md), [API 조사 참조 설명서](skills/api-recon/reference.md), [별도 질문 /btw](sidequestion/README.md).
+
 ## 에이전트, MCP, 스킬
 
 **목표 분해 에이전트**가 최종 목표와 실행 제약을 등록합니다. **계획 에이전트**가 상황을 읽고 의도를 배정하며, **실행 에이전트**는 배정된 의도 하나를 수행하여 사실·자산·취약점을 저장합니다. **주 에이전트**는 사용자의 지시와 질문을 연결합니다. 보고서·재검증 에이전트는 각각 보고서 작성과 수정 확인을 담당합니다.
@@ -201,12 +203,14 @@ SSE는 오래 유지되는 연결이므로 버퍼링을 꺼야 합니다. HTTPS 
 # 프런트엔드
 cd web
 npm ci
+npm run check:korean
+npm run test:input
 npx tsc --noEmit
 npm run build:static
 cd ..
 
 # PostgreSQL 테스트 DB를 설정한 상태에서 실행
-go test -count=1 ./...
+go test -p 1 -count=1 ./...
 go build ./cmd/artex
 ```
 

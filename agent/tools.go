@@ -523,7 +523,7 @@ func (t *ToolSet) graphOverviewData() map[string]any {
 	// 已隐藏的 add_task_scope/list_untested_assets。
 	if t.as != nil && t.ts != nil && t.taskID > 0 {
 		{
-			m := map[string]any{}
+			m := map[string]any{"scope": t.scopeOverview()}
 			if !t.coverageDisabled {
 				if cov, err := t.as.TaskCoverageWithSources(t.taskID); err == nil {
 					m["denominator"] = cov.Denominator

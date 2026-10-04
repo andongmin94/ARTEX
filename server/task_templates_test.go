@@ -85,12 +85,8 @@ func TestTaskTemplateHTTPCRUD(t *testing.T) {
 }
 
 func TestConversationPatchReturnsPinState(t *testing.T) {
-	m, err := NewManager(t.TempDir(), "")
-	if err != nil {
-		t.Skipf("postgres unavailable (%v) — skipping", err)
-	}
-	defer m.Close()
-	s := New(context.Background(), m, t.TempDir(), t.TempDir(), t.TempDir())
+	s, _ := newRetestServer(t)
+	m := s.m
 	conversation, err := m.pg.CreateConversation("mainagent", "pin through http", nil)
 	if err != nil {
 		t.Fatal(err)

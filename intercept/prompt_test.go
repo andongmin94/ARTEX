@@ -20,14 +20,14 @@ func TestParseVerdict(t *testing.T) {
 }
 
 func TestParseVerdictRejectsIncompleteOrAmbiguousReplies(t *testing.T) {
-	valid := `{"decision":"allow","comment":"실제 작업:读取文件; 성공 시 결과:返回内容; 적용 규칙:A5"}`
+	valid := `{"decision":"allow","comment":"실제 작업:파일 읽기; 성공 시 결과:내용 반환; 적용 규칙:A5"}`
 	for _, reply := range []string{
 		"", "ALLOW", "DENY:命中D4", "放行:ALLOW", "ASK:归属不明",
-		`{"decision":"allow"}`, `{"decision":"approve","comment":"실제 작업:读取; 성공 시 결과:返回内容; 적용 규칙:A5"}`,
+		`{"decision":"allow"}`, `{"decision":"approve","comment":"실제 작업:读取; 성공 시 결과:내용 반환; 적용 규칙:A5"}`,
 		`{"decision":"allow","comment":null}`, `{"decision":"allow","comment":123}`,
-		strings.Replace(valid, "실제 작업:读取文件", "실제 작업:", 1),
-		strings.Replace(valid, "成功后的后果：返回内容", "成功后的后果：", 1),
-		strings.Replace(valid, "命中规则：A5", "命中规则：", 1),
+		strings.Replace(valid, "실제 작업:파일 읽기", "실제 작업:", 1),
+		strings.Replace(valid, "성공 시 결과:내용 반환", "성공 시 결과:", 1),
+		strings.Replace(valid, "적용 규칙:A5", "적용 규칙:", 1),
 		strings.Replace(valid, "; 적용 규칙:A5", "", 1),
 		strings.Replace(valid, `"decision":"allow"`, `"decision":"deny","decision":"allow"`, 1),
 		strings.Replace(valid, `"decision":"allow"`, `"extra":true,"decision":"allow"`, 1),
@@ -48,7 +48,7 @@ func TestParseVerdictRejectsIncompleteOrAmbiguousReplies(t *testing.T) {
 // the configured fail action defaults to allow, treating it as unparseable
 // silently downgrades a DENY to an allow.
 func TestParseVerdictUnwrapsCodeFence(t *testing.T) {
-	deny := `{"decision":"deny","comment":"실제 작업:删除生产文件; 성공 시 결과:业务数据丢失; 적용 규칙:D4"}`
+	deny := `{"decision":"deny","comment":"실제 작업:운영 파일 삭제; 성공 시 결과:업무 데이터 유실; 적용 규칙:D4"}`
 	for _, reply := range []string{
 		"```json\n" + deny + "\n```",
 		"```JSON\n" + deny + "\n```",
@@ -56,13 +56,13 @@ func TestParseVerdictUnwrapsCodeFence(t *testing.T) {
 		"  ```json\n" + deny + "\n```  ",
 	} {
 		got := ParseVerdict(reply)
-		if got.Action != "deny" || !strings.HasSuffix(got.Reason, "命中规则：D4") {
+		if got.Action != "deny" || !strings.HasSuffix(got.Reason, "적용 규칙:D4") {
 			t.Errorf("fenced verdict lost: %q => %+v", reply, got)
 		}
 	}
 }
 
-func TestParseVerdictKeepsCompleteChineseExplanation(t *testing.T) {
+func TestParseVerdictKeepsCompleteMultilingualExplanation(t *testing.T) {
 	reason := "실제 작업:" + strings.Repeat("写入报告", 30) + "; 성공 시 결과:只保存文件; 적용 규칙:A2"
 	raw, _ := json.Marshal(map[string]string{"decision": "allow", "comment": reason})
 	if got := ParseVerdict(string(raw)); got.Reason != reason {

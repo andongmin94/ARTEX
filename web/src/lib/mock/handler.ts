@@ -1,3 +1,4 @@
+import { ApiError } from "../api-error";
 // Mock 路由：把 (method, path) 映射到 lib/mock/data 的静态数据。
 // 未命中的一律返回安全默认（[] / {} / {ok:true}），保证任何页面都不崩。
 // 只在 NEXT_PUBLIC_MOCK=1 时经由 api.ts 的 http() 短路进入这里。
@@ -21,6 +22,7 @@ import type {
   FindingTraffic,
   FindingTrafficBinding,
   IntentAsset,
+  NotificationMeta,
   ScopeRow,
   Task,
   TaskArchive,
@@ -1012,6 +1014,32 @@ export async function mockHandle<T>(method: string, rawPath: string, body?: Body
 function route(m: string, path: string, seg: string[], q: URLSearchParams, b: Record<string, unknown>): unknown {
   const task = q.get("task") ?? undefined;
 
+  // Notification demo follows the real metadata shape; it never sends messages.
+  if (path === "/notify/meta" && m === "GET") {
+    return {
+      kinds: [
+        { kind: "dingtalk", default_rate_per_min: 20, secret_keys: ["webhook", "secret"] },
+        { kind: "email", default_rate_per_min: 60, secret_keys: ["password"] },
+        { kind: "feishu", default_rate_per_min: 100, secret_keys: ["webhook", "secret"] },
+        { kind: "telegram", default_rate_per_min: 20, secret_keys: ["bot_token"] },
+        { kind: "webhook", default_rate_per_min: 0, secret_keys: ["url", "headers"] },
+        { kind: "wecom", default_rate_per_min: 20, secret_keys: ["webhook"] },
+      ],
+      enabled: false,
+      public_base_url: "",
+      digest_interval_min: "30",
+      defaults: { digest_interval_min: 30 },
+      stats: { channels: 0, channels_on: 0, pending: 0, failed: 0, sent_today: 0, backlog_age_ms: 0 },
+    } satisfies NotificationMeta;
+  }
+  if (path === "/notify/channels" && m === "GET") return { channels: [] };
+  if (path === "/notify/deliveries" && m === "GET") {
+    return { deliveries: [], total: 0, page: Number(q.get("page")) || 1, page_size: Number(q.get("page_size")) || 50 };
+  }
+  if (path.startsWith("/notify/")) {
+    throw new ApiError(501, "데모 모드에서는 알림을 저장하거나 실제 메시지를 전송하지 않습니다.");
+  }
+
   if (path === "/chat/mentions" && m === "GET") {
     const kind = q.get("kind") ?? "";
     const query = (q.get("q") ?? "").trim().toLowerCase();
@@ -1084,18 +1112,18 @@ function route(m: string, path: string, seg: string[], q: URLSearchParams, b: Re
   }
   if (seg[0] === "task-archives" && seg.length === 2 && m === "GET") {
     const archive = mockTaskArchives.find((item) => item.id === Number(seg[1]));
-    if (!archive) throw new Error("보관본이 존재하지 않습니다");
+    if (!archive) throw new ApiError(404, "보관본이 존재하지 않습니다");
     return publicMockTaskArchive(archive);
   }
   if (seg[0] === "task-archives" && seg[2] === "restore" && seg.length === 3 && m === "POST") {
     const archive = mockTaskArchives.find((item) => item.id === Number(seg[1]));
-    if (!archive) throw new Error("보관본이 존재하지 않습니다");
+    if (!archive) throw new ApiError(404, "보관본이 존재하지 않습니다");
     mockRestoreArchive(archive);
     return publicMockTaskArchive(archive);
   }
   if (seg[0] === "task-archives" && seg.length === 2 && m === "DELETE") {
     const archive = mockTaskArchives.find((item) => item.id === Number(seg[1]));
-    if (!archive) throw new Error("보관본이 존재하지 않습니다");
+    if (!archive) throw new ApiError(404, "보관본이 존재하지 않습니다");
     mockDeleteArchive(archive);
     return publicMockTaskArchive(archive);
   }

@@ -105,7 +105,26 @@ func (b *contextBuilder) summarize(ctx context.Context, prior, text string) (str
 			Messages: []llm.Message{llm.UserText("[이전 요약]\n" + prior + "\n[새 자료 일부]\n" + part)},
 		}
 		if EstimateInputTokens(req)+req.MaxTokens+512 > b.window {
-			return "", ErrContextBudget
+			// Localization and integer rounding can make the byte estimate differ
+			// from the request estimator. Keep the largest UTF-8 prefix accepted
+			// by the actual guard; the remaining text stays in the next chunk.
+			runes := []rune(part)
+			lo, hi := 0, len(runes)
+			for lo < hi {
+				mid := lo + (hi-lo+1)/2
+				req.Messages = []llm.Message{llm.UserText("[이전 요약]\n" + prior + "\n[새 자료 일부]\n" + string(runes[:mid]))}
+				if EstimateInputTokens(req)+req.MaxTokens+512 <= b.window {
+					lo = mid
+				} else {
+					hi = mid - 1
+				}
+			}
+			if lo == 0 {
+				return "", ErrContextBudget
+			}
+			part = string(runes[:lo])
+			n = len(part)
+			req.Messages = []llm.Message{llm.UserText("[이전 요약]\n" + prior + "\n[새 자료 일부]\n" + part)}
 		}
 		b.calls++
 		msg, stop, usage, err := b.service.Provider.Complete(ctx, req)

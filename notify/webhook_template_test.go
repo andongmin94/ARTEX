@@ -86,7 +86,7 @@ func TestTemplateRenderFailsPermanently(t *testing.T) {
 	}
 }
 
-// TestTemplateCanOnlyProduceJSON 覆盖「模板渲染结果必须是合法 JSON」这条约束。
+// TestTemplateCanOnlyProduceJSON 覆盖「模板渲染结果必须是유효한 JSON」这条约束。
 // 它顺带挡住了「用模板生成纯文本去触发别的协议」这类用法。
 func TestTemplateCanOnlyProduceJSON(t *testing.T) {
 	// 合法模板能过。
@@ -100,7 +100,7 @@ func TestTemplateCanOnlyProduceJSON(t *testing.T) {
 	if err == nil || !IsPermanent(err) {
 		t.Fatalf("渲染出非 JSON 应判永久失败，得到 %v", err)
 	}
-	if !strings.Contains(err.Error(), "合法 JSON") {
+	if !strings.Contains(err.Error(), "유효한 JSON") {
 		t.Errorf("错误信息应说明是 JSON 问题，得到 %v", err)
 	}
 }

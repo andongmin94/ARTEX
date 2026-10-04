@@ -149,15 +149,15 @@ Cursor의 Settings → MCP에서 서버를 추가합니다.
 
 | 유형 | 주요 검색 필드 |
 | --- | --- |
-| asset | domain, ip, port, service, app, title, statuscode, icon, banner, type, response body, header |
+| asset | domain, ip, port, service, app, title, statuscode, icon, banner, type, body, header |
 | RootDomain | domain, icp, company |
-| subdomain | domain, icp, type, value |
+| subdomain | domain, ip, type, value |
 | app / mp | name, icp, company, category, description, url, apk |
 | UrlScan | url, input, source, resultId |
 | SensitiveResult | url, sname, body, info, md5 |
 | DirScanResult | url, statuscode, redirect, length |
 | vulnerability | url, vulname, matched, request, response, level |
-| crawler | url, method, body, header |
+| crawler | url, method, body, resultId |
 | PageMonitoring | url, hash, diff, response |
 | IPAsset | ip, domain, port, service, webServer, app |
 | SubdomainTakerResult | domain, value, type, response |
@@ -188,7 +188,7 @@ statuscode==200
 | crawler | project, task, tags |
 | vulnerability | project, level, status, task, tags |
 | PageMonitoring / SubdomainTakerResult | tags |
-| IPAsset | project, port, service, app, tags |
+| IPAsset | project, port, service, app |
 
 ```json
 {"project": ["<projectObjectID>"], "port": ["443"]}
