@@ -340,7 +340,7 @@ export default function MCPPage() {
         {toolsLoading ? (
           <p className="text-muted-foreground text-sm">불러오는 중…</p>
         ) : tools.length === 0 ? (
-          <p className="text-muted-foreground text-sm">도구 미발견，点击새로고침重新获取。</p>
+          <p className="text-muted-foreground text-sm">도구가 없습니다. 새로고침하여 다시 가져오세요.</p>
         ) : (
           <div className="flex flex-col divide-y">
             {tools.map((t) => (
@@ -363,7 +363,7 @@ export default function MCPPage() {
     <div className="flex flex-1 flex-col gap-4 md:gap-6">
       <div>
         <h1 className="text-xl font-semibold tracking-tight">MCP</h1>
-        <p className="text-muted-foreground text-sm">外部 MCP 工具服务器 · 按 Agent 授权 표시 권한</p>
+        <p className="text-muted-foreground text-sm">외부 MCP 도구 서버 · 에이전트별 접근 권한 설정</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -411,7 +411,7 @@ export default function MCPPage() {
                 {s.tools && s.tools.length > 0 ? `${s.tools.length}개 도구` : "도구 미발견"}
               </p>
               <div className="grid gap-2" onClick={(e) => e.stopPropagation()}>
-                <span className="text-muted-foreground text-xs"> 표시 권한性（按 Agent 授权）</span>
+                <span className="text-muted-foreground text-xs"> 접근 권한(에이전트별)</span>
                 <div className="flex flex-wrap gap-x-4 gap-y-2">
                   {agents.map((a) => (
                     <label key={a.key} className="flex items-center gap-2 text-sm">
@@ -435,7 +435,7 @@ export default function MCPPage() {
           className="w-full data-[side=right]:sm:max-w-lg"
         >
           <SheetHeader>
-            <SheetTitle>{editing ? editing.name : "MCP 추가 服务器"}</SheetTitle>
+            <SheetTitle>{editing ? editing.name : "MCP 서버 추가"}</SheetTitle>
             <SheetDescription>
               stdio(로컬 프로세스) 또는 http(원격 Streamable HTTP)
             </SheetDescription>

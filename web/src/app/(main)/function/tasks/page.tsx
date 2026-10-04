@@ -1677,7 +1677,7 @@ function TaskArchivesPanel({ onChanged }: { onChanged: () => void }) {
         let restored = false;
         states.forEach((state, index) => {
           if (state.status !== "rejected" || !(state.reason instanceof Error)) return;
-          if (!state.reason.message.includes("归档不存在")) return;
+          if (!state.reason.message.includes("보관본이 존재하지 않습니다")) return;
           pendingRestoreIDs.current.delete(pending[index]);
           restored = true;
         });
@@ -2280,7 +2280,7 @@ function MoveTasksCategoryDialog({
             }}
           >
             {moving && <Spinner data-icon="inline-start" />}
-            移动
+            이동
           </Button>
         </DialogFooter>
       </DialogContent>

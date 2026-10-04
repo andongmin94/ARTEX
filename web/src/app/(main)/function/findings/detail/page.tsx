@@ -41,7 +41,7 @@ const FINDING_STATUSES: FindingStatus[] = [
 ];
 
 function fmtTime(ts: string) {
-  return new Date(ts).toLocaleString("zh-CN");
+  return new Date(ts).toLocaleString("ko-KR");
 }
 
 // FieldRow is one label/value line in the right-hand status panel.
@@ -169,7 +169,7 @@ function FindingDetailInner() {
                   <CardTitle className="text-sm">요약</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{finding.summary || "（无요약）"}</p>
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{finding.summary || "(요약 없음)"}</p>
                 </CardContent>
               </Card>
               <FindingRetestPanel key={id} findingId={id} readOnly={finding.inherited} onCompleted={load} />
@@ -198,18 +198,18 @@ function FindingDetailInner() {
               <Card>
                 <CardHeader className="flex-row items-center justify-between">
                   <CardTitle className="text-sm">상세 보고서</CardTitle>
-                  {finding.report && <CopyButton text={finding.report} successMessage="已复制상세 보고서" />}
+                  {finding.report && <CopyButton text={finding.report} successMessage="상세 보고서를 복사했습니다" />}
                 </CardHeader>
                 <CardContent>
                   {finding.report_stale ? (
                     <Alert>
-                      <AlertDescription>流量证据已变更，상세 보고서待更新。</AlertDescription>
+                      <AlertDescription>트래픽 증거가 변경되어 상세 보고서 업데이트가 필요합니다.</AlertDescription>
                     </Alert>
                   ) : null}
                   {finding.report ? (
                     <Markdown text={finding.report} />
                   ) : (
-                    <p className="text-sm text-muted-foreground">暂无상세 보고서。</p>
+                    <p className="text-sm text-muted-foreground">상세 보고서가 없습니다.</p>
                   )}
                 </CardContent>
               </Card>
@@ -251,7 +251,7 @@ function FindingDetailInner() {
                 </FieldRow>
 
                 {/* 处理상태 */}
-                <FieldRow label="处理상태">
+                <FieldRow label="처리 상태">
                   {finding.inherited ? (
                     <StatusBadge domain="finding" value={finding.status} dot />
                   ) : (

@@ -242,8 +242,7 @@ export function ProfileRetryFields({
       <div className="grid gap-0.5">
         <Label className="text-sm">재시도 오버라이드</Label>
         <p className="text-muted-foreground text-xs">
-          이 설정에만 적용되며 「재시도 및 백오프」의 전역 기본값을 덮어씁니다. 빈 값은 전역값 사용, 횟수 -1은 해당 재시도 단계 비활성화입니다.
-          间隔填了就用固定间隔取代指数退避。熔断与의도 재실행是进程级的，只能在全局那页调。
+          이 설정에만 적용되며 「재시도 및 백오프」의 전역 기본값을 덮어씁니다. 비워두면 전역값을 사용하고, 횟수 -1은 해당 단계를 비활성화합니다. 간격을 입력하면 지수 백오프 대신 고정 간격을 사용합니다. 회로 차단기와 의도 재실행은 전역 페이지에서만 조정할 수 있습니다.
         </p>
       </div>
       {(["connect", "empty", "stream"] as const).map((k) => (
@@ -312,7 +311,7 @@ export function RetryPolicyPanel() {
     <div className="grid gap-4">
       <div className="rounded-lg border bg-muted/30 p-3 text-muted-foreground text-xs leading-relaxed">
         한 번의 모델 호출 실패는 안쪽에서 바깥쪽으로 다음 5단계 재시도를 거칩니다:
-        <span className="text-foreground"> 建连 → 空响应 → 同 provider 安全窗口 → 폴백 회로 차단기 → 의도 재실행</span>
+        <span className="text-foreground"> 연결 → 빈 응답 → 동일 provider 안전 구간 → 폴백 회로 차단기 → 의도 재실행</span>
          내부 단계를 소진한 뒤 바깥 단계로 넘어가므로 횟수는 
         <span className="text-foreground">곱셈</span>
          형태로 증가합니다. 모든 단계를 크게 설정하면 한 번의 장애에 수십 번의 요청을 사용할 수 있습니다.

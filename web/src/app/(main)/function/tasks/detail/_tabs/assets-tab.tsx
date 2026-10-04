@@ -521,7 +521,7 @@ export function AssetsTab({ taskId }: { taskId: string }) {
         </TabsContent>
 
         <TabsContent value="ip" className="mt-0 flex min-h-0 flex-1 flex-col">
-          <AssetCard cols={["IP", "C 대역", "绑定도메인", "열린 포트", "소스", "작업"]} {...commonCardProps}>
+          <AssetCard cols={["IP", "C 대역", "연결 도메인", "열린 포트", "소스", "작업"]} {...commonCardProps}>
             {rows.map((asset) => (
               <TableRow key={asset.id}>
                 <TableCell className="font-medium font-mono text-xs">{asset.ip}</TableCell>
@@ -647,7 +647,7 @@ export function AssetsTab({ taskId }: { taskId: string }) {
         </TabsContent>
 
         <TabsContent value="endpoint" className="mt-0 flex min-h-0 flex-1 flex-col">
-          <AssetCard cols={["메서드", "完整주소", "매개변수", "소스", "작업"]} {...commonCardProps}>
+          <AssetCard cols={["메서드", "전체 주소", "매개변수", "소스", "작업"]} {...commonCardProps}>
             {rows.map((asset) => (
               <TableRow key={asset.id}>
                 <TableCell className="w-16">
@@ -682,7 +682,7 @@ export function AssetsTab({ taskId }: { taskId: string }) {
           <AlertDialogHeader>
             <AlertDialogTitle>현재 작업에서 제외할까요?</AlertDialogTitle>
             <AlertDialogDescription className="[overflow-wrap:anywhere]">
-              {removeTarget ? `将“${assetLabel(removeTarget)}”从当前任务的테스트 자산中移出。` : ""}
+              {removeTarget ? `「${assetLabel(removeTarget)}」 항목을 현재 작업의 테스트 자산에서 제외합니다.` : ""}
               전역 자산, 연결 트래픽, 과거 블랙보드 앵커는 유지됩니다.
             </AlertDialogDescription>
           </AlertDialogHeader>

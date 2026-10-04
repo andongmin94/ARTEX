@@ -172,7 +172,7 @@ function TaskLLMControl({ task, profiles, onUpdated }: { task: Task; profiles: L
             <CircleAlertIcon />
             <AlertTitle>설정 체인 할당량 소진</AlertTitle>
             <AlertDescription>
-              {task.llm_failover_reason ?? "所有已选配置均被判定为额度不足。저장配置链可重置故障状态。"}
+              {task.llm_failover_reason ?? "선택한 모든 설정의 할당량이 부족합니다. 설정 체인을 저장하면 오류 상태를 재설정할 수 있습니다."}
             </AlertDescription>
           </Alert>
         )}

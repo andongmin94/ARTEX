@@ -210,8 +210,8 @@ export default function AssetsPage() {
       const res = await api.deleteCompany(companyDeleteTarget.id, companyDeleteAssets);
       const msg =
         companyDeleteAssets && res.assets_deleted > 0
-          ? `已删除기업，同时删除 ${res.assets_deleted} 条자산`
-          : "已删除기업";
+          ? `기업 삭제 완료 · 함께 삭제한 자산: ${res.assets_deleted} 건`
+          : "기업을 삭제했습니다";
       toast.success(msg);
       refresh();
     } catch (e) {
@@ -320,7 +320,7 @@ export default function AssetsPage() {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">
-            共 <span className="tabular-nums">{totalAssets}</span> 项자산
+            총 <span className="tabular-nums">{totalAssets}</span> 개 자산
           </span>
           {selected.size > 0 && (
             <Button variant="destructive" size="sm" onClick={() => openDelete(Array.from(selected) as number[])}>
@@ -355,8 +355,8 @@ export default function AssetsPage() {
                 <TableHeader className="sticky top-0 z-10 bg-card">
                   <TableRow>
                     <TableHead>기업</TableHead>
-                    <TableHead className="w-24 text-right">자산数</TableHead>
-                    <TableHead>자산范围</TableHead>
+                    <TableHead className="w-24 text-right">자산 수</TableHead>
+                    <TableHead>자산 범위</TableHead>
                     <TableHead className="w-36 text-right">작업</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -395,7 +395,7 @@ export default function AssetsPage() {
                               setCompanyDeleteTarget(c);
                               setCompanyDeleteAssets(false);
                             }}
-                            aria-label={`删除기업 ${c.name}`}
+                            aria-label={`기업 삭제: ${c.name}`}
                           >
                             <Trash2Icon className="size-3.5" />
                           </Button>
@@ -406,7 +406,7 @@ export default function AssetsPage() {
                   {companies.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={4} className="py-10 text-center text-sm text-muted-foreground">
-                        还没有기업。点击右上角「新增기업」并填写자산范围，系统会自动认领命中的자산。
+                        등록된 기업이 없습니다. 오른쪽 위의 「기업 추가」에서 자산 범위를 입력하면 일치하는 자산이 자동으로 연결됩니다.
                       </TableCell>
                     </TableRow>
                   )}
@@ -420,7 +420,7 @@ export default function AssetsPage() {
         <TabsContent value="root_domain" className="mt-0 flex min-h-0 flex-1 flex-col gap-2">
           {searchBox}
           <AssetCard
-            cols={["", "도메인", "ICP 등록", "归属기업", ""]}
+            cols={["", "도메인", "ICP 등록", "소속 기업", ""]}
             loaded={loaded}
             total={total}
             page={page}
@@ -447,7 +447,7 @@ export default function AssetsPage() {
                     size="icon"
                     className="size-7 text-muted-foreground hover:text-destructive"
                     onClick={() => openDelete([a.id])}
-                    aria-label={`删除자산 ${a.domain || a.id}`}
+                    aria-label={`자산 삭제: ${a.domain || a.id}`}
                   >
                     <Trash2Icon className="size-3.5" />
                   </Button>
@@ -461,7 +461,7 @@ export default function AssetsPage() {
         <TabsContent value="ip" className="mt-0 flex min-h-0 flex-1 flex-col gap-2">
           {searchBox}
           <AssetCard
-            cols={["", "IP", "C 대역", "绑定도메인", "열린 포트", ""]}
+            cols={["", "IP", "C 대역", "연결 도메인", "열린 포트", ""]}
             loaded={loaded}
             total={total}
             page={page}
@@ -494,7 +494,7 @@ export default function AssetsPage() {
                     size="icon"
                     className="size-7 text-muted-foreground hover:text-destructive"
                     onClick={() => openDelete([a.id])}
-                    aria-label={`删除자산 ${a.ip || a.id}`}
+                    aria-label={`자산 삭제: ${a.ip || a.id}`}
                   >
                     <Trash2Icon className="size-3.5" />
                   </Button>
@@ -536,7 +536,7 @@ export default function AssetsPage() {
                     size="icon"
                     className="size-7 text-muted-foreground hover:text-destructive"
                     onClick={() => openDelete([a.id])}
-                    aria-label={`删除자산 ${a.domain || a.id}`}
+                    aria-label={`자산 삭제: ${a.domain || a.id}`}
                   >
                     <Trash2Icon className="size-3.5" />
                   </Button>
@@ -550,7 +550,7 @@ export default function AssetsPage() {
         <TabsContent value="app" className="mt-0 flex min-h-0 flex-1 flex-col gap-2">
           {searchBox}
           <AssetCard
-            cols={["", "애플리케이션名", "Bundle ID", "분류", "ICP 등록", ""]}
+            cols={["", "애플리케이션 이름", "Bundle ID", "분류", "ICP 등록", ""]}
             loaded={loaded}
             total={total}
             page={page}
@@ -576,7 +576,7 @@ export default function AssetsPage() {
                     size="icon"
                     className="size-7 text-muted-foreground hover:text-destructive"
                     onClick={() => openDelete([a.id])}
-                    aria-label={`删除자산 ${a.app_name || a.id}`}
+                    aria-label={`자산 삭제: ${a.app_name || a.id}`}
                   >
                     <Trash2Icon className="size-3.5" />
                   </Button>
@@ -671,7 +671,7 @@ export default function AssetsPage() {
                       size="icon"
                       className="size-7 text-muted-foreground hover:text-destructive"
                       onClick={() => openDelete([a.id])}
-                      aria-label={`删除자산 ${a.url || a.id}`}
+                      aria-label={`자산 삭제: ${a.url || a.id}`}
                     >
                       <Trash2Icon className="size-3.5" />
                     </Button>
@@ -686,7 +686,7 @@ export default function AssetsPage() {
         <TabsContent value="endpoint" className="mt-0 flex min-h-0 flex-1 flex-col gap-2">
           {searchBox}
           <AssetCard
-            cols={["", "方法", "전체 주소", "매개변수", ""]}
+            cols={["", "메서드", "전체 주소", "매개변수", ""]}
             loaded={loaded}
             total={total}
             page={page}
@@ -723,7 +723,7 @@ export default function AssetsPage() {
                     size="icon"
                     className="size-7 text-muted-foreground hover:text-destructive"
                     onClick={() => openDelete([a.id])}
-                    aria-label={`删除자산 ${a.url || a.id}`}
+                    aria-label={`자산 삭제: ${a.url || a.id}`}
                   >
                     <Trash2Icon className="size-3.5" />
                   </Button>
@@ -740,7 +740,7 @@ export default function AssetsPage() {
             <AlertDialogTitle>삭제 확인</AlertDialogTitle>
             <AlertDialogDescription>
               영구 삭제됩니다 <span className="font-semibold tabular-nums">{deleteIds.length}</span>{" "}
-              条자산记录，此작업不可撤销。
+              건의 자산 기록입니다. 이 작업은 되돌릴 수 없습니다.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -770,10 +770,10 @@ export default function AssetsPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>删除기업 · {companyDeleteTarget?.name}</AlertDialogTitle>
+            <AlertDialogTitle>기업 삭제 · {companyDeleteTarget?.name}</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-3">
-                <p>此작업영구 삭제됩니다该기업及其자산范围配置，不可撤销。</p>
+                <p>이 기업과 자산 범위 설정을 영구 삭제합니다. 되돌릴 수 없습니다.</p>
                 <label
                   htmlFor="delete-assets-opt"
                   className="flex cursor-pointer items-center gap-2.5 rounded-md border p-3 hover:bg-muted/50"
@@ -784,8 +784,8 @@ export default function AssetsPage() {
                     onCheckedChange={(v) => setCompanyDeleteAssets(!!v)}
                   />
                   <span className="text-sm leading-snug">
-                    同时删除该기업下的所有자산
-                    <span className="block text-xs text-muted-foreground">不勾选则保留자산，仅취소归属关系</span>
+                    이 기업의 모든 자산도 함께 삭제
+                    <span className="block text-xs text-muted-foreground">선택하지 않으면 자산을 유지하고 소속 관계만 해제합니다</span>
                   </span>
                 </label>
               </div>
@@ -987,11 +987,11 @@ function CompanyDialog({ onSaved }: { onSaved: () => void }) {
 
   const submit = async () => {
     if (!name.trim()) {
-      toast.error("请填写기업名称");
+      toast.error("기업 이름을 입력하세요");
       return;
     }
     if (parsedScope.errors.length > 0) {
-      toast.error("请修正无效的자산范围");
+      toast.error("잘못된 자산 범위를 수정하세요");
       return;
     }
     setBusy(true);
@@ -999,13 +999,13 @@ function CompanyDialog({ onSaved }: { onSaved: () => void }) {
       const res = await api.createCompany(name.trim(), parsedScope.rules);
       const added = res.scope_added ?? 0;
       const invalid = res.scope_invalid ?? 0;
-      if (invalid > 0) toast.warning(`已创建기업，添加 ${added} 条范围；${invalid} 行无效`);
-      else toast.success(`已创建기업，添加 ${added} 条范围`);
+      if (invalid > 0) toast.warning(`기업 생성 완료 · 추가한 범위: ${added} 건 · 유효하지 않은 행:${invalid} 개`);
+      else toast.success(`기업 생성 완료 · 추가한 범위: ${added} 건`);
       setOpen(false);
       onSaved();
     } catch (e) {
       const msg = String((e as Error)?.message ?? e);
-      if (/:\s*409$/.test(msg)) toast.error("기업已存在，请换个名称");
+      if (/:\s*409$/.test(msg)) toast.error("이미 존재하는 기업입니다. 다른 이름을 사용하세요");
       else toast.error(`저장 실패: ${msg}`);
     } finally {
       setBusy(false);
@@ -1016,18 +1016,18 @@ function CompanyDialog({ onSaved }: { onSaved: () => void }) {
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button size="sm">
-          <BuildingIcon data-icon="inline-start" /> 新增기업
+          <BuildingIcon data-icon="inline-start" /> 기업 추가
         </Button>
       </SheetTrigger>
       <SheetContent className="w-full! max-w-none! gap-0 p-0 sm:w-[520px]! sm:max-w-[520px]!">
         <SheetHeader className="border-b p-6">
-          <SheetTitle>新增기업</SheetTitle>
-          <SheetDescription>配置기업及其자산范围。关键词只作为 Agent 提示，不会自动归属자산。</SheetDescription>
+          <SheetTitle>기업 추가</SheetTitle>
+          <SheetDescription>기업과 자산 범위를 설정합니다. 키워드는 에이전트에 제공하는 참고 정보이며 자산의 소속을 자동으로 지정하지 않습니다.</SheetDescription>
         </SheetHeader>
         <div className="flex-1 overflow-y-auto p-6">
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="cn-name">기업名称</FieldLabel>
+              <FieldLabel htmlFor="cn-name">기업 이름</FieldLabel>
               <Input
                 id="cn-name"
                 placeholder="예: Acme Corp(이름은 고유해야 함)"
@@ -1071,14 +1071,14 @@ function EditScopeDialog({ company, onSaved }: { company: Company; onSaved: () =
 
   const submit = async () => {
     if (parsedScope.errors.length > 0) {
-      toast.error("请修正无效的자산范围");
+      toast.error("잘못된 자산 범위를 수정하세요");
       return;
     }
     setBusy(true);
     try {
       const res = await api.updateCompanyScope(company.id, parsedScope.rules, reason);
       const errCount = res.invalid ?? 0;
-      if (errCount > 0) toast.warning(`已저장；${errCount} 行无效`);
+      if (errCount > 0) toast.warning(`저장 완료 · 유효하지 않은 행:${errCount} 개`);
       else toast.success(`범위를 업데이트했습니다. 총 ${res.added}건`);
       showScopeWarnings(res.warnings);
       setOpen(false);
@@ -1099,9 +1099,9 @@ function EditScopeDialog({ company, onSaved }: { company: Company; onSaved: () =
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>편집자산范围 · {company.name}</DialogTitle>
+          <DialogTitle>자산 범위 편집 · {company.name}</DialogTitle>
           <DialogDescription>
-            편집后将替换全部现有范围。ICP 精确匹配자산，기업关键词仅作为 Agent 提示。
+            저장하면 기존 범위를 모두 대체합니다. ICP는 자산과 정확히 일치하는지 확인하며 기업 키워드는 에이전트 참고 정보로만 사용됩니다.
           </DialogDescription>
         </DialogHeader>
         <FieldGroup className="py-2">
@@ -1126,7 +1126,7 @@ function EditScopeDialog({ company, onSaved }: { company: Company; onSaved: () =
             취소
           </Button>
           <Button onClick={submit} disabled={busy || parsedScope.errors.length > 0}>
-            {busy ? "저장 중…" : "覆盖저장"}
+            {busy ? "저장 중…" : "덮어쓰기 저장"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1154,14 +1154,14 @@ function AppendScopeDialog({ company, onSaved }: { company: Company; onSaved: ()
       return;
     }
     if (parsedScope.errors.length > 0) {
-      toast.error("请修正无效的자산范围");
+      toast.error("잘못된 자산 범위를 수정하세요");
       return;
     }
     setBusy(true);
     try {
       const res = await api.addCompanyScope(company.id, parsedScope.rules, reason);
       const errCount = res.invalid ?? 0;
-      if (errCount > 0) toast.warning(`已저장；${errCount} 行无效`);
+      if (errCount > 0) toast.warning(`저장 완료 · 유효하지 않은 행:${errCount} 개`);
       else toast.success(`범위 ${res.added}건을 추가했습니다`);
       showScopeWarnings(res.warnings);
       setOpen(false);
@@ -1182,8 +1182,8 @@ function AppendScopeDialog({ company, onSaved }: { company: Company; onSaved: ()
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>추가자산范围 · {company.name}</DialogTitle>
-          <DialogDescription>新范围会추가到现有范围。ICP 精确匹配자산，기업关键词仅作为 Agent 提示。</DialogDescription>
+          <DialogTitle>자산 범위 추가 · {company.name}</DialogTitle>
+          <DialogDescription>새 범위를 기존 범위에 추가합니다. ICP는 자산과 정확히 일치하는지 확인하며 기업 키워드는 에이전트 참고 정보로만 사용됩니다.</DialogDescription>
         </DialogHeader>
         <FieldGroup className="py-2">
           <ScopeTextEditor

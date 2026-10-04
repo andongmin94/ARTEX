@@ -17,7 +17,7 @@ import type { CommandRecord, ToolStat } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 function fmtTime(ts: string) {
-  return new Date(ts).toLocaleString("zh-CN", {
+  return new Date(ts).toLocaleString("ko-KR", {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -223,7 +223,7 @@ export default function CommandsPage() {
                 ) : commands.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="py-12 text-center text-sm text-muted-foreground">
-                      暂无도구 실행记录
+                      도구 실행 기록이 없습니다
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -276,13 +276,13 @@ export default function CommandsPage() {
       <Dialog open={statsOpen} onOpenChange={setStatsOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>도구调用통계</DialogTitle>
+            <DialogTitle>도구 호출 통계</DialogTitle>
             <DialogDescription>
-              {taskFilter || queryQ ? "현재 필터 조건의 전체 기록" : "全部도구 실행记录"}
+              {taskFilter || queryQ ? "현재 필터 조건의 전체 기록" : "전체 도구 실행 기록"}
               {stats.length > 0 && (
                 <>
                   {" · "}
-                  <span className="tabular-nums">{stats.length}</span> 个도구 ·{" "}
+                  <span className="tabular-nums">{stats.length}</span> 개 도구 ·{" "}
                   <span className="tabular-nums">{statsTotal}</span> 회 호출
                   {statsErrors > 0 && (
                     <>
@@ -300,7 +300,7 @@ export default function CommandsPage() {
               <Loader2Icon className="mx-auto h-5 w-5 animate-spin text-muted-foreground" />
             </div>
           ) : stats.length === 0 ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">暂无통계数据</div>
+            <div className="py-10 text-center text-sm text-muted-foreground">통계 데이터 없음</div>
           ) : (
             <div className="-mr-2 max-h-[55vh] space-y-1 overflow-auto pr-2">
               {stats.map((s) => (
@@ -337,7 +337,7 @@ export default function CommandsPage() {
           {selected && (
             <>
               <SheetHeader className="border-b px-5 py-4">
-                <SheetTitle className="pr-8">도구 실행详情</SheetTitle>
+                <SheetTitle className="pr-8">도구 실행 상세</SheetTitle>
                 <SheetDescription>{fmtTime(selected.created_at)}</SheetDescription>
                 <div className="flex flex-wrap items-center gap-2 pt-2">
                   <Badge variant="outline" className="text-xs font-mono">

@@ -51,7 +51,7 @@ function fmtSize(n: number): string {
   return `${(n / 1024 / 1024 / 1024).toFixed(1)} GB`;
 }
 function fmtTime(ms: number): string {
-  return new Date(ms).toLocaleString("zh-CN", {
+  return new Date(ms).toLocaleString("ko-KR", {
     year: "2-digit",
     month: "2-digit",
     day: "2-digit",
@@ -258,7 +258,7 @@ export default function WorkspacePage() {
                           size="icon"
                           className="size-7"
                           title="다운로드"
-                          onClick={() => api.workspaceDownload(e.path).catch((err) => toast.error(`다운로드失败：${(err as Error).message}`))}
+                          onClick={() => api.workspaceDownload(e.path).catch((err) => toast.error(`다운로드 실패:${(err as Error).message}`))}
                         >
                           <DownloadIcon className="size-3.5" />
                         </Button>
@@ -302,7 +302,7 @@ export default function WorkspacePage() {
                     {edit.file.too_large ? "파일이 너무 커서 온라인 미리보기/편집을 지원하지 않습니다." : "바이너리 파일은 온라인 미리보기/편집을 지원하지 않습니다."}
                   </p>
                   <Button variant="outline" onClick={() => api.workspaceDownload(edit.file.path)}>
-                    <DownloadIcon /> 다운로드文件
+                    <DownloadIcon /> 파일 다운로드
                   </Button>
                 </div>
               ) : (
@@ -347,7 +347,7 @@ export default function WorkspacePage() {
             value={mkdirName}
             onChange={(e) => setMkdirName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && doMkdir()}
-            placeholder="文件夹이름"
+            placeholder="폴더 이름"
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setMkdirOpen(false)}>

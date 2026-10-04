@@ -78,7 +78,7 @@ export function isSameFinding(left: Finding, right: Finding): boolean {
 }
 
 export function fmtTime(ts: string) {
-  return new Date(ts).toLocaleString("zh-CN", {
+  return new Date(ts).toLocaleString("ko-KR", {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -312,7 +312,7 @@ export function FindingsTable({
                               <span className="break-all">
                                 {f.name || f.vulnclass || f.summary || `#${f.finding_id}`}
                               </span>
-                              」将被永久삭제， 同时从发现列表、任务发现 Tab 与探索图中移除，此작업不可撤销。
+                              」 항목이 영구 삭제되고 취약점 목록, 작업의 취약점 탭, 탐색 그래프에서도 제거됩니다. 이 작업은 되돌릴 수 없습니다.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
@@ -409,7 +409,7 @@ export function FindingsTable({
                             {reports[rowKey]?.status === "done" && reports[rowKey]?.text.trim() && (
                               <CopyButton
                                 text={reports[rowKey]?.text}
-                                successMessage="已复制상세 보고서"
+                                successMessage="상세 보고서를 복사했습니다"
                                 variant="ghost"
                                 className="h-6 px-2 text-xs"
                               />
@@ -422,7 +422,7 @@ export function FindingsTable({
                             if (rep.status === "error")
                               return <p className="text-xs text-muted-foreground">보고서를 불러오지 못했습니다.</p>;
                             if (!rep.text.trim())
-                              return <p className="text-xs text-muted-foreground">暂无상세 보고서。</p>;
+                              return <p className="text-xs text-muted-foreground">상세 보고서가 없습니다.</p>;
                             return (
                               // break-words 会继承到段落/列表,pre 另加
                               // whitespace-pre-wrap 让代码块也换行——否则长代码行/长 URL

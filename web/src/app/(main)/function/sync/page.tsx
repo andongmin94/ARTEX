@@ -159,7 +159,7 @@ function DataSourceCard({
           <>
             {!status.configured && (
               <p className="text-amber-600 text-sm dark:text-amber-500">
-                数据源已创建但미설정，MCP 주소를 입력하세요与 API Key 后启用。
+                데이터 소스가 생성되었지만 설정되지 않았습니다. MCP 주소와 API Key를 입력한 뒤 활성화하세요.
               </p>
             )}
             {status.configured && !status.enabled && (
@@ -349,8 +349,8 @@ function SyncWorkbench() {
           }}
         >
           <TabsList>
-            <TabsTrigger value="project">프로젝트维度</TabsTrigger>
-            <TabsTrigger value="task">작업维度</TabsTrigger>
+            <TabsTrigger value="project">프로젝트 기준</TabsTrigger>
+            <TabsTrigger value="task">작업 기준</TabsTrigger>
           </TabsList>
         </Tabs>
 
@@ -370,7 +370,7 @@ function SyncWorkbench() {
           {dimension === "project" && (
             <label htmlFor="create-company" className="flex items-center gap-1.5 text-sm">
               <Checkbox id="create-company" checked={createCompany} onCheckedChange={(c) => setCreateCompany(!!c)} />
-              按프로젝트建立企业并写入资产范围
+              프로젝트별로 기업을 생성하고 자산 범위 기록
             </label>
           )}
         </div>
@@ -381,7 +381,7 @@ function SyncWorkbench() {
             <SearchIcon className="absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="pl-8"
-              placeholder={dimension === "project" ? "搜索프로젝트名" : "搜索작업名"}
+              placeholder={dimension === "project" ? "프로젝트 이름 검색" : "작업 이름 검색"}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => {
@@ -410,7 +410,7 @@ function SyncWorkbench() {
                 <TableHead className="w-10">
                   <Checkbox checked={rows.length > 0 && selected.size === rows.length} onCheckedChange={toggleAll} />
                 </TableHead>
-                <TableHead>{dimension === "project" ? "프로젝트名" : "작업名"}</TableHead>
+                <TableHead>{dimension === "project" ? "프로젝트 이름" : "작업 이름"}</TableHead>
                 {dimension === "project" ? (
                   <>
                     <TableHead>태그</TableHead>

@@ -182,15 +182,14 @@ export default function AssetInterceptPage() {
         <div>
           <h1 className="text-lg font-semibold leading-tight">자산 차단</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            全局资产黑名单：命中的域名 / IP / URL / 대역将被拦截，不对其执行任何操作
+            전역 자산 차단 목록: 일치하는 도메인 / IP / URL / 네트워크 대역에는 어떠한 작업도 수행하지 않습니다
           </p>
         </div>
       </div>
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
-          支持全等与부분 일치的域名 / IP / URL，以及 CIDR 대역；默认기본 제공模糊拦截政府（.gov / .gov.cn）与教育（.edu /
-          .edu.cn) 사이트를 부분 일치로 차단합니다
+          도메인 / IP / URL의 완전·부분 일치와 CIDR 대역을 지원합니다. 기본 규칙은 정부(.gov / .gov.cn) 및 교육(.edu / .edu.cn) 도메인을 부분 일치로 차단합니다.
         </p>
         <Button onClick={openNew} size="sm" className="shrink-0">
           <PlusIcon className="h-4 w-4" />
@@ -205,7 +204,7 @@ export default function AssetInterceptPage() {
           ) : rules.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
               <BanIcon className="h-8 w-8 text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground">暂无자산 차단规则</p>
+              <p className="text-sm text-muted-foreground">자산 차단 규칙 없음</p>
               <Button size="sm" variant="outline" onClick={openNew}>
                 <PlusIcon className="h-4 w-4" />
                 첫 규칙 만들기
@@ -273,12 +272,12 @@ export default function AssetInterceptPage() {
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" className="flex flex-col gap-0 p-0 sm:max-w-md">
           <SheetHeader className="border-b px-6 py-4">
-            <SheetTitle>{editing ? "编辑자산 차단规则" : "新建자산 차단规则"}</SheetTitle>
+            <SheetTitle>{editing ? "자산 차단 규칙 편집" : "자산 차단 규칙 생성"}</SheetTitle>
             <SheetDescription className="text-xs">이 규칙에 일치하는 대상 자산은 전역 차단됩니다</SheetDescription>
           </SheetHeader>
 
           <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 space-y-5">
-            <Field label="匹配유형">
+            <Field label="일치 유형">
               <Select value={form.kind} onValueChange={(v) => set({ kind: v as AssetInterceptKind })}>
                 <SelectTrigger>
                   <SelectValue />
@@ -304,10 +303,10 @@ export default function AssetInterceptPage() {
               label="일치 내용"
               hint={
                 form.kind === "cidr"
-                  ? "CIDR 대역，形如 192.168.0.0/16"
+                  ? "CIDR 대역, 예: 192.168.0.0/16"
                   : form.kind.startsWith("fuzzy_")
-                    ? "부분 일치：目标包含此内容即命中"
-                    : "완전 일치：目标需与此内容完全一致"
+                    ? "부분 일치: 대상에 해당 내용이 포함되면 일치"
+                    : "완전 일치: 대상이 해당 내용과 완전히 같아야 일치"
               }
             >
               <Input
@@ -317,7 +316,7 @@ export default function AssetInterceptPage() {
               />
             </Field>
 
-            <Field label="메모（可选）">
+            <Field label="메모(선택)">
               <Textarea
                 placeholder="이 규칙의 용도를 설명하세요"
                 value={form.note}
@@ -332,7 +331,7 @@ export default function AssetInterceptPage() {
             <div className="flex items-center gap-3">
               <Switch id="asset-rule-enabled" checked={form.enabled} onCheckedChange={(v) => set({ enabled: v })} />
               <Label htmlFor="asset-rule-enabled" className="cursor-pointer">
-                활성화此规则
+                이 규칙 활성화
               </Label>
             </div>
           </div>

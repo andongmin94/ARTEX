@@ -288,7 +288,7 @@ function JudgeCard() {
           <div>
             <p className="text-sm font-semibold leading-tight">모델 폴백 승인</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              在<span className="font-medium text-foreground">차단 범위</span>内、且<span className="font-medium text-foreground">어떤 차단 규칙에도 일치하지 않는</span> 명령만 모델이 의미를 판정합니다(허용 / 수동 승인 / 차단)
+              대상이<span className="font-medium text-foreground">차단 범위</span>에 포함되고<span className="font-medium text-foreground">어떤 차단 규칙에도 일치하지 않는</span> 명령만 모델이 의미를 판정합니다(허용 / 수동 승인 / 차단)
             </p>
           </div>
         </div>
@@ -306,7 +306,7 @@ function JudgeCard() {
               <div>
                 <p className="text-sm font-medium">승인 Token 사용량</p>
                 <p className="text-xs text-muted-foreground">
-                  모델 폴백 승인累计用量,单独计量(worker=judge),不与各모델 설정的统计混在一起
+                  모델 폴백 승인 누적 사용량을 별도로 집계합니다(worker=judge). 모델 설정별 통계와 구분됩니다.
                 </p>
               </div>
               <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={loadUsage}>
@@ -473,7 +473,7 @@ export default function InterceptPage() {
       const r = await api.interceptRules();
       setRules(r);
     } catch {
-      toast.error("加载차단规则失败");
+      toast.error("차단 규칙을 불러오지 못했습니다");
     } finally {
       setLoading(false);
     }
@@ -588,7 +588,7 @@ export default function InterceptPage() {
     setScopeSaving(true);
     try {
       await api.interceptSetToolConfig([...enabledTools]);
-      toast.success("차단 범위已저장");
+      toast.success("차단 범위를 저장했습니다");
       setScopeTools([...enabledTools]);
       setScopeOpen(false);
     } catch (e) {
@@ -609,9 +609,9 @@ export default function InterceptPage() {
       <div className="flex items-center gap-2.5">
         <ShieldAlertIcon className="h-5 w-5 shrink-0" />
         <div>
-          <h1 className="text-lg font-semibold leading-tight">命令차단</h1>
+          <h1 className="text-lg font-semibold leading-tight">명령 차단</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            工具执行前先按차단规则匹配；未命中的命令可交由模型兜底判定
+            도구 실행 전에 차단 규칙을 먼저 검사합니다. 일치하지 않는 명령은 모델에 판정을 맡길 수 있습니다
           </p>
         </div>
       </div>
@@ -629,7 +629,7 @@ export default function InterceptPage() {
           <span className="shrink-0 font-medium">차단 범위</span>
           {scopeTools.length === 0 ? (
             <span className="text-amber-700 dark:text-amber-500">
-              비활성화任何工具 — 차단规则与模型兜底均不会生效
+              활성화된 도구가 없습니다 — 차단 규칙과 모델 판정 모두 적용되지 않습니다
             </span>
           ) : (
             <>
@@ -653,7 +653,7 @@ export default function InterceptPage() {
 
       <Tabs defaultValue="rules" className="flex-1">
         <TabsList>
-          <TabsTrigger value="rules">차단规则</TabsTrigger>
+          <TabsTrigger value="rules">차단 규칙</TabsTrigger>
           <TabsTrigger value="judge">모델 설정</TabsTrigger>
         </TabsList>
 
@@ -765,7 +765,7 @@ export default function InterceptPage() {
           <SheetHeader className="border-b px-6 py-4">
             <SheetTitle>{editing ? "규칙 편집" : "새 규칙"}</SheetTitle>
             <SheetDescription className="text-xs">
-              우선순위越大越先匹配；首条命中规则生效，后续跳过
+              우선순위가 높을수록 먼저 검사합니다. 처음 일치한 규칙을 적용하고 이후 규칙은 건너뜁니다
             </SheetDescription>
           </SheetHeader>
 
@@ -778,7 +778,7 @@ export default function InterceptPage() {
               />
             </Field>
 
-            <Field label="우선순위（数字越大越先匹配）">
+            <Field label="우선순위(숫자가 클수록 먼저 검사)">
               <Input
                 type="number"
                 value={form.priority}
@@ -788,7 +788,7 @@ export default function InterceptPage() {
 
             <Separator />
 
-            <Field label="匹配대상">
+            <Field label="일치 대상">
               <Select
                 value={form.match_target}
                 onValueChange={(v) => set({ match_target: v as RuleForm["match_target"] })}
@@ -801,15 +801,15 @@ export default function InterceptPage() {
               </Select>
             </Field>
 
-            <Field label="匹配유형">
+            <Field label="일치 유형">
               <Select
                 value={form.match_type}
                 onValueChange={(v) => set({ match_type: v as RuleForm["match_type"] })}
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="string">문자열包含</SelectItem>
-                  <SelectItem value="regex">정규식表达式</SelectItem>
+                  <SelectItem value="string">문자열 포함</SelectItem>
+                  <SelectItem value="regex">정규식</SelectItem>
                 </SelectContent>
               </Select>
             </Field>
@@ -838,9 +838,9 @@ export default function InterceptPage() {
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="allow">허용 — 直接허용，跳过后续规则</SelectItem>
-                  <SelectItem value="deny">차단 — 阻断，返回拒绝消息给模型</SelectItem>
-                  <SelectItem value="ask">向用户승인 요청 — 等待审批</SelectItem>
+                  <SelectItem value="allow">허용 — 즉시 통과하고 이후 규칙 건너뛰기</SelectItem>
+                  <SelectItem value="deny">금지 — 실행을 막고 모델에 거부 메시지 반환</SelectItem>
+                  <SelectItem value="ask">사용자 승인 요청 — 승인 대기</SelectItem>
                 </SelectContent>
               </Select>
             </Field>
@@ -848,7 +848,7 @@ export default function InterceptPage() {
             {form.action !== "allow" && (
               <Field label={form.action === "deny" ? "거부 메시지(모델에 반환)" : "승인 설명(선택)"}>
                 <Textarea
-                  placeholder={form.action === "deny" ? "操作被安全정책阻止" : ""}
+                  placeholder={form.action === "deny" ? "보안 정책에 의해 작업이 차단되었습니다" : ""}
                   value={form.message}
                   onChange={(e) => set({ message: e.target.value })}
                   rows={2}
@@ -862,7 +862,7 @@ export default function InterceptPage() {
                 <Separator />
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium">활성화审批超时</p>
+                    <p className="text-sm font-medium">승인 대기 시간 제한 사용</p>
                     <p className="text-xs text-muted-foreground">시간 초과 시 자동 처리하고 더 이상 대기하지 않습니다</p>
                   </div>
                   <Switch
@@ -892,7 +892,7 @@ export default function InterceptPage() {
                         <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="deny">자동 거부</SelectItem>
-                          <SelectItem value="allow">自动허용</SelectItem>
+                          <SelectItem value="allow">자동 허용</SelectItem>
                         </SelectContent>
                       </Select>
                     </Field>
@@ -909,7 +909,7 @@ export default function InterceptPage() {
                 checked={form.enabled}
                 onCheckedChange={(v) => set({ enabled: v })}
               />
-              <Label htmlFor="rule-enabled" className="cursor-pointer">활성화此规则</Label>
+              <Label htmlFor="rule-enabled" className="cursor-pointer">이 규칙 활성화</Label>
             </div>
           </div>
 
@@ -931,7 +931,7 @@ export default function InterceptPage() {
               차단 범위
             </DialogTitle>
             <DialogDescription className="text-xs">
-              只有활성화차단的工具才会进入规则匹配；其余工具直接허용
+              차단이 활성화된 도구만 규칙을 검사합니다. 나머지 도구는 바로 허용합니다
             </DialogDescription>
           </DialogHeader>
 

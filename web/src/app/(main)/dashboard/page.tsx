@@ -55,12 +55,12 @@ function fmtRel(ts?: string | number): string {
   if (!ts) return "—";
   const ms = Date.now() - (typeof ts === "number" ? ts * 1000 : Date.parse(ts as string));
   const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s 前`;
+  if (s < 60) return `${s}초 전`;
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m 前`;
+  if (m < 60) return `${m}분 전`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h 前`;
-  return `${Math.floor(h / 24)}d 前`;
+  if (h < 24) return `${h}시간 전`;
+  return `${Math.floor(h / 24)}일 전`;
 }
 
 function fmtTokens(n: number): string {
@@ -580,7 +580,7 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent className="text-[10px] text-muted-foreground">
-            入 {fmtTokens(displayedTokens.input)}（캐시 포함 {fmtTokens(displayedTokens.cacheRead)}）· 出{" "}
+            입력 {fmtTokens(displayedTokens.input)}（캐시 포함 {fmtTokens(displayedTokens.cacheRead)}) · 출력{" "}
             {fmtTokens(displayedTokens.output)}
           </CardContent>
         </Card>
@@ -607,8 +607,8 @@ export default function DashboardPage() {
                   onClick={() => setTokenVersion(v)}
                   title={
                     v === "new"
-                      ? "신규：来自 llm_usage 计量账本，逐次调用精确、含中断消耗；仅覆盖启用后的数据"
-                      : "기존：来自 activity 统计（含历史작업），中断消耗不计、无法精确到模型"
+                      ? "신규: llm_usage 기록을 기반으로 호출별 사용량을 정확히 집계하며 중단된 호출도 포함합니다. 활성화 이후 데이터만 집계합니다."
+                      : "기존: 과거 작업을 포함한 activity 통계 기반입니다. 중단된 호출은 제외되며 모델별 정확한 집계는 어렵습니다."
                   }
                   className={cn(
                     "rounded px-2 py-0.5 text-[9px] font-medium transition-colors",
@@ -681,7 +681,7 @@ export default function DashboardPage() {
           <div className="flex flex-col gap-4">
             {/* Total */}
             <div>
-              <div className="text-[10px] text-muted-foreground">合计 (입력+출력)</div>
+              <div className="text-[10px] text-muted-foreground">합계(입력+출력)</div>
               <div className="mt-0.5 text-3xl font-bold tabular-nums tracking-tight">
                 {fmtTokens(displayedTokens.input + displayedTokens.output) || "—"}
               </div>
@@ -925,7 +925,7 @@ export default function DashboardPage() {
 
           <div className="divide-y">
             {recentFindings.length === 0 ? (
-              <div className="py-4 text-center text-xs text-muted-foreground">暂无취약점 발견</div>
+              <div className="py-4 text-center text-xs text-muted-foreground">발견된 취약점 없음</div>
             ) : (
               recentFindings.map((f) => (
                 <div key={f.id} className="flex items-start gap-2 py-2">
@@ -1076,7 +1076,7 @@ export default function DashboardPage() {
         {/* 流量상태码 */}
         <Card className="p-4">
           <SectionTitle icon={ActivityIcon} sub={`${traffic.length} 회 요청`}>
-            流量상태码
+            트래픽 상태 코드
           </SectionTitle>
 
           {/* bar chart */}
@@ -1127,7 +1127,7 @@ export default function DashboardPage() {
 
         {/* 系统상태 & 승인 대기 */}
         <Card className="p-4">
-          <SectionTitle icon={ShieldCheckIcon}>系统상태</SectionTitle>
+          <SectionTitle icon={ShieldCheckIcon}>시스템 상태</SectionTitle>
 
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-3 py-2">
@@ -1201,7 +1201,7 @@ export default function DashboardPage() {
           {pendingCount === 0 && (
             <div className="mt-3 rounded-lg border bg-muted/10 px-3 py-3 text-center text-[10px] text-muted-foreground">
               <ShieldCheckIcon className="mx-auto mb-1 size-4 text-emerald-500/50" />
-              无승인 대기拦截
+              승인 대기 중인 차단 없음
             </div>
           )}
         </Card>

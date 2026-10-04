@@ -47,7 +47,7 @@ import type { TrafficDetail, TrafficExchange, TrafficHost, TrafficResp } from "@
 import { cn } from "@/lib/utils";
 
 function fmtTime(ts: string) {
-  return new Date(ts).toLocaleString("zh-CN", {
+  return new Date(ts).toLocaleString("ko-KR", {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -254,9 +254,9 @@ export default function TrafficPage() {
   const deleteVerb = deleteMode === "all" ? "전체 삭제" : "삭제";
   const deleteTitle = deleteMode
     ? {
-        all: "전체 삭제全部트래픽记录？",
-        selected: `삭제选中的 ${selectedHosts.length} 个目标的全部트래픽？`,
-        filter: "삭제该目标的全部트래픽？",
+        all: "모든 트래픽 기록을 삭제할까요?",
+        selected: `선택한 ${selectedHosts.length} 개 대상의 모든 트래픽을 삭제할까요?`,
+        filter: "이 대상의 모든 트래픽을 삭제할까요?",
       }[deleteMode]
     : "";
 
@@ -285,14 +285,14 @@ export default function TrafficPage() {
           // Reclaimed space is the whole point of compacting an emptied index, so say so.
           const reclaimed = r.reclaimed ?? 0;
           const freed = reclaimed > 0 ? ` · 저장 공간 ${fmtBytes(reclaimed)} 확보` : "";
-          toast.success(`已전체 삭제 ${r.deleted} 条트래픽${freed}`);
+          toast.success(`삭제 완료: ${r.deleted} 건의 트래픽${freed}`);
         }
         setPage(0);
         setReloadTick((t) => t + 1);
       })
       .catch((e) => {
         // Keep the confirmation open so the user can retry a failed deletion.
-        if (mode === "all") toast.error(`전체 삭제失败：${(e as Error).message}`);
+        if (mode === "all") toast.error(`전체 삭제 실패:${(e as Error).message}`);
       })
       .finally(() => setDeleting(false));
   };
@@ -378,7 +378,7 @@ export default function TrafficPage() {
             collisionPadding={16}
           >
             <div className="flex items-center justify-between border-b px-3 py-2">
-              <span className="text-xs font-medium text-muted-foreground">按目标批量삭제</span>
+              <span className="text-xs font-medium text-muted-foreground">대상별 일괄 삭제</span>
               <div className="flex items-center gap-1">
                 {hosts.length > 0 && (
                   <Tooltip>
@@ -413,7 +413,7 @@ export default function TrafficPage() {
             </div>
             <div className="max-h-64 overflow-y-auto">
               {hosts.length === 0 ? (
-                <div className="px-3 py-6 text-center text-xs text-muted-foreground">暂无트래픽记录</div>
+                <div className="px-3 py-6 text-center text-xs text-muted-foreground">트래픽 기록 없음</div>
               ) : (
                 sortedHosts.map((h, index) => (
                   <label
@@ -447,7 +447,7 @@ export default function TrafficPage() {
                   setPickerOpen(false);
                 }}
               >
-                삭제选中（{selectedHosts.length}）
+                선택 항목 삭제({selectedHosts.length}）
               </Button>
             </div>
           </PopoverContent>
@@ -464,7 +464,7 @@ export default function TrafficPage() {
           onClick={() => setDeleteMode("filter")}
         >
           <Trash2Icon className="size-3.5" />
-          삭제该目标
+          이 대상 삭제
         </Button>
         {/* Outline rather than a second destructive button: this one ignores every
             filter, so it must not look one mis-click away from "삭제该目标". */}
@@ -473,11 +473,11 @@ export default function TrafficPage() {
           size="sm"
           className="h-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
           disabled={!traffic?.count || deleting}
-          title={traffic?.count ? "삭제全部트래픽并压实存储" : "当前没有트래픽记录"}
+          title={traffic?.count ? "모든 트래픽 삭제 및 저장 공간 정리" : "현재 트래픽 기록 없음"}
           onClick={() => setDeleteMode("all")}
         >
           <EraserIcon className="size-3.5" />
-          전체 삭제全部
+          전체 삭제
         </Button>
         <div className="relative max-w-sm flex-1">
           <SearchIcon className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -493,7 +493,7 @@ export default function TrafficPage() {
             <SelectValue placeholder="메서드" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">全部메서드</SelectItem>
+            <SelectItem value="all">전체 메서드</SelectItem>
             {METHODS.map((m) => (
               <SelectItem key={m} value={m}>
                 {m}
@@ -566,7 +566,7 @@ export default function TrafficPage() {
             <SelectValue placeholder="상태 코드" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">全部상태 코드</SelectItem>
+            <SelectItem value="all">전체 상태 코드</SelectItem>
             {STATUS_BUCKETS.map((s) => (
               <SelectItem key={s} value={s}>
                 {s}
@@ -603,13 +603,13 @@ export default function TrafficPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-muted-foreground">已选 {selectedFlows.size} 条트래픽</span>
+        <span className="text-sm text-muted-foreground">선택: {selectedFlows.size} 건의 트래픽</span>
         <Button variant="outline" size="sm" disabled={selectedFlows.size === 0} onClick={() => setLinking(true)}>
           취약점에 연결
         </Button>
         {selectedFlows.size > 0 ? (
           <Button variant="ghost" size="sm" onClick={() => setSelectedFlows(new Set())}>
-            전체 삭제选择
+            선택 해제
           </Button>
         ) : null}
       </div>
@@ -622,7 +622,7 @@ export default function TrafficPage() {
                 <TableRow>
                   <TableHead className="w-10">
                     <Checkbox
-                      aria-label="选择本页트래픽"
+                      aria-label="현재 페이지 트래픽 선택"
                       checked={exchanges.length > 0 && exchanges.every((e) => selectedFlows.has(e.id))}
                       onCheckedChange={(checked) =>
                         setSelectedFlows((previous) => {
@@ -676,7 +676,7 @@ export default function TrafficPage() {
                   >
                     <TableCell>
                       <Checkbox
-                        aria-label={`选择트래픽 ${e.id}`}
+                        aria-label={`트래픽 선택: ${e.id}`}
                         checked={selectedFlows.has(e.id)}
                         onClick={(event) => event.stopPropagation()}
                         onCheckedChange={(checked) =>
@@ -709,7 +709,7 @@ export default function TrafficPage() {
                 {exchanges.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={8} className="py-12 text-center text-sm text-muted-foreground">
-                      {traffic === null ? "불러오는 중…" : "没有匹配的트래픽。"}
+                      {traffic === null ? "불러오는 중…" : "일치하는 트래픽이 없습니다."}
                     </TableCell>
                   </TableRow>
                 )}
@@ -784,28 +784,28 @@ export default function TrafficPage() {
             <AlertDialogDescription>
               {deleteMode === "all" && (
                 <>
-                  将永久삭제全部 <span className="font-semibold tabular-nums">{traffic?.count ?? 0}</span>{" "}
-                  条트래픽记录（含请求/响应原文），忽略当前的筛选条件，此操作不可撤销。已绑定到漏洞的트래픽证据保存在独立的证据库中，不受影响。
+                  영구 삭제할 전체 기록: <span className="font-semibold tabular-nums">{traffic?.count ?? 0}</span>{" "}
+                  건의 트래픽 기록(요청/응답 원문 포함). 현재 필터 조건과 관계없이 삭제하며 되돌릴 수 없습니다. 취약점에 연결된 트래픽 증거는 별도 저장소에 보관되어 영향을 받지 않습니다.
                   <br />
                   <span className="text-muted-foreground">
-                    전체 삭제后会顺带压实存储，把索引占用的磁盘空间还给系统；这期间트래픽录制会短暂暂停。
+                    삭제 후 저장소를 정리하여 인덱스가 차지하던 디스크 공간을 회수합니다. 이 과정에서 트래픽 기록이 잠시 중단됩니다.
                   </span>
                 </>
               )}
               {deleteMode === "selected" && (
                 <>
-                  将永久삭제 <span className="font-semibold tabular-nums">{selectedHosts.length}</span> 个目标（
+                  영구 삭제할 대상: <span className="font-semibold tabular-nums">{selectedHosts.length}</span> 개 대상(
                   <span className="font-mono">
                     {selectedHosts.slice(0, 3).join("、")}
                     {selectedHosts.length > 3 ? "…" : ""}
                   </span>
-                  ）的所有트래픽记录（含请求/响应原文），此操作不可撤销。
+                  )의 모든 트래픽 기록(요청/응답 원문 포함)을 영구 삭제합니다. 되돌릴 수 없습니다.
                 </>
               )}
               {deleteMode === "filter" && (
                 <>
-                  将永久삭제 host 包含 <span className="font-mono font-semibold">{hostQ}</span>{" "}
-                  的所有트래픽记录（含请求/响应原文），此操作不可撤销。
+                  host에 다음 문자열이 포함된 기록을 영구 삭제합니다: <span className="font-mono font-semibold">{hostQ}</span>{" "}
+                  . 해당하는 모든 트래픽 기록(요청/응답 원문 포함)을 삭제하며 되돌릴 수 없습니다.
                 </>
               )}
             </AlertDialogDescription>

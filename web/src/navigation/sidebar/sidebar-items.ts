@@ -89,10 +89,10 @@ export const sidebarItems: NavGroup[] = [
       { id: "tools", title: "도구", url: "/system/tools", icon: Wrench },
       { id: "notify", title: "알림", url: "/system/notify", icon: BellRing },
       { id: "intercept", title: "차단 규칙", url: "/system/intercept", icon: ShieldAlert },
-      { id: "asset-intercept", title: "자산拦截", url: "/system/intercept/assets", icon: Ban },
+      { id: "asset-intercept", title: "자산 차단", url: "/system/intercept/assets", icon: Ban },
       { id: "approvals", title: "승인 기록", url: "/system/intercept/approvals", icon: ClipboardList },
       { id: "logs", title: "로그", url: "/system/logs", icon: ScrollText },
-      { id: "settings", title: "시스템配置", url: "/system/settings", icon: Settings2 },
+      { id: "settings", title: "시스템 설정", url: "/system/settings", icon: Settings2 },
     ],
   },
 ];

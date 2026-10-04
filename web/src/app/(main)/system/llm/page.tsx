@@ -130,7 +130,7 @@ function PoolSheet({
       await api.setSettings(patch);
       await onReload();
       if (patch.llm_pool_enabled !== undefined) {
-        toast.success(patch.llm_pool_enabled ? "已켜기 LLM 轮询" : "已끄기 LLM 轮询");
+        toast.success(patch.llm_pool_enabled ? "LLM 폴백 체인을 활성화했습니다" : "LLM 폴백 체인을 비활성화했습니다");
       } else {
         toast.success("폴백 설정을 업데이트했습니다");
       }
@@ -165,7 +165,7 @@ function PoolSheet({
             <ZapIcon className="size-4" /> LLM 폴백 · 장애 조치
           </SheetTitle>
           <SheetDescription>
-            켜기后，<b>모델을 지정하지 않은</b> Agent가 현재 설정을 사용할 수 없을 때(잔액 부족 / Key 무효 / 제한 /
+            활성화하면<b>모델을 지정하지 않은</b> Agent가 현재 설정을 사용할 수 없을 때(잔액 부족 / Key 무효 / 제한 /
             서비스 오류) 자동으로 다음 설정으로 전환합니다.
           </SheetDescription>
         </SheetHeader>
@@ -174,7 +174,7 @@ function PoolSheet({
           <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
             <div className="grid gap-0.5">
               <Label className="text-sm">폴백 체인 사용</Label>
-              <p className="text-muted-foreground text-xs">默认끄기。끄기时始终只用활성配置，失败即失败。</p>
+              <p className="text-muted-foreground text-xs">기본값은 꺼짐입니다. 끄면 활성 설정만 사용하며 실패 시 그대로 실패 처리합니다.</p>
             </div>
             <Switch
               checked={enabled}
@@ -190,8 +190,7 @@ function PoolSheet({
                 <div className="grid gap-0.5">
                   <Label className="text-sm">지정 모델 실패 시에도 폴백</Label>
                   <p className="text-muted-foreground text-xs">
-                    默认끄기：Agent 或任务指定了某个配置就只用它，失败即失败（不会悄悄换成别的모델）。
-                    켜기后，指定的配置失败时也会回落到下面的轮询链。
+                    기본값은 꺼짐입니다. 에이전트나 작업에서 지정한 설정만 사용하며 실패하더라도 다른 모델로 바꾸지 않습니다. 활성화하면 지정 설정이 실패할 때 아래 폴백 체인을 사용합니다.
                   </p>
                 </div>
                 <Switch
@@ -254,7 +253,7 @@ function PoolSheet({
                               variant="ghost"
                               className="size-7"
                               aria-label="즉시 복구"
-                              title="즉시 복구：清除熔断，下次调用重试该配置"
+                              title="즉시 복구: 회로 차단을 해제하고 다음 호출에서 해당 설정을 다시 시도합니다"
                               onClick={() => void recover(m.profile_id)}
                             >
                               <RotateCcwIcon className="size-3.5" />
@@ -282,9 +281,7 @@ function PoolSheet({
               </div>
 
               <div className="rounded-lg border border-dashed p-3 text-muted-foreground text-xs leading-relaxed">
-                활성配置恒为第 1 顺位，其余按优先级从高到低（在各配置里设置）。某个配置失败后进入쿨다운 （60s → 5min →
-                30min)에 들어가고 그동안 건너뜁니다. 복구 후 자동으로 다시 사용됩니다. 현재 요청이 컨텍스트 윈도우를 초과하는 설정도 건너뜁니다. 모델을 지정한 Agent
-                与任务默认폴백 제외。
+                활성 설정은 항상 1순위이며 나머지는 우선순위가 높은 순서로 사용합니다. 실패한 설정은 60초 → 5분 → 30분의 쿨다운 동안 건너뛰며 복구 후 다시 사용합니다. 현재 요청을 수용하지 못하는 컨텍스트 윈도우의 설정도 건너뜁니다. 특정 모델을 지정한 에이전트와 작업은 기본적으로 폴백에 참여하지 않습니다.
               </div>
             </>
           )}
@@ -446,8 +443,8 @@ function ProfileSheet({
         session_header_key: sessionHeaderKey.trim(),
         retry,
       });
-      if (isNew) toast.success(`已생성：${name.trim()}（在卡片上「设为활성」以启用）`);
-      else toast.success(profile?.is_default ? "저장되었습니다，활성配置即时生效，无需重启" : "저장되었습니다");
+      if (isNew) toast.success(`생성됨:${name.trim()}(카드에서 「활성으로 설정」을 눌러 사용하세요)`);
+      else toast.success(profile?.is_default ? "저장되었습니다. 활성 설정은 재시작 없이 즉시 적용됩니다" : "저장되었습니다");
       onSaved(String(id));
       onOpenChange(false);
     } catch (e) {
@@ -468,14 +465,14 @@ function ProfileSheet({
             {isNew ? "모델 설정 생성" : `편집: ${profile?.name}`}
             {profile?.is_default && (
               <Badge variant="outline" className="border-amber-400/50 text-amber-500">
-                활성中
+                활성 상태
               </Badge>
             )}
           </SheetTitle>
           <SheetDescription>
             {isNew
-              ? "생성后不会自动활성，请在卡片上「设为활성」以启用。"
-              : "修改后点击저장；활성配置저장后对全部 Agent 立即生效。"}
+              ? "새 설정은 자동으로 활성화되지 않습니다. 카드에서 「활성으로 설정」을 눌러 사용하세요."
+              : "변경 후 저장을 누르세요. 활성 설정은 저장 즉시 모든 에이전트에 적용됩니다."}
           </SheetDescription>
         </SheetHeader>
 
@@ -494,7 +491,7 @@ function ProfileSheet({
               <Label>형식</Label>
               <Select value={format} onValueChange={(v) => setFormat(v as "anthropic" | "openai" | "openai-responses")}>
                 <SelectTrigger>
-                  <SelectValue placeholder="选择형식" />
+                  <SelectValue placeholder="형식 선택" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="anthropic">Anthropic</SelectItem>
@@ -526,7 +523,7 @@ function ProfileSheet({
                     className="shrink-0"
                     disabled={loadingModels}
                     onClick={loadModels}
-                    title="从 API 加载可用모델"
+                    title="API에서 사용 가능한 모델 불러오기"
                   >
                     {loadingModels ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />}
                   </Button>
@@ -639,7 +636,7 @@ function ProfileSheet({
                   폴백 우선순위
                 </Label>
                 <p className="text-muted-foreground text-xs">
-                  数字越大越先被选中；활성配置恒为第 1 顺位，与本值无끔。相同优先级的配置会轮流打头，天然分摊额度。
+                  숫자가 클수록 먼저 선택합니다. 활성 설정은 이 값과 관계없이 항상 1순위입니다. 우선순위가 같은 설정은 번갈아 사용하여 할당량을 분산합니다.
                 </p>
               </div>
               <Input
@@ -654,8 +651,7 @@ function ProfileSheet({
               <div className="grid gap-0.5">
                 <Label className="text-sm">폴백 제외</Label>
                 <p className="text-muted-foreground text-xs">
-                  켜기后不会被当作故障转移目标（仍可被 Agent / 任务显式指定使用）。 适合「只给某个 Agent
-                  전용으로 쓰고 다른 설정 실패 시 소모하고 싶지 않은 고비용 설정에 적합합니다.
+                  활성화하면 장애 조치 대상으로 사용하지 않습니다. 에이전트나 작업에서 명시적으로 지정할 수는 있습니다. 특정 에이전트 전용으로 사용할 고비용 설정에 적합합니다.
                 </p>
               </div>
               <Switch checked={poolExclude} onCheckedChange={setPoolExclude} aria-label="폴백 제외" />
@@ -664,9 +660,7 @@ function ProfileSheet({
               <div className="grid gap-0.5">
                 <Label className="text-sm">스트리밍 출력 · streaming</Label>
                 <p className="text-muted-foreground text-xs">
-                  켜기（默认）走流式 SSE，有运行中实时进度与实时 token 计数。 끄기则走真·非流式（stream:false，
-                  응답 전체를 한 번에 반환)으로 동작해 일부 게이트웨이의 불안정한 SSE 구현(빈 프레임 / reasoning 필드 손실)을 우회할 수 있지만,
-                  실행 중 실시간 진행은 볼 수 없습니다.
+                  활성화(기본)하면 SSE 스트리밍으로 실시간 진행과 토큰 수를 표시합니다. 끄면 stream:false로 전체 응답을 한 번에 받습니다. 일부 게이트웨이의 빈 프레임이나 추론 필드 손실을 피할 수 있지만 실행 중 실시간 진행은 볼 수 없습니다.
                 </p>
               </div>
               <Switch checked={streaming} onCheckedChange={setStreaming} aria-label="스트리밍 출력" />
@@ -680,9 +674,7 @@ function ProfileSheet({
                   출력 상한 · max tokens
                 </Label>
                 <p className="text-muted-foreground text-xs">
-                  한 번의 응답에서 생성할 최대 token 수를 각 요청에 포함합니다. 0(기본) = 해당 필드를 보내지 않고 서버 기본값을 사용합니다.
-                  这与上面的「上下文窗口」是两回事：那是모델总容量，只在本地用来算压缩阈值。
-                  设太小会让推理모델在思考阶段就被截断，一个字答案都出不来。
+                  한 번의 응답에서 생성할 최대 토큰 수입니다. 0(기본)이면 필드를 보내지 않고 서버 기본값을 사용합니다. 「컨텍스트 윈도우」는 모델 전체 용량과 로컬 압축 임계값 계산용으로, 이 값과 다릅니다. 출력 상한이 너무 작으면 추론 단계에서 잘려 답변이 생성되지 않을 수 있습니다.
                 </p>
               </div>
               <Input
@@ -724,8 +716,7 @@ function ProfileSheet({
               <div className="grid gap-0.5">
                 <Label className="text-sm">reasoning 스위치 · thinking.type</Label>
                 <p className="text-muted-foreground text-xs">
-                  控制是否发送 thinking 字段。不发送=不带该字段（兼容 MiniMax 等不支持 的모델）；끄기=发
-                  disabled；켜기=发 enabled。与下面的强度互相独立。
+                  thinking 필드 전송 여부를 제어합니다. 전송 안 함은 해당 필드를 생략하고, 끄기는 disabled, 켜기는 enabled를 전송합니다. 아래 강도 설정과 독립적입니다.
                 </p>
               </div>
               <Select value={thinkingType} onValueChange={setThinkingType}>
@@ -745,8 +736,7 @@ function ProfileSheet({
               <div className="grid gap-0.5">
                 <Label className="text-sm">reasoning 강도 · reasoning_effort</Label>
                 <p className="text-muted-foreground text-xs">
-                  독립적인 강도 단계(OpenAI reasoning_effort / Anthropic output_config.effort)입니다. 일부 API는 thinking
-                  字段、只靠强度即可활성思考，故可单独设置、不发送思考开끔。
+                  독립적인 추론 강도 설정입니다(OpenAI reasoning_effort / Anthropic output_config.effort). 일부 API는 thinking 필드 없이 강도만으로 추론을 활성화하므로 스위치를 보내지 않고 별도로 설정할 수 있습니다.
                 </p>
               </div>
               <Select value={effort} onValueChange={setEffort}>
@@ -829,16 +819,16 @@ export default function LLMPage() {
   async function activate(id: string, name: string) {
     try {
       await api.activateLLMProfile(id);
-      toast.success(`已활성：${name}`);
+      toast.success(`활성화됨:${name}`);
       await load();
     } catch (e) {
-      toast.error(`활성失败：${(e as Error).message}`);
+      toast.error(`활성화 실패:${(e as Error).message}`);
     }
   }
 
   async function remove(p: LLMProfile) {
     if (p.is_default) {
-      toast.error("无法删除当前활성的配置");
+      toast.error("현재 활성 설정은 삭제할 수 없습니다");
       return;
     }
     try {
@@ -858,7 +848,7 @@ export default function LLMPage() {
         <div>
           <h1 className="font-semibold text-xl tracking-tight">LLM</h1>
           <p className="text-muted-foreground text-sm">
-            全 Agent 共享的형식 / 모델 / 限速配置。点击卡片编辑，星标为当前활성配置。
+            모든 에이전트가 공유하는 형식·모델·속도 제한 설정입니다. 카드를 클릭하여 편집하세요. 별표는 현재 활성 설정입니다.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -866,7 +856,7 @@ export default function LLMPage() {
             <ZapIcon /> 폴백 설정
             {poolOn && (
               <Badge variant="outline" className="ml-1 border-emerald-500/50 text-emerald-600 dark:text-emerald-400">
-                已켜기
+                활성화됨
               </Badge>
             )}
           </Button>
@@ -878,7 +868,7 @@ export default function LLMPage() {
 
       <Tabs defaultValue="profiles" className="flex-1">
         <TabsList>
-          <TabsTrigger value="profiles">모델配置</TabsTrigger>
+          <TabsTrigger value="profiles">모델 설정</TabsTrigger>
           <TabsTrigger value="retry">재시도 및 백오프</TabsTrigger>
         </TabsList>
 
@@ -952,7 +942,7 @@ export default function LLMPage() {
                           void activate(p.id, p.name);
                         }}
                       >
-                        {p.is_default ? "已활성" : "设为활성"}
+                        {p.is_default ? "활성화됨" : "활성으로 설정"}
                       </Button>
                       <Button
                         size="icon"
@@ -972,7 +962,7 @@ export default function LLMPage() {
             })}
             {profiles.length === 0 && (
               <div className="col-span-full rounded-lg border border-dashed p-10 text-center text-muted-foreground text-sm">
-                还没有모델配置，点击右上角「생성」创建第一个。
+                모델 설정이 없습니다. 오른쪽 위 「생성」을 눌러 첫 설정을 만드세요.
               </div>
             )}
           </div>

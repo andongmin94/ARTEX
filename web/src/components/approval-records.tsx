@@ -38,7 +38,7 @@ import { cn } from "@/lib/utils";
 
 function fmtTime(value?: string) {
   if (!value) return "—";
-  return new Date(value).toLocaleString("zh-CN", {
+  return new Date(value).toLocaleString("ko-KR", {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -50,7 +50,7 @@ function fmtTime(value?: string) {
 function source(row: InterceptApprovalRow) {
   if (row.decision_source) return row.decision_source;
   if (row.rule_id) return "rule";
-  return row.reason?.startsWith("[模型]") ? "model" : "unknown";
+  return row.reason?.startsWith("[모델]") ? "model" : "unknown";
 }
 
 function originLabel(row: InterceptApprovalRow) {
@@ -109,7 +109,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function MatchCell({ row, showReason = true }: { row: InterceptApprovalRow; showReason?: boolean }) {
-  const reason = row.reason?.replace(/^\[模型\]\s*/, "");
+  const reason = row.reason?.replace(/^\[모델\]\s*/, "");
   return (
     <div className="flex min-w-0 flex-col gap-1">
       {source(row) === "model" ? (
@@ -168,7 +168,7 @@ const actionLabels: Record<string, string> = { allow: "허용", ask: "수동 승
 const executionLabels: Record<InterceptAudit["execution_status"], string> = {
   not_started: "미실행",
   not_executed: "실행 안 함",
-  awaiting_result: "허용됨，等待执行结果",
+  awaiting_result: "허용됨, 실행 결과 대기",
   succeeded: "실행 성공",
   failed: "실행 실패",
   unknown: "실행 결과 알 수 없음",
@@ -192,13 +192,13 @@ function ModelReviewContext({ input }: { input: InterceptReviewInput }) {
         input.background ? (
           <div className="flex min-w-0 flex-col gap-2">
             <CodeBlock
-              label={input.background.source === "user_message" ? "背景 · 사용자 메시지" : "배경 · Worker 의도 요약(이전 버전)"}
+              label={input.background.source === "user_message" ? "배경 · 사용자 메시지" : "배경 · Worker 의도 요약(이전 버전)"}
               text={input.background.text}
               truncated={input.background.truncated}
             />
             <p className="text-muted-foreground text-xs">
               {input.background.source === "user_message"
-                ? "取自当前사용자 메시지。"
+                ? "현재 사용자 메시지에서 가져왔습니다."
                 : "이전 버전에서 전송한 Worker 의도 요약입니다. 새 Worker 검토에서는 이 내용을 더 이상 전송하지 않습니다."}
             </p>
           </div>
@@ -331,7 +331,7 @@ export function ApprovalDetail({
   const audit = detail?.audit;
   let execution = audit ? executionLabels[audit.execution_status] : "기록 없음";
   if (row.status === "pending") execution = "미실행";
-  if (audit && audit.correlation !== "exact" && audit.effective_action === "allow") execution = "未关联执行结果";
+  if (audit && audit.correlation !== "exact" && audit.effective_action === "allow") execution = "실행 결과 미연결";
   const command = typeof row.tool_input?.command === "string" ? row.tool_input.command : undefined;
   let initialLabel = source(row) === "model" ? "모델 초기 판정" : "규칙 초기 판정";
   if (audit?.model_fallback) initialLabel = "모델 오류 폴백";
@@ -370,7 +370,7 @@ export function ApprovalDetail({
             <MatchCell row={current} showReason={false} />
           </div>
           <p className="whitespace-pre-wrap break-words text-sm leading-7 [overflow-wrap:anywhere]">
-            {current.reason?.replace(/^\[模型\]\s*/, "") || "기록 없음审批理由"}
+            {current.reason?.replace(/^\[모델\]\s*/, "") || "승인 사유 기록 없음"}
           </p>
           {audit?.decision_reason ? <p className="text-sm">{audit.decision_reason}</p> : null}
           {audit?.effective_action ? <p className="text-sm">최종 동작:{actionLabels[audit.effective_action]}</p> : null}
@@ -414,7 +414,7 @@ export function ApprovalDetail({
       {!detail && !error ? <Skeleton className="h-8 w-60" /> : null}
       {detail && !audit ? (
         <Alert>
-          <AlertDescription>此记录未保存审批详情快照，无法还原当时的上下文、모델 초기 판정和실행 출력。</AlertDescription>
+          <AlertDescription>승인 상세 스냅샷이 없어 당시 컨텍스트, 모델 초기 판정, 실행 출력을 복원할 수 없습니다.</AlertDescription>
         </Alert>
       ) : null}
       {audit ? (
@@ -434,7 +434,7 @@ export function ApprovalDetail({
                   <AlertDescription>
                     {audit.model_input_digest
                       ? "이 과거 기록은 검토 입력 지문만 저장하고 원문은 저장하지 않아 당시 모델에 전송한 컨텍스트를 복원할 수 없습니다. 검토 당시 컨텍스트가 없었다는 뜻은 아니며, 새 모델 판정은 입력 스냅샷을 보존합니다."
-                      : "此记录没有保存모델 검토 입력，可能由规则直接裁决、模型调用前发生오류或产生于旧版本。"}
+                      : "모델 검토 입력이 저장되지 않았습니다. 규칙에 의한 직접 판정, 모델 호출 전 오류 또는 이전 버전에서 생성된 기록일 수 있습니다."}
                   </AlertDescription>
                 </Alert>
               )}
@@ -460,7 +460,7 @@ export function ApprovalDetail({
                       <section className="flex min-w-0 flex-col gap-3">
                         <h3 className="font-medium text-muted-foreground text-xs">표시 가능한 세션 컨텍스트</h3>
                         <p className="text-muted-foreground text-xs">
-                          저장 시각: {fmtTime(audit.captured_at)} 的会话记录片段。模型实际使用的内容以“모델 검토 입력”为准。
+                          저장 시각: {fmtTime(audit.captured_at)} 에 저장된 세션 기록 일부입니다. 모델이 실제 사용한 내용은 「모델 검토 입력」을 기준으로 합니다.
                         </p>
                         {audit.context_truncated ? (
                           <p className="text-muted-foreground text-xs">최근 컨텍스트만 저장되며 일부 내용이 잘렸습니다.</p>
@@ -475,7 +475,7 @@ export function ApprovalDetail({
                             />
                           ))
                         ) : (
-                          <p className="text-muted-foreground text-sm">기록 없음可关联的上下文</p>
+                          <p className="text-muted-foreground text-sm">연결 가능한 컨텍스트 기록 없음</p>
                         )}
                       </section>
                     </div>
@@ -484,11 +484,11 @@ export function ApprovalDetail({
               ) : null}
               <CodeBlock
                 label={`${initialLabel}：${actionLabels[audit.initial_action] ?? audit.initial_action}`}
-                text={audit.initial_reason.replace(/^\[模型\]\s*/, "")}
+                text={audit.initial_reason.replace(/^\[모델\]\s*/, "")}
               />
               <CodeBlock
                 label="실행 출력"
-                text={audit.output ?? (audit.execution_status === "not_executed" ? "도구실행 안 함。" : "尚无실행 출력")}
+                text={audit.output ?? (audit.execution_status === "not_executed" ? "도구실행 안 함。" : "실행 출력 없음")}
                 truncated={audit.output_truncated}
               />
               {audit.correlation !== "exact" ? (
@@ -496,7 +496,7 @@ export function ApprovalDetail({
                   <AlertDescription>
                     {audit.correlation === "ambiguous"
                       ? "동일 매개변수의 동시 호출이 있어 도구 호출을 유일하게 연결할 수 없습니다. 추정 실행 결과는 표시하지 않습니다."
-                      : "기록 없음可唯一关联的도구调用 ID。"}
+                      : "유일하게 연결 가능한 도구 호출 ID가 기록되지 않았습니다."}
                   </AlertDescription>
                 </Alert>
               ) : null}
@@ -569,7 +569,7 @@ function ApprovalTable({
           <TableHead className="hidden md:table-cell">출처</TableHead>
           <TableHead className="hidden lg:table-cell">일치 규칙</TableHead>
           <TableHead className="hidden xl:table-cell">매개변수</TableHead>
-          <TableHead className="w-24">状态</TableHead>
+          <TableHead className="w-24">상태</TableHead>
           <TableHead className="hidden w-36 lg:table-cell">요청 시각</TableHead>
           <TableHead className="hidden w-36 xl:table-cell">결정 시각</TableHead>
         </TableRow>
@@ -589,7 +589,7 @@ function ApprovalTable({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={`${open ? "收起" : "展开"}审批 #${row.id}`}
+                    aria-label={`${open ? "접기" : "펼치기"}승인 #${row.id}`}
                     aria-expanded={open}
                     aria-controls={open ? panelID : undefined}
                     onClick={(e) => {
@@ -633,7 +633,7 @@ function ApprovalTable({
               {open ? (
                 <TableRow className="hover:bg-transparent has-aria-expanded:bg-transparent">
                   <TableCell colSpan={columns} className="whitespace-normal p-0">
-                    <section id={panelID} aria-label={`审批详情 #${row.id}`}>
+                    <section id={panelID} aria-label={`승인 상세 #${row.id}`}>
                       <ApprovalDetail row={row} busy={busy} decide={decide} revision={revision} />
                     </section>
                   </TableCell>
@@ -690,17 +690,17 @@ export function ApprovalRecords({ taskId }: { taskId?: string }) {
           setTotal(history.value.total);
           setError("");
         } else {
-          setError((history.reason as Error).message || "加载失败");
+          setError((history.reason as Error).message || "불러오기 실패");
         }
         if (pending.status === "fulfilled") {
           setPendingRows(pending.value);
           setPendingError("");
         } else {
-          setPendingError((pending.reason as Error).message || "加载失败");
+          setPendingError((pending.reason as Error).message || "불러오기 실패");
         }
         if (manual) setRevision((v) => v + 1);
       } catch (e) {
-        if (id === request.current) setError((e as Error).message || "加载失败");
+        if (id === request.current) setError((e as Error).message || "불러오기 실패");
       } finally {
         if (id === request.current) {
           setLoading(false);
@@ -753,7 +753,7 @@ export function ApprovalRecords({ taskId }: { taskId?: string }) {
       );
       setPendingRows((prev) => prev.filter((row) => row.id !== id));
       setRevision((v) => v + 1);
-      toast.success(decision === "allowed" ? "허용됨执行" : "거부됨执行");
+      toast.success(decision === "allowed" ? "실행을 허용했습니다" : "실행을 거부했습니다");
       // Re-fetch counts and rows: a decided item may no longer match the filter.
       await latestLoad.current(true);
     } catch (e) {
@@ -771,11 +771,11 @@ export function ApprovalRecords({ taskId }: { taskId?: string }) {
     .map((row) => ({
       conv_title: "",
       conv_agent_key: "",
-      rule_name: row.rule_id ? `规则 #${row.rule_id}` : "",
+      rule_name: row.rule_id ? `규칙 #${row.rule_id}` : "",
       ...historyById.get(row.id),
       ...row,
     }));
-  const title = taskId ? "拦截审批" : "审批记录";
+  const title = taskId ? "차단 승인" : "승인 기록";
   return (
     <div className="flex min-w-0 flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -786,13 +786,13 @@ export function ApprovalRecords({ taskId }: { taskId?: string }) {
         </div>
         <Button variant="outline" size="sm" onClick={() => void load(true)} disabled={loading || refreshing}>
           <RefreshCwIcon data-icon="inline-start" className={cn(refreshing && "animate-spin")} />
-          刷新
+          새로고침
         </Button>
       </div>
-      <p className="text-muted-foreground text-sm">展开记录查看도구 요청和승인 판정，以及当时的上下文与执行结果。</p>
-      <FieldGroup className="flex-row flex-wrap items-end gap-3" aria-label="审批记录筛选">
+      <p className="text-muted-foreground text-sm">기록을 펼쳐 도구 요청, 승인 판정, 당시 컨텍스트와 실행 결과를 확인하세요.</p>
+      <FieldGroup className="flex-row flex-wrap items-end gap-3" aria-label="승인 기록 필터">
         <Field className="w-full sm:w-40">
-          <FieldLabel htmlFor={`${filterID}-status`}>审批状态</FieldLabel>
+          <FieldLabel htmlFor={`${filterID}-status`}>승인 상태</FieldLabel>
           <Select
             value={filter.status ?? "all"}
             onValueChange={(value) =>
@@ -807,7 +807,7 @@ export function ApprovalRecords({ taskId }: { taskId?: string }) {
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                <SelectItem value="all">全部状态</SelectItem>
+                <SelectItem value="all">전체 상태</SelectItem>
                 <SelectItem value="denied">거부됨</SelectItem>
                 <SelectItem value="pending">승인 대기</SelectItem>
                 <SelectItem value="allowed">허용됨</SelectItem>
@@ -817,7 +817,7 @@ export function ApprovalRecords({ taskId }: { taskId?: string }) {
           </Select>
         </Field>
         <Field className="w-full sm:w-40">
-          <FieldLabel htmlFor={`${filterID}-source`}>判定출처</FieldLabel>
+          <FieldLabel htmlFor={`${filterID}-source`}>판정 출처</FieldLabel>
           <Select
             value={filter.decision_source ?? "all"}
             onValueChange={(value) =>
@@ -832,42 +832,42 @@ export function ApprovalRecords({ taskId }: { taskId?: string }) {
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                <SelectItem value="all">全部출처</SelectItem>
+                <SelectItem value="all">전체 출처</SelectItem>
                 <SelectItem value="model">모델 판정</SelectItem>
-                <SelectItem value="rule">规则判定</SelectItem>
-                <SelectItem value="unknown">출처未知</SelectItem>
+                <SelectItem value="rule">규칙 판정</SelectItem>
+                <SelectItem value="unknown">출처 알 수 없음</SelectItem>
               </SelectGroup>
             </SelectContent>
           </Select>
         </Field>
         {filtered ? (
           <Button variant="ghost" size="sm" onClick={() => changeFilter({})}>
-            清除筛选
+            필터 지우기
           </Button>
         ) : null}
       </FieldGroup>
       {error ? (
         <Alert variant="destructive">
-          <AlertDescription>记录加载失败：{error}。请点击刷新重试。</AlertDescription>
+          <AlertDescription>기록 불러오기 실패:{error}. 새로고침하여 다시 시도하세요.</AlertDescription>
         </Alert>
       ) : null}
       {pendingError ? (
         <Alert variant="destructive">
-          <AlertDescription>승인 대기加载失败：{pendingError}。请点击刷新重试。</AlertDescription>
+          <AlertDescription>승인 대기 목록 불러오기 실패:{pendingError}. 새로고침하여 다시 시도하세요.</AlertDescription>
         </Alert>
       ) : null}
       {pending.length ? (
         <section className="overflow-hidden rounded-xl border">
           <div className="flex items-center gap-2 border-b bg-muted/40 px-4 py-3 font-medium text-sm">
             <ShieldAlertIcon className="size-4" />
-            待处理（{pending.length}）<span className="text-muted-foreground text-xs">展开后허용或거부</span>
+            처리 대기({pending.length}）<span className="text-muted-foreground text-xs">펼친 뒤 허용 또는 거부</span>
           </div>
-          <ApprovalTable rows={pending} busy={deciding} decide={decide} revision={revision} label="待处理审批" />
+          <ApprovalTable rows={pending} busy={deciding} decide={decide} revision={revision} label="처리 대기 승인" />
         </section>
       ) : null}
       <section className="overflow-hidden rounded-xl border">
         <div className="border-b px-4 py-3 font-medium text-sm">
-          {filtered ? "筛选结果" : "全部记录"}（{total}）
+          {filtered ? "필터 결과" : "전체 기록"}（{total}）
         </div>
         {loading ? (
           <div className="flex flex-col gap-3 p-4">
@@ -882,17 +882,17 @@ export function ApprovalRecords({ taskId }: { taskId?: string }) {
               <EmptyMedia variant="icon">
                 <ClipboardListIcon />
               </EmptyMedia>
-              <EmptyTitle>{filtered ? "没有符合筛选条件的审批记录" : "暂无审批记录"}</EmptyTitle>
+              <EmptyTitle>{filtered ? "필터에 맞는 승인 기록 없음" : "승인 기록 없음"}</EmptyTitle>
               <EmptyDescription>
                 {filtered
-                  ? "请调整审批状态或判定출처，或清除筛选查看全部记录。"
-                  : "规则或模型作出审批决定后，记录将显示在这里。"}
+                  ? "승인 상태나 판정 출처를 변경하거나 필터를 지워 전체 기록을 확인하세요."
+                  : "규칙이나 모델이 승인 여부를 판정하면 여기에 기록됩니다."}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : null}
         {rows.length ? (
-          <ApprovalTable rows={rows} busy={deciding} decide={decide} revision={revision} label="审批记录列表" />
+          <ApprovalTable rows={rows} busy={deciding} decide={decide} revision={revision} label="승인 기록 목록" />
         ) : null}
         {!loading && !error ? (
           <TablePagination

@@ -157,7 +157,7 @@ function CreateAgentDialog({ onCreated }: { onCreated: (key: string) => void }) 
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>新建사용자 정의 Agent</DialogTitle>
+          <DialogTitle>사용자 정의 에이전트 생성</DialogTitle>
           <DialogDescription>
             대화형 도우미를 생성합니다. key는 내부 식별자이며 생성 후 변경할 수 없습니다. 이름과 설명은 식별에 사용됩니다.
           </DialogDescription>
@@ -225,7 +225,7 @@ export default function AgentsPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Agent</h1>
           <p className="text-muted-foreground text-sm">
-            기본 제공 Agent 的提示词/配置，以及사용자 정의会话 Agent 的생성与管理
+            기본 제공 에이전트의 프롬프트·설정 및 사용자 정의 대화 에이전트 관리
           </p>
         </div>
         <CreateAgentDialog

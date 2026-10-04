@@ -93,7 +93,7 @@ export function ChangePasswordDialog({
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="cp-confirm">确认새 비밀번호</Label>
+              <Label htmlFor="cp-confirm">새 비밀번호 확인</Label>
               <Input
                 id="cp-confirm"
                 type="password"

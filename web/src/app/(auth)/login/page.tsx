@@ -118,7 +118,7 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="请输入비밀번호"
+                placeholder="비밀번호를 입력하세요"
                 autoFocus
                 autoComplete="current-password"
               />
@@ -158,7 +158,7 @@ export default function LoginPage() {
             <div className="space-y-0.5">
               <DialogTitle className="text-base">ARTEX 이용 안내 및 면책 조항</DialogTitle>
               <p className="text-xs text-muted-foreground">
-                版本 v1.0 · 生效日期 2026-09-18 · 请在로그인前完整阅读以下全部条款
+                버전 v1.0 · 시행일 2026-09-18 · 로그인하기 전에 아래 조항을 모두 읽어 주세요
               </p>
             </div>
           </DialogHeader>
@@ -302,7 +302,7 @@ export default function LoginPage() {
                   setError("");
                 }}
               >
-                읽었으며 동의합니다全部条款
+                모든 조항을 읽었으며 동의합니다
               </Button>
             </DialogClose>
           </DialogFooter>

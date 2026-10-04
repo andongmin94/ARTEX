@@ -903,7 +903,7 @@ export default function FindingsPage() {
               <SelectValue placeholder="취약점 유형" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">전체类型</SelectItem>
+              <SelectItem value="all">전체 유형</SelectItem>
               {stats.vulnclasses.map((vc) => (
                 <SelectItem key={vc} value={vc}>
                   {vc}
@@ -918,10 +918,10 @@ export default function FindingsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">전체작업</SelectItem>
-              <SelectItem value={UNASSIGNED_TASK}>未关联 / 작업已删除</SelectItem>
+              <SelectItem value={UNASSIGNED_TASK}>미연결 / 작업 삭제됨</SelectItem>
               {(stats.tasks ?? []).map((t) => {
                 const id = String(t.id);
-                const label = t.name || t.description || `작업 #${id}（已删除）`;
+                const label = t.name || t.description || `작업 #${id}(삭제됨)`;
                 return (
                   <SelectItem key={id} value={id}>
                     <span className="flex w-full items-center gap-2">
@@ -944,7 +944,7 @@ export default function FindingsPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="severity">按치명적度</SelectItem>
+              <SelectItem value="severity">심각도순</SelectItem>
               <SelectItem value="time">시간순</SelectItem>
             </SelectContent>
           </Select>
@@ -990,7 +990,7 @@ export default function FindingsPage() {
                   className={cn("hover:text-foreground", assetScope === null && "font-medium text-foreground")}
                   onClick={() => setAssetScope(null)}
                 >
-                  전체资产
+                  전체 자산
                 </button>
                 {assetPath.map((node) => (
                   <React.Fragment key={node.key}>
@@ -1047,13 +1047,13 @@ export default function FindingsPage() {
                         <div className="flex min-w-0 flex-col gap-1">
                           <CardTitle className="truncate text-sm">
                             {group.task_id === null
-                              ? "未关联 / 작업已删除"
+                              ? "미연결 / 작업 삭제됨"
                               : group.task_name
                                 ? `${group.task_name}（작업 #${group.task_id}）`
                                 : `작업 #${group.task_id}`}
                           </CardTitle>
                           <CardDescription className="truncate" title={group.task_description}>
-                            {group.task_description || "来源작업不可用"}
+                            {group.task_description || "소스 작업을 사용할 수 없음"}
                           </CardDescription>
                         </div>
                       </button>
@@ -1076,7 +1076,7 @@ export default function FindingsPage() {
                           <Button size="icon-sm" variant="ghost" asChild>
                             <Link
                               href={`/function/tasks/detail?id=${group.task_id}`}
-                              aria-label={`查看작업 #${group.task_id}`}
+                              aria-label={`작업 보기 #${group.task_id}`}
                             >
                               <ArrowUpRightIcon />
                             </Link>
@@ -1093,7 +1093,7 @@ export default function FindingsPage() {
                         </div>
                       ) : (
                         <>
-                          <FindingsTable items={state.items} selectAllLabel="选择本组当前页전체" {...rowProps} />
+                          <FindingsTable items={state.items} selectAllLabel="현재 그룹 페이지 전체 선택" {...rowProps} />
                           <TablePagination
                             page={state.page}
                             pageSize={state.pageSize}
@@ -1110,7 +1110,7 @@ export default function FindingsPage() {
             })}
             {groups.length === 0 && (
               <Card>
-                <CardContent className="py-12 text-center text-sm text-muted-foreground">没有匹配的취약점 발견。</CardContent>
+                <CardContent className="py-12 text-center text-sm text-muted-foreground">일치하는 취약점이 없습니다.</CardContent>
               </Card>
             )}
             <TablePagination
@@ -1161,7 +1161,7 @@ export default function FindingsPage() {
           <DialogHeader>
             <DialogTitle>취약점 심화 검증</DialogTitle>
             <DialogDescription className="break-words">
-              将在原작업 #{deepenFinding?.task_id} 中创建优先级 10 的 Worker 意图，基于当前漏洞开展二次验证：
+              원래 작업 #{deepenFinding?.task_id} 에 우선순위 10의 실행 에이전트 의도를 생성하여 현재 취약점을 추가 검증합니다:
               {deepenFinding?.name || deepenFinding?.vulnclass || deepenFinding?.summary}
             </DialogDescription>
           </DialogHeader>
@@ -1205,15 +1205,15 @@ export default function FindingsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>내보내기취약점 발견</DialogTitle>
-            <DialogDescription>选择내보내기范围与格式,生成后浏览器会自动下载。</DialogDescription>
+            <DialogDescription>내보낼 범위와 형식을 선택하세요. 생성 후 브라우저에서 자동으로 다운로드합니다.</DialogDescription>
           </DialogHeader>
 
           <div className="flex flex-col gap-5 py-1">
             <div className="flex flex-col gap-2">
-              <span className="text-xs text-muted-foreground">내보내기范围</span>
+              <span className="text-xs text-muted-foreground">내보내기 범위</span>
               <RadioGroup value={exportScope} onValueChange={(v) => setExportScope(v as typeof exportScope)}>
                 <label htmlFor="export-scope-filtered" className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem id="export-scope-filtered" value="filtered" /> 내보내기当前筛选结果（共 {filteredTotal}{" "}
+                  <RadioGroupItem id="export-scope-filtered" value="filtered" /> 현재 필터 결과 내보내기(총 {filteredTotal}{" "}
                   건)
                 </label>
                 <label htmlFor="export-scope-all" className="flex items-center gap-2 text-sm">
@@ -1224,13 +1224,13 @@ export default function FindingsPage() {
                   className={cn("flex items-center gap-2 text-sm", selectedIds.size === 0 && "text-muted-foreground")}
                 >
                   <RadioGroupItem id="export-scope-selected" value="selected" disabled={selectedIds.size === 0} />
-                  내보내기勾选的 {selectedIds.size} 条
+                  선택 항목 내보내기: {selectedIds.size} 건
                 </label>
               </RadioGroup>
             </div>
 
             <div className="flex flex-col gap-2">
-              <span className="text-xs text-muted-foreground">내보내기格式</span>
+              <span className="text-xs text-muted-foreground">내보내기 형식</span>
               <RadioGroup value={exportFormat} onValueChange={(v) => setExportFormat(v as typeof exportFormat)}>
                 <label htmlFor="export-format-md-single" className="flex items-center gap-2 text-sm">
                   <RadioGroupItem id="export-format-md-single" value="md-single" /> Markdown 종합 보고서(단일 .md 파일)
@@ -1253,7 +1253,7 @@ export default function FindingsPage() {
               취소
             </Button>
             <Button onClick={doExport} disabled={exporting || (exportScope === "selected" && selectedIds.size === 0)}>
-              <DownloadIcon /> {exporting ? "내보내기中…" : "내보내기"}
+              <DownloadIcon /> {exporting ? "내보내는 중…" : "내보내기"}
             </Button>
           </DialogFooter>
         </DialogContent>
