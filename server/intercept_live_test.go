@@ -121,7 +121,7 @@ func TestLiveContextReview(t *testing.T) {
 			if verdict.Reason == "" {
 				t.Errorf("reviewer omitted the required explanation: %q", reply)
 			}
-			operation, _, _ := strings.Cut(verdict.Reason, "；成功后的后果：")
+			operation, _, _ := strings.Cut(verdict.Reason, "; 성공 시 결과:")
 			if tc.name == "read_does_not_repeat_prior_creation" {
 				for _, verb := range []string{"创建", "新建", "写入"} {
 					if strings.Contains(operation, verb) {

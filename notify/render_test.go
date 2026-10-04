@@ -15,7 +15,7 @@ func TestTruncateBytesKeepsValidUTF8(t *testing.T) {
 		"混合 mixed 内容 content",
 		"a中b文c测d试e",
 		"🔴🟠🟡🔵", // 4 字节 emoji，切错更明显
-		strings.Repeat("漏洞", 100),
+		strings.Repeat("취약점", 100),
 	}
 	for _, in := range inputs {
 		for max := 1; max <= len(in)+2; max++ {
@@ -121,7 +121,7 @@ func TestSeverityAndStatusLabels(t *testing.T) {
 	if !AtLeast("critical", "") {
 		t.Fatal("空门槛应放行")
 	}
-	if got := StatusLabel("fixed"); got != "已修复" {
+	if got := StatusLabel("fixed"); got != "수정됨" {
 		t.Fatalf("未知状态映射，得到 %q", got)
 	}
 	// 未知状态原样回显，不臆造标签。

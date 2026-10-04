@@ -16,7 +16,7 @@ func TestReviewInputIgnoresAuditHistoryAndPreservesCurrentCall(t *testing.T) {
 		{Kind: "tool_use", ToolUseID: "created", Tool: "Write", Text: `{"path":"prior-only.txt"}`},
 		{Kind: "tool_result", ToolUseID: "created", Text: "Created a new file"},
 		{Kind: "tool_use", ToolUseID: "denied", Tool: "Bash", Text: `{"command":"delete prior-only.txt"}`},
-		{Kind: "tool_result", ToolUseID: "denied", Text: "【ARTEX 平台管控·非目标防御】此调用被平台拦截。", IsError: true},
+		{Kind: "tool_result", ToolUseID: "denied", Text: "【ARTEX 플랫폼 정책 · 대상 시스템의 방어가 아님】플랫폼에서 이 호출을 차단했습니다.", IsError: true},
 		{Kind: "tool_use", ToolUseID: "partial", Tool: "Bash", Text: `{}`},
 		{Kind: "tool_result", ToolUseID: "partial", Text: strings.Repeat("部分写入", 10000), IsError: true},
 		{Kind: "tool_result", ToolUseID: "partial", Text: "conflicting result"},
@@ -151,7 +151,7 @@ func TestAutomaticAllowRetainsActualReviewContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ := json.Marshal(input)
-	reason := "实际操作：读取测试文件；成功后的后果：返回文件内容；命中规则：A5"
+	reason := "실제 작업:读取测试文件; 성공 시 결과:返回文件内容; 적용 규칙:A5"
 	a := auditFor(ctx, Decision{Action: "allow", Message: reason, ModelInput: raw, ModelInputDigest: digestInput(raw)}, args, "allowed")
 	var saved ReviewInput
 	if json.Unmarshal(a.ModelInput, &saved) != nil || saved.Background == nil || saved.Background.Text != "请读取刚创建的文件" || saved.Version != 4 || a.Correlation != "exact" || a.ToolUseID != "current" || a.InitialReason != reason {

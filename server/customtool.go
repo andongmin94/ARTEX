@@ -54,19 +54,19 @@ func (s *Server) pgCreateCustomTool(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Key = strings.TrimSpace(req.Key)
 	if !reToolKey.MatchString(req.Key) {
-		writeErr(w, 400, "key 需小写字母开头，仅含小写字母/数字/下划线")
+		writeErr(w, 400, "key는 영문 소문자로 시작하며 소문자·숫자·밑줄만 사용할 수 있습니다")
 		return
 	}
 	if req.Kind != "command" && req.Kind != "script" && req.Kind != "http" && req.Kind != "shell" {
-		writeErr(w, 400, "kind 需为 command / script / http / shell")
+		writeErr(w, 400, "kind는 command / script / http / shell이어야 합니다")
 		return
 	}
 	if req.Kind == "http" && !hasSchemaProps(req.Schema) {
-		writeErr(w, 400, "http 工具必须提供参数 JSON Schema(不能留空)")
+		writeErr(w, 400, "http 도구에는 매개변수 JSON Schema가 필요합니다")
 		return
 	}
 	if exist, _ := pg.GetTool(req.Key); exist != nil {
-		writeErr(w, 409, "该 key 已存在(内置或自定义工具)")
+		writeErr(w, 409, "기본 제공 또는 사용자 정의 도구에서 이미 사용하는 key입니다")
 		return
 	}
 	if err := pg.CreateCustomTool(&db.Tool{
@@ -91,7 +91,7 @@ func (s *Server) pgUpdateCustomTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if existing == nil || existing.System {
-		writeErr(w, 400, "只能编辑自定义工具")
+		writeErr(w, 400, "사용자 정의 도구만 편집할 수 있습니다")
 		return
 	}
 	var req customToolReq
@@ -100,11 +100,11 @@ func (s *Server) pgUpdateCustomTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Kind != "command" && req.Kind != "script" && req.Kind != "http" && req.Kind != "shell" {
-		writeErr(w, 400, "kind 需为 command / script / http / shell")
+		writeErr(w, 400, "kind는 command / script / http / shell이어야 합니다")
 		return
 	}
 	if req.Kind == "http" && !hasSchemaProps(req.Schema) {
-		writeErr(w, 400, "http 工具必须提供参数 JSON Schema(不能留空)")
+		writeErr(w, 400, "http 도구에는 매개변수 JSON Schema가 필요합니다")
 		return
 	}
 	if err := pg.UpdateCustomTool(&db.Tool{
@@ -150,7 +150,7 @@ func (s *Server) pgTestCustomTool(w http.ResponseWriter, r *http.Request) {
 	}
 	var req testToolReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, 400, "无效的请求体")
+		writeErr(w, 400, "유효하지 않은 요청 본문")
 		return
 	}
 	params := req.Params
@@ -169,10 +169,10 @@ func (s *Server) pgTestCustomTool(w http.ResponseWriter, r *http.Request) {
 	case "http":
 		res, _ = s.runHTTPTool(ctx, req.Exec, params, tc)
 	case "shell":
-		writeErr(w, 400, "shell 类型工具是 bash 环境声明，无可执行内容")
+		writeErr(w, 400, "shell 도구는 Bash 환경 선언이며 실행 내용이 없습니다")
 		return
 	default:
-		writeErr(w, 400, "未知工具类型: "+req.Kind)
+		writeErr(w, 400, "알 수 없는 도구 유형: "+req.Kind)
 		return
 	}
 	writeJSON(w, 200, map[string]any{"output": res.Flatten(), "is_error": res.IsError})
@@ -209,7 +209,7 @@ func (s *Server) seedPythonInterpreter() {
 	}
 	if p := detectPython(); p != "" {
 		_ = s.m.pg.SetSetting(settingPythonInterp, p)
-		log.Printf("[custom-tool] 自动检测到 python 解释器: %s", p)
+		log.Printf("[custom-tool] Python 인터프리터 자동 탐색: %s", p)
 	}
 }
 
@@ -281,7 +281,7 @@ func (s *Server) buildCustomTool(t *db.Tool) actool.CoreTool {
 		case "http":
 			return s.runHTTPTool(ctx, execRaw, params, tc)
 		default:
-			return actool.Errorf("未知自定义工具类型: " + kind), nil
+			return actool.Errorf("알 수 없는 사용자 정의 도구 유형: " + kind), nil
 		}
 	}
 	return actool.Build(actool.Spec{
@@ -321,7 +321,7 @@ func ensureSchema(raw json.RawMessage) map[string]any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"args": map[string]any{"type": "string", "description": "命令/参数(自由文本)"},
+			"args": map[string]any{"type": "string", "description": "명령/매개변수(자유 텍스트)"},
 		},
 	}
 }
@@ -332,7 +332,7 @@ func (s *Server) runCommandTool(ctx context.Context, execRaw json.RawMessage, pa
 	var spec commandExec
 	_ = json.Unmarshal(execRaw, &spec)
 	if strings.TrimSpace(spec.Command) == "" {
-		return actool.Errorf("command 为空"), nil
+		return actool.Errorf("command가 비어 있습니다"), nil
 	}
 	cmd := renderTemplate(spec.Command, params, shellQuote)
 	// 复用 Bash 也在用的底层 run(经 Bash CoreTool.Call):自动继承安全 floor/超时/
@@ -352,11 +352,11 @@ func (s *Server) runScriptTool(ctx context.Context, key string, execRaw json.Raw
 	var spec scriptExec
 	_ = json.Unmarshal(execRaw, &spec)
 	if strings.TrimSpace(spec.Code) == "" {
-		return actool.Errorf("script code 为空"), nil
+		return actool.Errorf("script code가 비어 있습니다"), nil
 	}
 	interp := s.pythonInterpreter()
 	if interp == "" {
-		return actool.Errorf("未配置且未检测到 python 解释器(在系统配置里设置)"), nil
+		return actool.Errorf("Python 인터프리터가 설정되지 않았고 자동 탐색도 실패했습니다. 시스템 설정에서 지정하세요"), nil
 	}
 	workDir := s.m.dir
 	var sessionEnv []string
@@ -408,7 +408,7 @@ func execPython(ctx context.Context, interp, key, code string, params map[string
 	out, err := c.CombinedOutput()
 	body := string(out)
 	if runCtx.Err() == context.DeadlineExceeded {
-		body += "\n... [超时终止] ..."
+		body += "\n... [시간 초과로 종료] ..."
 	} else if err != nil {
 		body += "\n[exit: " + err.Error() + "]"
 	}
@@ -426,7 +426,7 @@ func (s *Server) runHTTPTool(ctx context.Context, execRaw json.RawMessage, param
 	}
 	rawURL := renderTemplate(spec.URL, params, identity)
 	if strings.TrimSpace(rawURL) == "" {
-		return actool.Errorf("http url 为空"), nil
+		return actool.Errorf("http url이 비어 있습니다"), nil
 	}
 	var bodyReader io.Reader
 	if spec.Body != "" {
@@ -447,7 +447,7 @@ func (s *Server) runHTTPTool(ctx context.Context, execRaw json.RawMessage, param
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return actool.Errorf("请求失败: " + err.Error()), nil
+		return actool.Errorf("요청 실패: " + err.Error()), nil
 	}
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))

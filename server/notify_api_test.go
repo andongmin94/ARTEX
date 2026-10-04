@@ -241,7 +241,7 @@ func TestNotifyEndToEndRealtimeDelivery(t *testing.T) {
 		t.Fatalf("应发出 1 条消息，实际 %d", hook.count())
 	}
 	text := markdownText(t, hook.last(t))
-	for _, want := range []string{"SQL注入", "高危", "摘要"} {
+	for _, want := range []string{"SQL注入", "높음", "摘要"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("消息正文缺少 %q:\n%s", want, text)
 		}
@@ -348,7 +348,7 @@ func TestNotifyChannelAPICreateValidation(t *testing.T) {
 		wantSub string
 	}{
 		{"类型非法", map[string]any{"name": "x", "kind": "nope", "config": map[string]any{}}, "渠道类型无效"},
-		{"缺名称", map[string]any{"kind": notify.KindDingTalk, "config": map[string]any{"webhook": "https://e.com/h"}}, "缺少渠道名称"},
+		{"缺名称", map[string]any{"kind": notify.KindDingTalk, "config": map[string]any{"webhook": "https://e.com/h"}}, "채널 이름이 없습니다"},
 		{"缺 webhook", map[string]any{"name": "x", "kind": notify.KindDingTalk, "config": map[string]any{}}, "Webhook"},
 		{"webhook 协议非法", map[string]any{"name": "x", "kind": notify.KindDingTalk, "config": map[string]any{"webhook": "file:///etc/passwd"}}, "Webhook 地址无效"},
 		{"模式非法", map[string]any{"name": "x", "kind": notify.KindDingTalk, "mode": "sometimes", "config": map[string]any{"webhook": "https://e.com/h"}}, "推送模式无效"},
@@ -488,7 +488,7 @@ func TestNotifyStatusChangeDelivery(t *testing.T) {
 	found := false
 	for i := 0; i < hook.count(); i++ {
 		text := markdownText(t, hook.body(t, i))
-		if strings.Contains(text, "状态变更") && strings.Contains(text, "已修复") {
+		if strings.Contains(text, "状态变更") && strings.Contains(text, "수정됨") {
 			found = true
 		}
 	}
@@ -716,7 +716,7 @@ func TestNotifyNoDeepLinkWithoutBaseURL(t *testing.T) {
 	if body["msgtype"] != "markdown" {
 		t.Fatalf("未配外部地址时应发 markdown，得到 %v", body["msgtype"])
 	}
-	if text := markdownText(t, body); strings.Contains(text, "查看详情") {
+	if text := markdownText(t, body); strings.Contains(text, "상세 보기") {
 		t.Fatalf("未配外部地址时不该出现详情链接:\n%s", text)
 	}
 }

@@ -49,7 +49,7 @@ func TestInterceptDetails(t *testing.T) {
 		var wg sync.WaitGroup
 		for range 8 {
 			wg.Go(func() {
-				ok, err := d.ResolveIntercept(id, "allowed", "allow", "人工允许执行")
+				ok, err := d.ResolveIntercept(id, "allowed", "allow", "사용자가 실행을 허용했습니다")
 				if err != nil {
 					t.Error(err)
 				}

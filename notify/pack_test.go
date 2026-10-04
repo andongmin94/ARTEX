@@ -33,11 +33,11 @@ func TestMarkdownBodyPacksWholeItemsWithinByteLimit(t *testing.T) {
 	}
 	// 只应包含前 kept 条。
 	for i := 0; i < kept; i++ {
-		if !strings.Contains(body, "漏洞"+itoa(i+1)) {
+		if !strings.Contains(body, "취약점"+itoa(i+1)) {
 			t.Fatalf("第 %d 条应在本条消息里:\n%s", i+1, body)
 		}
 	}
-	if strings.Contains(body, "漏洞"+itoa(kept+1)) {
+	if strings.Contains(body, "취약점"+itoa(kept+1)) {
 		t.Fatalf("第 %d 条不该出现（它属于下一批）", kept+1)
 	}
 }

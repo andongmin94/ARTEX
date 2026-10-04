@@ -61,7 +61,7 @@ func ValidMinSeverity(s string) bool {
 // 这样历史数据里已经存在的坏值不会让渠道整个读不出来。
 func (f Filter) Validate() error {
 	if !ValidMinSeverity(f.MinSeverity) {
-		return fmt.Errorf("最低级别 %q 无效，可选：low / medium / high / critical，或留空表示不限", f.MinSeverity)
+		return fmt.Errorf("최소 등급 %q가 유효하지 않습니다. low / medium / high / critical 또는 제한 없음을 나타내는 빈 값을 사용하세요", f.MinSeverity)
 	}
 	return nil
 }

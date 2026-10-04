@@ -83,17 +83,17 @@ type webhookItem struct {
 func (webhookChannel) Validate(cfg map[string]any) error {
 	raw := cfgString(cfg, "url")
 	if raw == "" {
-		return errors.New("缺少目标 URL")
+		return errors.New("대상 URL이 없습니다")
 	}
 	if err := validateHTTPURL(raw); err != nil {
-		return fmt.Errorf("目标 URL 无效: %w", err)
+		return fmt.Errorf("대상 URL이 유효하지 않습니다: %w", err)
 	}
 	if m := strings.ToUpper(cfgString(cfg, "method")); m != "" && m != http.MethodGet && m != http.MethodPost && m != http.MethodPut && m != http.MethodPatch {
-		return fmt.Errorf("不支持的方法 %s（可用 GET/POST/PUT/PATCH）", m)
+		return fmt.Errorf("지원하지 않는 메서드 %s(GET/POST/PUT/PATCH 사용 가능)", m)
 	}
 	if tpl := cfgString(cfg, "body_template"); tpl != "" {
 		if _, err := parseWebhookTemplate(tpl); err != nil {
-			return fmt.Errorf("请求体模板语法错误: %w", err)
+			return fmt.Errorf("요청 본문 템플릿 문법 오류: %w", err)
 		}
 	}
 	return nil
@@ -119,7 +119,7 @@ func (c webhookChannel) Send(ctx context.Context, cfg map[string]any, m Message)
 		// 模板渲染出的是字符串形式的 JSON，这里转成 json.RawMessage 原样发出，
 		// 避免二次转义把用户精心构造的结构套进一个 JSON 字符串里。
 		if !json.Valid([]byte(body)) {
-			return 0, Permanent(errors.New("请求体模板渲染结果不是合法 JSON"))
+			return 0, Permanent(errors.New("요청 본문 템플릿의 결과가 유효한 JSON이 아닙니다"))
 		}
 		payload = json.RawMessage(body)
 	}
@@ -147,11 +147,11 @@ func renderWebhookBody(tpl string, m Message) (string, error) {
 	}
 	t, err := parseWebhookTemplate(tpl)
 	if err != nil {
-		return "", fmt.Errorf("请求体模板语法错误: %w", err)
+		return "", fmt.Errorf("요청 본문 템플릿 문법 오류: %w", err)
 	}
 	var buf bytes.Buffer
 	if err := t.Execute(&buf, newWebhookTemplateData(m)); err != nil {
-		return "", fmt.Errorf("渲染请求体模板失败: %w", err)
+		return "", fmt.Errorf("요청 본문 템플릿 렌더링 실패: %w", err)
 	}
 	return buf.String(), nil
 }

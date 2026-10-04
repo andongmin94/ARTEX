@@ -36,7 +36,7 @@ func batchMsg(n int) Message {
 	for i := 0; i < n; i++ {
 		m.Items = append(m.Items, Item{
 			FindingID: int64(i + 1),
-			Name:      "漏洞" + itoa(i+1),
+			Name:      "취약점" + itoa(i+1),
 			VulnClass: "XSS",
 			Severity:  "medium",
 			Summary:   "反射型跨站脚本",

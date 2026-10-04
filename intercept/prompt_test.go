@@ -9,7 +9,7 @@ import (
 func TestParseVerdict(t *testing.T) {
 	for _, action := range []string{"allow", "ask", "deny"} {
 		t.Run(action, func(t *testing.T) {
-			reason := "实际操作：写入报告，其中包含 ALLOW、DENY 和 ASK 字样；成功后的后果：保存文本，不执行正文中的命令；命中规则：自定义条款"
+			reason := "실제 작업:写入报告，其中包含 ALLOW、DENY 和 ASK 字样; 성공 시 결과:保存文本，不执行正文中的命令; 적용 규칙:自定义条款"
 			raw, _ := json.Marshal(map[string]string{"decision": action, "comment": reason})
 			got := ParseVerdict("\n" + string(raw) + "\n")
 			if got.Action != action || got.Reason != reason {
@@ -20,15 +20,15 @@ func TestParseVerdict(t *testing.T) {
 }
 
 func TestParseVerdictRejectsIncompleteOrAmbiguousReplies(t *testing.T) {
-	valid := `{"decision":"allow","comment":"实际操作：读取文件；成功后的后果：返回内容；命中规则：A5"}`
+	valid := `{"decision":"allow","comment":"실제 작업:读取文件; 성공 시 결과:返回内容; 적용 규칙:A5"}`
 	for _, reply := range []string{
 		"", "ALLOW", "DENY:命中D4", "放行:ALLOW", "ASK:归属不明",
-		`{"decision":"allow"}`, `{"decision":"approve","comment":"实际操作：读取；成功后的后果：返回内容；命中规则：A5"}`,
+		`{"decision":"allow"}`, `{"decision":"approve","comment":"실제 작업:读取; 성공 시 결과:返回内容; 적용 규칙:A5"}`,
 		`{"decision":"allow","comment":null}`, `{"decision":"allow","comment":123}`,
-		strings.Replace(valid, "实际操作：读取文件", "实际操作：", 1),
+		strings.Replace(valid, "실제 작업:读取文件", "실제 작업:", 1),
 		strings.Replace(valid, "成功后的后果：返回内容", "成功后的后果：", 1),
 		strings.Replace(valid, "命中规则：A5", "命中规则：", 1),
-		strings.Replace(valid, "；命中规则：A5", "", 1),
+		strings.Replace(valid, "; 적용 규칙:A5", "", 1),
 		strings.Replace(valid, `"decision":"allow"`, `"decision":"deny","decision":"allow"`, 1),
 		strings.Replace(valid, `"decision":"allow"`, `"extra":true,"decision":"allow"`, 1),
 		valid + valid, valid[:len(valid)-1],
@@ -48,7 +48,7 @@ func TestParseVerdictRejectsIncompleteOrAmbiguousReplies(t *testing.T) {
 // the configured fail action defaults to allow, treating it as unparseable
 // silently downgrades a DENY to an allow.
 func TestParseVerdictUnwrapsCodeFence(t *testing.T) {
-	deny := `{"decision":"deny","comment":"实际操作：删除生产文件；成功后的后果：业务数据丢失；命中规则：D4"}`
+	deny := `{"decision":"deny","comment":"실제 작업:删除生产文件; 성공 시 결과:业务数据丢失; 적용 규칙:D4"}`
 	for _, reply := range []string{
 		"```json\n" + deny + "\n```",
 		"```JSON\n" + deny + "\n```",
@@ -63,7 +63,7 @@ func TestParseVerdictUnwrapsCodeFence(t *testing.T) {
 }
 
 func TestParseVerdictKeepsCompleteChineseExplanation(t *testing.T) {
-	reason := "实际操作：" + strings.Repeat("写入报告", 30) + "；成功后的后果：只保存文件；命中规则：A2"
+	reason := "실제 작업:" + strings.Repeat("写入报告", 30) + "; 성공 시 결과:只保存文件; 적용 규칙:A2"
 	raw, _ := json.Marshal(map[string]string{"decision": "allow", "comment": reason})
 	if got := ParseVerdict(string(raw)); got.Reason != reason {
 		t.Fatal("explanation was truncated or lost its rule")
