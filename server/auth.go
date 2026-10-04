@@ -120,8 +120,12 @@ func (s *Server) authStatus(w http.ResponseWriter, r *http.Request) {
 	if pg == nil {
 		return
 	}
-	hash, _, _ := pg.GetSetting(authPassKey)
-	writeJSON(w, 200, map[string]any{"initialized": hash != ""})
+	hash, exists, err := pg.GetSetting(authPassKey)
+	if err != nil || (exists && hash == "") {
+		writeErr(w, 500, "인증 설정을 읽을 수 없습니다")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"initialized": exists})
 }
 
 // POST /api/auth/init — sets the password for the first time; rejected if already set.
@@ -130,8 +134,12 @@ func (s *Server) authInit(w http.ResponseWriter, r *http.Request) {
 	if pg == nil {
 		return
 	}
-	existing, _, _ := pg.GetSetting(authPassKey)
-	if existing != "" {
+	existing, exists, err := pg.GetSetting(authPassKey)
+	if err != nil || (exists && existing == "") {
+		writeErr(w, 500, "인증 설정을 읽을 수 없습니다")
+		return
+	}
+	if exists {
 		writeErr(w, 403, "비밀번호가 이미 설정되었습니다")
 		return
 	}
@@ -147,8 +155,13 @@ func (s *Server) authInit(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "비밀번호 암호화 실패")
 		return
 	}
-	if err := pg.SetSetting(authPassKey, string(hash)); err != nil {
-		writeErr(w, 500, "저장 실패: "+err.Error())
+	created, err := pg.SetSettingIfAbsent(r.Context(), authPassKey, string(hash))
+	if err != nil {
+		writeErr(w, 500, "인증 설정을 저장할 수 없습니다")
+		return
+	}
+	if !created {
+		writeErr(w, 403, "비밀번호가 이미 설정되었습니다")
 		return
 	}
 	tok, err := signJWT(s.jwtKey)
@@ -183,7 +196,11 @@ func (s *Server) authChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "새 비밀번호는 비워둘 수 없습니다")
 		return
 	}
-	hash, ok, _ := pg.GetSetting(authPassKey)
+	hash, ok, err := pg.GetSetting(authPassKey)
+	if err != nil || (ok && hash == "") {
+		writeErr(w, 500, "인증 설정을 읽을 수 없습니다")
+		return
+	}
 	if !ok || hash == "" {
 		writeErr(w, 403, "비밀번호가 초기화되지 않았습니다. 먼저 비밀번호를 설정하세요")
 		return
@@ -197,8 +214,13 @@ func (s *Server) authChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "비밀번호 암호화 실패")
 		return
 	}
-	if err := pg.SetSetting(authPassKey, string(newHash)); err != nil {
-		writeErr(w, 500, "저장 실패: "+err.Error())
+	changed, err := pg.CompareAndSwapSetting(r.Context(), authPassKey, hash, string(newHash))
+	if err != nil {
+		writeErr(w, 500, "인증 설정을 저장할 수 없습니다")
+		return
+	}
+	if !changed {
+		writeErr(w, 409, "다른 요청에서 비밀번호가 변경되었습니다. 다시 로그인하세요")
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})
@@ -222,7 +244,11 @@ func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 401, "사용자 이름 또는 비밀번호가 올바르지 않습니다")
 		return
 	}
-	hash, ok, _ := pg.GetSetting(authPassKey)
+	hash, ok, err := pg.GetSetting(authPassKey)
+	if err != nil || (ok && hash == "") {
+		writeErr(w, 500, "인증 설정을 읽을 수 없습니다")
+		return
+	}
 	if !ok || hash == "" {
 		writeErr(w, 403, "비밀번호가 초기화되지 않았습니다. 먼저 비밀번호를 설정하세요")
 		return
