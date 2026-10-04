@@ -1,7 +1,7 @@
 name: verify
 on:
   push:
-    branches: [main, feat/korean-localization]
+    branches: [main]
   pull_request:
     branches: [main]
 permissions:
@@ -26,7 +26,10 @@ jobs:
       - run: npm ci
         working-directory: web
       - name: Check Korean runtime text
-        run: node scripts/check-korean.cjs
+        run: npm run check:korean
+        working-directory: web
+      - name: Check Korean IME input
+        run: npm run test:input
         working-directory: web
       - run: npx tsc --noEmit
         working-directory: web
