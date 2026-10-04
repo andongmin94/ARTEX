@@ -13,6 +13,9 @@ jobs:
     if: github.repository == 'andongmin94/ARTEX'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
     services:
       postgres:
         image: postgres:16
@@ -37,27 +40,20 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Apply syntax-aware backend translations
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('.localization/apply-go.go')
-          text = p.read_text()
-          text = text.replace('func gofiles(root string) []string {', 'func gofiles(root string) []string {\n root, err := filepath.Abs(root); must(err)')
-          p.write_text(text)
-          PY
-          go run .localization/apply-go.go
+      - name: Repair localized test contracts and bounded UTF-8 context handling
+        run: python3 .localization/fix-tests.py
       - name: Compile backend
         run: go build -o /tmp/artex-check ./cmd/artex
-      - name: Run backend unit and PostgreSQL integration tests
-        run: go test -count=1 -timeout 180s ./... 2>&1 | tee backend-test.log
+      - name: Run all backend unit and PostgreSQL integration tests
+        run: go test -p 1 -count=1 -timeout 180s ./... 2>&1 | tee backend-test.log
       - name: Commit verified source
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add agent cmd config db enrich evidence guard intercept llmpool llmrec mcphttp notify report selfupdate server sidequestion traffic
           if ! git diff --cached --quiet; then
-            git commit -m 'feat(i18n): localize backend messages, agent prompts and reports'
+            git commit -m 'fix(i18n): verify Korean output contracts and UTF-8 context budgets'
+            git pull --rebase origin feat/korean-localization
             git push origin HEAD:feat/korean-localization
           fi
       - name: Package reviewed source and test results
