@@ -55,6 +55,7 @@ jobs:
           python3 .localization/verify-fixes.py
           python3 .localization/finish-docs.py
           python3 .localization/finish-quality.py
+          python3 .localization/finish-smoke.py
       - name: Compile and test backend
         id: backend
         run: |
