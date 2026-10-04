@@ -12,7 +12,7 @@ jobs:
   apply:
     if: github.repository == 'andongmin94/ARTEX'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     defaults:
       run:
         shell: bash
@@ -53,6 +53,8 @@ jobs:
           python3 .localization/finalize.py
           python3 .localization/finish-cli.py
           python3 .localization/verify-fixes.py
+          python3 .localization/finish-docs.py
+          python3 .localization/finish-quality.py
       - name: Compile and test backend
         id: backend
         run: |
@@ -64,7 +66,8 @@ jobs:
         working-directory: web
         run: |
           npm ci
-          node scripts/check-korean.cjs
+          npm run check:korean
+          npm run test:input
           npx tsc --noEmit
           npm run build:static
       - name: Check Docker Compose and installation scripts
@@ -75,14 +78,26 @@ jobs:
         run: |
           docker compose config --quiet
           bash -n install.sh update.sh start.sh build.sh dev.sh reset-password.sh
-      - name: Commit verified source
-        if: ${{ !cancelled() && steps.backend.outcome == 'success' && steps.frontend.outcome == 'success' && steps.deployment.outcome == 'success' }}
+      - name: Inspect local Korean mock UI in Chromium
+        id: browser
+        if: ${{ !cancelled() && steps.frontend.outcome == 'success' }}
+        run: |
+          npm install --prefix /tmp/artex-browser --no-save --package-lock=false playwright
+          /tmp/artex-browser/node_modules/.bin/playwright install --with-deps chromium
+          (cd web && NEXT_PUBLIC_MOCK=1 npm run build:static)
+          python3 -m http.server 5174 --bind 127.0.0.1 --directory web/out >/tmp/artex-static.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          NODE_PATH=/tmp/artex-browser/node_modules node .localization/smoke-ui.cjs
+      - name: Commit verified source and remove temporary translation tooling
+        if: ${{ !cancelled() && steps.backend.outcome == 'success' && steps.frontend.outcome == 'success' && steps.deployment.outcome == 'success' && steps.browser.outcome == 'success' }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add agent cmd config db enrich evidence guard intercept llmpool llmrec mcphttp notify report selfupdate server sidequestion traffic web/src web/scripts README.md .dockerignore .env.example config.example.json install.sh update.sh dev.sh reset-password.sh build.sh start.sh start.bat skills
+          git add agent cmd config db enrich evidence guard intercept internal llmpool llmrec mcphttp notify report selfupdate server sidequestion traffic web/src web/scripts web/package.json docs CHANGELOG.md README.md .dockerignore .env.example config.example.json install.sh update.sh dev.sh reset-password.sh build.sh start.sh start.bat skills
+          git rm -r -f .localization
           if ! git diff --cached --quiet; then
-            git commit -m 'feat(i18n): finish verified Korean localization and fork-safe installation'
+            git commit -m 'feat(i18n): complete verified Korean localization, IME handling and fork-safe installation'
             git push origin HEAD:feat/korean-localization
           fi
       - name: Package reviewed source and test results
@@ -94,3 +109,10 @@ jobs:
           name: localized-verified-source
           path: source.tar
           retention-days: 3
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: korean-ui-verification
+          path: verification/korean-ui
+          if-no-files-found: ignore
+          retention-days: 7
