@@ -1,18 +1,19 @@
-name: Verify and apply Korean localization
+name: Publish verified Korean localization
 on:
   push:
     branches: [feat/korean-localization]
     paths: [.github/workflows/localize-backend-once.yml]
 permissions:
   contents: write
+  actions: read
 concurrency:
   group: korean-source-update
   cancel-in-progress: false
 jobs:
-  apply:
+  publish:
     if: github.repository == 'andongmin94/ARTEX'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     defaults:
       run:
         shell: bash
@@ -36,6 +37,71 @@ jobs:
         with:
           ref: feat/korean-localization
           fetch-depth: 0
+      - name: Recover source that passed all browser and build checks
+        uses: actions/download-artifact@v4
+        with:
+          name: localized-verified-source
+          run-id: 37204046006
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: /tmp/korean-verified
+      - name: Apply verified source, final SQL messages and documentation
+        run: |
+          tar --exclude='./.github' --exclude='./.github/*' --exclude='./.localization' --exclude='./.localization/*' --exclude='./.git' --exclude='./.git/*' -xf /tmp/korean-verified/source.tar
+          python3 <<'PY'
+          from pathlib import Path
+          import json
+          checks = json.loads(Path('verification/korean-ui/summary.json').read_text())
+          assert len(checks['desktop']) == 22 and len(checks['mobile']) == 3
+          assert len(checks['dialogs']) == 2 and not checks['failures'] and not checks['pageErrors']
+          p = Path('db/schema.sql')
+          text = p.read_text(encoding='utf-8')
+          for old, new in {
+              '任务执行期间自动关联': '작업 실행 중 자동 연결',
+              '由历史任务资产关联迁移': '기존 작업의 자산 연결에서 가져옴',
+              '复测会话已删除': '재검증 세션이 삭제되었습니다',
+          }.items():
+              assert text.count(old) == 1, old
+              text = text.replace(old, new)
+          p.write_text(text, encoding='utf-8')
+          p = Path('.gitignore')
+          text = p.read_text(encoding='utf-8').replace('# docs\n/docs/\n', '')
+          p.write_text(text, encoding='utf-8')
+          old = Path('docs/漏洞流量证据.md')
+          if old.exists():
+              old.unlink()
+          p = Path('README.md')
+          text = p.read_text(encoding='utf-8').replace('git switch feat/korean-localization\n', '')
+          text = text.replace('npm ci\nnpx tsc --noEmit', 'npm ci\nnpm run check:korean\nnpm run test:input\nnpx tsc --noEmit')
+          p.write_text(text, encoding='utf-8')
+          Path('internal/localization/sql_test.go').write_text('''package localization
+
+          import (
+              "os"
+              "path/filepath"
+              "strings"
+              "testing"
+              "unicode"
+          )
+
+          // SQL triggers produce UI messages without going through Go literals.
+          func TestSQLRuntimeTextIsLocalized(t *testing.T) {
+              content, err := os.ReadFile(filepath.Join("..", "..", "db", "schema.sql"))
+              if err != nil { t.Fatal(err) }
+              for n, line := range strings.Split(string(content), "\\n") {
+                  code, _, _ := strings.Cut(line, "--")
+                  // Existing historical input marker, not a new display label.
+                  code = strings.ReplaceAll(code, "'[模型]%'", "'historical-model-prefix'")
+                  for _, r := range code {
+                      if unicode.Is(unicode.Han, r) {
+                          t.Errorf("untranslated SQL runtime text at schema.sql:%d: %s", n+1, code)
+                          break
+                      }
+                  }
+              }
+          }
+          ''', encoding='utf-8')
+          print('Verified UI source restored; final SQL messages and README completed')
+          PY
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -45,25 +111,12 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Apply final source and regression fixes
-        id: apply
+      - name: Validate completed backend
         run: |
-          python3 .localization/fix-tests.py
-          python3 .localization/repair-finalize.py
-          python3 .localization/finalize.py
-          python3 .localization/finish-cli.py
-          python3 .localization/verify-fixes.py
-          python3 .localization/finish-docs.py
-          python3 .localization/finish-quality.py
-          python3 .localization/finish-smoke.py
-      - name: Compile and test backend
-        id: backend
-        run: |
-          go build -o /tmp/artex-check ./cmd/artex
-          go test -p 1 -count=1 -timeout 180s ./... 2>&1 | tee backend-test.log
-      - name: Check and build Korean frontend
-        id: frontend
-        if: ${{ !cancelled() && steps.apply.outcome == 'success' }}
+          gofmt -w internal/localization/sql_test.go
+          go test -p 1 -count=1 -timeout 180s ./...
+          go build -o /tmp/artex-korean ./cmd/artex
+      - name: Validate production frontend and Korean input
         working-directory: web
         run: |
           npm ci
@@ -71,49 +124,18 @@ jobs:
           npm run test:input
           npx tsc --noEmit
           npm run build:static
-      - name: Check Docker Compose and installation scripts
-        id: deployment
-        if: ${{ !cancelled() && steps.apply.outcome == 'success' }}
+      - name: Validate deployment
         env:
           POSTGRES_PASSWORD: ci-test-only
         run: |
           docker compose config --quiet
           bash -n install.sh update.sh start.sh build.sh dev.sh reset-password.sh
-      - name: Inspect local Korean mock UI in Chromium
-        id: browser
-        if: ${{ !cancelled() && steps.frontend.outcome == 'success' }}
-        run: |
-          npm install --prefix /tmp/artex-browser --no-save --package-lock=false playwright
-          /tmp/artex-browser/node_modules/.bin/playwright install --with-deps chromium
-          (cd web && NEXT_PUBLIC_MOCK=1 npm run build:static)
-          python3 -m http.server 5174 --bind 127.0.0.1 --directory web/out >/tmp/artex-static.log 2>&1 &
-          server_pid=$!
-          trap 'kill "$server_pid" || true' EXIT
-          NODE_PATH=/tmp/artex-browser/node_modules node .localization/smoke-ui.cjs
-      - name: Commit verified source and remove temporary translation tooling
-        if: ${{ !cancelled() && steps.backend.outcome == 'success' && steps.frontend.outcome == 'success' && steps.deployment.outcome == 'success' && steps.browser.outcome == 'success' }}
+      - name: Commit validated changes without temporary translation scripts
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add agent cmd config db enrich evidence guard intercept internal llmpool llmrec mcphttp notify report selfupdate server sidequestion traffic web/src web/scripts web/package.json docs CHANGELOG.md README.md .dockerignore .env.example config.example.json install.sh update.sh dev.sh reset-password.sh build.sh start.sh start.bat skills
+          git add agent cmd config db enrich evidence guard intercept internal llmpool llmrec mcphttp notify report selfupdate server sidequestion traffic web/src web/scripts web/package.json docs CHANGELOG.md README.md .gitignore .dockerignore .env.example config.example.json install.sh update.sh dev.sh reset-password.sh build.sh start.sh start.bat skills
           git rm -r -f .localization
-          if ! git diff --cached --quiet; then
-            git commit -m 'feat(i18n): complete verified Korean localization, IME handling and fork-safe installation'
-            git push origin HEAD:feat/korean-localization
-          fi
-      - name: Package reviewed source and test results
-        if: always()
-        run: tar --exclude=node_modules --exclude=.next --exclude=out --exclude=.git --exclude=source.tar -cf source.tar .
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: localized-verified-source
-          path: source.tar
-          retention-days: 3
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: korean-ui-verification
-          path: verification/korean-ui
-          if-no-files-found: ignore
-          retention-days: 7
+          git diff --cached --stat
+          git commit -m 'feat(i18n): complete Korean product localization and regression checks'
+          git push origin HEAD:feat/korean-localization
