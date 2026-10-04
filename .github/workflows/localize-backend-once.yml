@@ -1,4 +1,4 @@
-name: Apply Korean backend localization
+name: Verify and apply Korean localization
 on:
   push:
     branches: [feat/korean-localization]
@@ -12,7 +12,7 @@ jobs:
   apply:
     if: github.repository == 'andongmin94/ARTEX'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     defaults:
       run:
         shell: bash
@@ -40,19 +40,39 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Repair localized test contracts and bounded UTF-8 context handling
-        run: python3 .localization/fix-tests.py
-      - name: Compile backend
-        run: go build -o /tmp/artex-check ./cmd/artex
-      - name: Run all backend unit and PostgreSQL integration tests
-        run: go test -p 1 -count=1 -timeout 180s ./... 2>&1 | tee backend-test.log
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Apply final source and regression fixes
+        run: |
+          python3 .localization/fix-tests.py
+          python3 .localization/finalize.py
+      - name: Compile and test backend
+        run: |
+          go build -o /tmp/artex-check ./cmd/artex
+          go test -p 1 -count=1 -timeout 180s ./... 2>&1 | tee backend-test.log
+      - name: Check and build Korean frontend
+        working-directory: web
+        run: |
+          npm ci
+          node scripts/check-korean.cjs
+          npx tsc --noEmit
+          npm run build:static
+      - name: Check Docker Compose and installation scripts
+        env:
+          POSTGRES_PASSWORD: ci-test-only
+        run: |
+          docker compose config --quiet
+          bash -n install.sh update.sh start.sh build.sh dev.sh
       - name: Commit verified source
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add agent cmd config db enrich evidence guard intercept llmpool llmrec mcphttp notify report selfupdate server sidequestion traffic
+          git add agent cmd config db enrich evidence guard intercept llmpool llmrec mcphttp notify report selfupdate server sidequestion traffic web/src web/scripts README.md .dockerignore .env.example config.example.json install.sh update.sh
           if ! git diff --cached --quiet; then
-            git commit -m 'fix(i18n): verify Korean output contracts and UTF-8 context budgets'
+            git commit -m 'feat(i18n): finish verified Korean localization and fork-safe installation'
             git pull --rebase origin feat/korean-localization
             git push origin HEAD:feat/korean-localization
           fi
@@ -62,6 +82,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: localized-backend-source
+          name: localized-verified-source
           path: source.tar
           retention-days: 3
