@@ -2097,7 +2097,7 @@ function DeleteOptionFields({
           />
           <FieldContent>
             <FieldLabel htmlFor={`delete-traffic-${idPrefix}`}>연결 트래픽</FieldLabel>
-            <FieldDescription>按연결 자산的精确主机名删除；仍被其他任务引用的共享主机流量会保留。</FieldDescription>
+            <FieldDescription>연결 자산의 정확한 호스트 이름을 기준으로 삭제합니다. 다른 작업에서 참조 중인 공유 호스트의 트래픽은 유지됩니다.</FieldDescription>
           </FieldContent>
         </Field>
         <Field orientation="horizontal">
@@ -2329,7 +2329,7 @@ function BulkDeleteTasksDialog({
       </AlertDialogTrigger>
       <AlertDialogContent className="max-h-[85vh] overflow-y-auto">
         <AlertDialogHeader>
-          <AlertDialogTitle>确认선택 항목 {ids.length}개 삭제 个任务？</AlertDialogTitle>
+          <AlertDialogTitle>선택한 작업 {ids.length}개를 삭제할까요?</AlertDialogTitle>
           <AlertDialogDescription>
             선택한 작업의 실행 기록과 탐색 경로가 영구 삭제됩니다. 아래 정리 옵션은 선택한 모든 작업에 동일하게 적용됩니다.
           </AlertDialogDescription>
@@ -2707,7 +2707,7 @@ function DraggableCategoryTask({ task, disabled, moving }: { task: Task; disable
       <ItemContent className="min-w-0">
         <ItemTitle className="w-full min-w-0">
           <Link href={`/function/tasks/detail?id=${encodeURIComponent(task.id)}`} className="truncate hover:underline">
-            {task.name?.trim() || task.description || `任务 #${task.id}`}
+            {task.name?.trim() || task.description || `작업 #${task.id}`}
           </Link>
         </ItemTitle>
         <ItemDescription className="line-clamp-1">
@@ -2729,7 +2729,7 @@ function CategoryTaskDragPreview({ task }: { task: Task }) {
       </ItemMedia>
       <ItemContent className="min-w-0">
         <ItemTitle className="w-full min-w-0 truncate">
-          {task.name?.trim() || task.description || `任务 #${task.id}`}
+          {task.name?.trim() || task.description || `작업 #${task.id}`}
         </ItemTitle>
         <ItemDescription className="line-clamp-1">#{task.id}</ItemDescription>
       </ItemContent>
@@ -2980,7 +2980,7 @@ function CategoryManagementSheet({
                       {visibleTasks.length === 0 ? (
                         <Empty className="min-h-36 border">
                           <EmptyHeader>
-                            <EmptyTitle>{selectedCategory ? "이 분류에 작업 없음" : "暂无미분류된 작업"}</EmptyTitle>
+                            <EmptyTitle>{selectedCategory ? "이 분류에 작업 없음" : "미분류 작업 없음"}</EmptyTitle>
                             <EmptyDescription>작업이 분류에 들어가면 여기에 표시됩니다.</EmptyDescription>
                           </EmptyHeader>
                         </Empty>
@@ -3307,7 +3307,7 @@ function CreateTaskSheet({
                 portalContainer={sheetContentRef}
               />
               <FieldDescription>
-                创建任务时会将所选企业当前已有资产加入“测试资产”，并将도메인、IP、CIDR、ICP 和企业키워드提供给 Agent
+                작업 생성 시 선택한 기업의 기존 자산을 「테스트 자산」에 추가하고 도메인, IP, CIDR, ICP 및 기업 키워드를 Agent에 제공합니다
                 범위 컨텍스트로 제공되며 의도를 자동 생성하거나 실행 목표를 강제로 변경하지 않습니다.
               </FieldDescription>
             </Field>
@@ -3380,7 +3380,7 @@ function CreateTaskSheet({
                   </label>
                   <p className="text-muted-foreground text-xs">
                     켜면 생성 즉시 「설명+목표」를 하나의 의도로 전달하여 worker가 첫 계획 라운드를 기다리지 않고 바로 실행합니다. 완료 후 planner가
-                    接手判定/补充。CTF 等常一个 work 直接解决的场景推荐开启；닫기则走标准的先规划再执行。
+                    판정 및 보완을 이어받습니다. CTF처럼 하나의 work로 해결되는 경우 활성화를 권장하며, 끄면 먼저 계획하고 실행하는 표준 흐름을 사용합니다.
                   </p>
                 </div>
                 <div className="grid gap-2">
@@ -3393,8 +3393,8 @@ function CreateTaskSheet({
                     자산 커버리지 기능
                   </label>
                   <p className="text-muted-foreground text-xs">
-                    默认开启：计算并展示测试覆盖度、态势图显示测试进度、自动累积测试范围。닫기后不再计算/展示覆盖度，
-                    态势图仅展示资产不显示进度，agent 也不再获得范围类工具。닫기不影响「기업 자산 범위 연결」。
+                    기본 활성화: 테스트 커버리지를 계산·표시하고 상황 그래프에 테스트 진행률을 보여주며 테스트 범위를 자동 누적합니다. 끄면 커버리지를 계산하거나 표시하지 않고,
+                    상황 그래프에는 자산만 표시되고 진행률은 표시되지 않으며 agent에도 범위 도구를 제공하지 않습니다. 꺼도 「기업 자산 범위 연결」에는 영향을 주지 않습니다.
                   </p>
                 </div>
               </CollapsibleContent>
