@@ -462,7 +462,7 @@ func buildCompressionInput(g *coldGraph, b block, nodeByID map[int64]*db.Node) s
 		memberSet[m] = true
 	}
 	var sb strings.Builder
-	sb.WriteString("【成员节点（要压缩的）】：\n")
+	sb.WriteString("【압축할 구성 노드】:\n")
 	for _, m := range b.Members {
 		n := nodeByID[m]
 		kind := "fact"
@@ -485,18 +485,18 @@ func buildCompressionInput(g *coldGraph, b block, nodeByID map[int64]*db.Node) s
 	for _, m := range b.Members {
 		for _, to := range g.children[m] {
 			if memberSet[to] {
-				edgeLines = append(edgeLines, fmt.Sprintf("- #%d 产出/派生→ #%d", m, to))
+				edgeLines = append(edgeLines, fmt.Sprintf("- #%d 산출/파생→ #%d", m, to))
 			}
 		}
 	}
 	if len(edgeLines) > 0 {
-		sb.WriteString("\n【成员之间的血缘边（父→子）】：\n")
+		sb.WriteString("\n【구성 노드 사이의 관계(부모→자식)】:\n")
 		sort.Strings(edgeLines)
 		sb.WriteString(strings.Join(edgeLines, "\n"))
 		sb.WriteByte('\n')
 	}
 	if len(b.Anchors) > 0 {
-		sb.WriteString("\n【共同父 / 上下文锚（不是成员，只用于理解这些结果从哪个意图探出）】：\n")
+		sb.WriteString("\n【공통 부모 / 컨텍스트 앵커(압축 대상이 아니라 결과를 도출한 의도를 이해하기 위한 정보)】:\n")
 		for _, a := range b.Anchors {
 			n := nodeByID[a]
 			state := ""
@@ -530,19 +530,15 @@ func (c *Compactor) compress(ctx context.Context, g *coldGraph, b block, nodeByI
 }
 
 // compressionSystemPrompt is the §4 body prompt.
-const compressionSystemPrompt = `你在压缩一组【彼此关联】的探索节点，产出一段综合结论(body)，供规划者快速掌握"这一片已经探明了什么"。
+const compressionSystemPrompt = `서로 연결된 탐색 노드를 압축하여 계획 에이전트가 이 영역에서 확인한 내용을 빠르게 이해할 종합 결론(body)을 작성합니다.
 
-输入是一个连通子图：
-- 节点：每条是一个意图或事实的 summary（一句话），带 id、类型(intent/fact)、state、confidence(若有)。
-- 关系：节点之间的血缘边（A 派生自 B / A 产出 B），说明它们如何串联。
-- 若节点间没有直接血缘边、但同属一个上游意图（会另给出该上游意图作为"共同父 #p"），则按"这个意图（#p）探到了什么"来综合它们——共同父只是上下文锚、不是要压缩的成员。
+입력은 연결된 부분 그래프입니다. 각 노드에는 의도 또는 사실의 한 문장 summary, id, 유형(intent/fact), state, confidence(있는 경우)가 있습니다. 관계는 파생 및 산출 경로를 나타냅니다. 직접 연결되지 않았더라도 공통 상위 의도가 별도로 제공되면 그 의도(#p)에서 확인한 내용을 종합하세요. 공통 부모는 컨텍스트 앵커이지 압축할 구성원이 아닙니다.
 
-据此写一段 body：
-1. 综合、不罗列：顺着关系把因果串起来（哪个事实催生哪个意图、哪条意图产出了哪个结论），讲成"这一片探索得出了什么"，不要把每条 summary 抄一遍。
-2. 保留区分度：彼此不同的结论分别说清，别揉成一句笼统的话。
-3. 保留证据强度：带 confidence 的结论标出 observed / inferred；inferred 的否定/存疑结论要点明它只是推断、可复核，别写成定论。
-4. 带上 id：每条结论后标注来源节点 id（如"…（#12,#28）"），让规划者能按 id 还原原节点。
-5. 正向陈述、只写输入里有的：不脑补、不引入输入中没有的判断。
-6. 长度随内容自适应：结论少就短，多且互不相同就写够——但整体显著短于所有输入 summary 的总和。
+1. 나열하지 말고 관계에 따라 종합하세요. 어떤 사실이 의도를 만들고 어떤 의도가 결론을 산출했는지 설명하되 summary를 그대로 반복하지 마세요.
+2. 서로 다른 결론은 구분하여 적으세요. 모호한 한 문장으로 합치지 마세요.
+3. 증거 강도를 유지하세요. confidence가 있으면 observed/inferred를 표시합니다. inferred인 부정적·불확실한 결론은 재검증 가능한 추론이지 확정 사실이 아님을 밝혀야 합니다.
+4. 각 결론에 출처 노드 id를 표시하세요(예: #12,#28). 원본 노드를 다시 찾을 수 있어야 합니다.
+5. 입력에 있는 내용만 긍정형 서술로 적고 판단을 지어내지 마세요.
+6. 결론 수에 맞게 길이를 조절하되 모든 summary를 합친 것보다 충분히 짧아야 합니다.
 
-只输出 body 正文本身。`
+한국어 body 본문만 출력하세요.`

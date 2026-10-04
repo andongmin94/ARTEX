@@ -134,7 +134,9 @@ These serve as the fallback; there is no separate default.css file. */
 
   body {
     @apply bg-background text-foreground;
-    font-family: var(--font-sans), system-ui, sans-serif;
+    font-family: var(--font-sans), "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
   }
   html {
     @apply font-sans;
@@ -175,7 +177,7 @@ These serve as the fallback; there is no separate default.css file. */
   }
 
   html[data-font="inter"] body {
-    --font-sans: var(--font-inter);
+    --font-sans: var(--font-inter), "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   }
   html[data-font="notoSans"] body {
     --font-sans: var(--font-noto-sans);

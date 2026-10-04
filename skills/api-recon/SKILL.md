@@ -1,200 +1,132 @@
 ---
 name: api-recon
-description: 收集网站API接口时调用该skill。
+description: 승인된 웹사이트의 API 경로·메서드·매개변수와 프런트엔드 라우트·기능 진입점을 조사할 때 사용합니다.
 ---
 
-# API Recon（前端接口侦察）
+# API Recon — 프런트엔드 API 조사
 
-在**已授权**前提下，尽可能完整地发现：**后端 API**（路径、方法、参数、响应体）、**前端路由**、**UI 功能触发点**（Tab、弹窗、表格操作等）。
+**승인된 범위 안에서** 백엔드 API의 경로·메서드·매개변수·응답, 프런트엔드 라우트, 탭·대화상자·테이블 같은 UI 기능의 호출 지점을 가능한 한 완전하게 식별합니다. 결과와 한계는 한국어로 기록하고 API 경로, 코드, 필드명은 원문 그대로 유지하세요.
 
----
+## 경계와 금지 사항
 
-## 边界与禁止（Agent 必读 · 违反即越界）
+이 스킬은 **API와 매개변수 조사 전용**입니다. 취약점 검증이나 침투·이용 단계가 아닙니다.
 
-本 skill **仅做 API / 参数面侦察**，不是漏洞挖掘或渗透利用阶段。
+| 영역 | 허용 | 금지 |
+| --- | --- | --- |
+| 목표 | path, method, 매개변수, 라우트, UI 호출 지점 식별 | SQLi/XSS/권한 우회/무차별 대입/취약점 fuzz, 패킷 변조 공격, 파괴적 작업 |
+| 인증 | Hook + stub/mock으로 클라이언트의 로그인 화면 전환 조건 재현 | 사용자에게 계정·비밀번호 요청, 자격증명 추측, 실제 로그인 폼 제출 |
+| 실행 | 자격증명 없이 인터페이스를 후킹하고 mock 응답으로 SPA 화면 렌더링 | 실제 백엔드 세션을 얻어야만 계속할 수 있는 흐름 |
 
-### 任务边界
+### 자격증명 없는 동적 분석
 
-| 范围 | 允许 | 禁止 |
-|---|---|---|
-| **目标** | 枚举 path、method、参数、路由、UI 触发点 | SQLi/XSS/越权/爆破/fuzz 漏洞、改包攻击、破坏性操作 |
-| **鉴权** | Hook + stub/mock 绕过**客户端**登录门 | 向用户索要或猜测账号密码；尝试真实登录表单提交 |
-| **运行时** | 无凭据下 hook 接口，用 mock 响应让 SPA 进入登录后壳层 | 依赖真实后端会话才能继续的流程 |
+Phase 3의 기본 흐름은 다음과 같습니다.
 
-### 无凭据动态分析（Phase 3 默认）
+1. `preload.js` / `runtime_harvest.js`에서 로그인·권한·메뉴 등 초기화 API를 가로채 stub으로 처리합니다.
+2. 조회 API에는 구조가 맞고 성공 코드가 있으며 데이터는 비어 있어도 되는 mock body를 반환합니다.
+3. 백엔드가 없거나 401을 반환하더라도 로그인 후 프런트엔드 화면을 렌더링하여 XHR/fetch/WebSocket 호출을 관찰합니다.
+4. 빈 데이터, 빈 테이블, 자리표시자 UI는 정상입니다. 실제 데이터를 얻기 위해 로그인이나 취약점 테스트로 전환하지 마세요.
 
-1. 通过 `preload.js` / `runtime_harvest.js` **拦截并 stub** 登录、权限、菜单等 bootstrap 接口；
-2. 对业务查询接口返回 **结构正确、业务码成功、数据可为空** 的 mock body；
-3. 使前端在无后端或 401 环境下仍能渲染登录后页面，从而触发更多 XHR/fetch/WebSocket；
-4. **空数据、空白表格、占位 UI 均属预期**——勿为此转向真实登录或漏洞测试。
+즉, mock으로 라우트와 컴포넌트를 활성화하고 **외부로 나가는 요청만 기록**합니다. 실제 업무 응답보다 프런트엔드가 어떤 인터페이스를 호출하는지가 중요합니다.
 
-**一句话**：用 mock 撑开前端路由与组件挂载，**只录 outbound 请求**；后端返回什么不重要，重要的是前端**还会发哪些接口**。
+### 반드시 지킬 실행 순서
 
-### 流程硬禁止
+| 금지 | 대신 수행할 작업 |
+| --- | --- |
+| Phase 1 전 주 번들 `index-*.js`를 grep/curl/Read로 읽어 API를 직접 추출 | OUTDIR에 복사한 `harvest_static.py` 실행 |
+| harvest 대신 임시 `extract_apis.py` 작성 | OUTDIR의 harvest를 수정하고 재실행 |
+| 같은 grep/명령이 두 번 이상 실패해도 반복 | tool_logs 확인, harvest 수정, reference 참조 등으로 방법 변경 |
+| 점검 A/B를 생략하고 `scripts/` 원본을 그대로 실행하여 최종 결과로 사용 | 읽고 OUTDIR에 복사한 뒤 대상별 조정 |
+| 실제 비밀번호/OTP/OAuth 인증 | 클라이언트 stub/mock 사용 |
+| 실제 데이터를 확보하려고 stub을 생략하고 권한 우회·인젝션 수행 | 조사 범위 안에서 outbound 요청만 기록 |
+| 삭제, 민감정보 내보내기, 대량 쓰기 등 되돌릴 수 없는 작업 | coverage 클릭에서도 수행하지 않음 |
+| 실행 및 동적 열거 없이 모든 페이지/API를 확보했다고 주장 | 완료 조건을 충족하거나 한계를 명시 |
+| 매개변수 호출 행렬과 diff 없이 모든 매개변수를 확인했다고 주장 | Phase 3b 호출 행렬과 Phase 5 diff 수행 |
+| 실행 표본 하나만으로 필수/선택 필드 단정 | 여러 표본 비교, 검증 규칙 또는 오류 응답 확인 |
 
-| 禁止 | 替代做法 |
-|---|---|
-| Phase 1 完成前 grep/curl/Read 主 entry `index-*.js` 提取 API path | 跑 `OUTDIR/harvest_static.py` |
-| 手写 `extract_apis.py` 等替代 harvest 的脚本 | 改 `OUTDIR/harvest_static.py` 后重跑 |
-| 同一 grep/命令失败 ≥2 次仍重复 | 换策略：读 tool_logs、改 harvest、查 reference |
-| 跳过门禁 A/B，直接跑 `scripts/` 原版 | 复制到 OUTDIR 并按目标改 |
-| 真实用户名/密码、OTP、OAuth 等鉴权 | stub/mock（见上文） |
-| 以「拿真实数据」为由跳过 stub，做越权/注入测试 | 只录 outbound，属 recon 边界 |
-| 删除、导出敏感数据、批量写等不可逆操作 | coverage 点击亦同 |
-| 未完成 runtime + 动态枚举，声称已获全部页面和接口 | 见「完成定义」或标注局限 |
-| 未完成参数触发矩阵 + diff，声称已掌握全部参数 | Phase 3b 矩阵 + Phase 5 diff |
-| 用单一 runtime 样本推断必填/可选 | 多样本 diff 或校验规则/错误反推 |
+## 조사 모델과 실행 모드
 
----
+| 계층 | 결과 | 한계 |
+| --- | --- | --- |
+| 정적 JS 번들 | API 경로, 라우트 초안, 요청 생성 지점의 필드 후보 | HTTP 메서드는 확정할 수 없으며 매개변수는 Phase 1b에서 조사. 동적 URL 조합은 놓칠 수 있음 |
+| 실행 중 화면 | 메서드, body, 응답, 동적 URL, WS/SSE, 여러 표본의 차이 | 실제 화면을 렌더링해야 호출되며 표본 하나로 필수 여부를 결정할 수 없음 |
 
-## 两层模型 + 运行模式
+`depth`는 Puppeteer 기반 `runtime_harvest.js`로 재현 가능한 일괄 API 기록을 수행합니다. `coverage`는 브라우저와 `preload.js`로 탭·대화상자·테이블을 조작하여 기능별 범위를 넓힙니다. `both`는 depth 후 coverage를 수행합니다.
 
-| 层 | 产出 | 上限 |
-|---|---|---|
-| **静态**（JS bundle） | 全量 endpoint 路径、路由草案、组包点字段候选 | 无 HTTP 方法；参数须 Phase 1b；漏掉运行时拼接 URL |
-| **运行时**（活会话） | 方法 + body + 响应 + 动态 URL + WS/SSE；多样本 diff 补全参数 | 页面须实际渲染才会发请求；单样本不足以定必填/可选 |
+경로는 harvest/정규식, 매개변수는 **경로 주변 코드 확인 + UI 바인딩 추적 + 여러 표본 diff + 검증 오류 분석**으로 조사합니다. 모든 상황에 통용되는 매개변수 추출 스크립트가 있다고 가정하지 마세요.
 
-| 运行模式 | 引擎 | 适用 |
-|---|---|---|
-| **depth** | `runtime_harvest.js`（Puppeteer） | API 清单、METHOD/params/响应体、WS/SSE、可复现批量跑 |
-| **coverage** | browser + `preload.js` | 点 Tab/弹窗/表格，功能点覆盖更深 |
-| **both** | 先 depth 再 coverage | 最完整，耗时最长 |
+## 완료 조건
 
-**参数方法论**（无通用脚本）：path 用 harvest/正则；参数用 **锚点扩窗 + UI 绑定链 + 多样本 diff + 错误反推**（grep 配方见 [reference.md](reference.md) J 节）。
+다음 항목을 모두 충족해야 조사 완료라고 할 수 있습니다.
 
----
+- 정적: `api_static.txt`, `routes.txt`, `js/` 생성.
+- 실행: depth 또는 coverage 수행. coverage/both에서는 Hook과 동적 열거 루프의 실제 작동 확인.
+- 화면: 업무 경로 접근 시 `/login`으로 돌아가지 않음(hash 라우트 포함).
+- 매개변수: coverage/both의 호출 행렬과 `param_samples.json`, Phase 5의 `params_merged.json` 생성.
+- 깊이: 빈 모듈은 Phase 4의 권한 트리를 재구성하고 다시 실행하여 locale/bootstrap만이 아닌 모듈 API를 확인.
+- 전달: Phase 5 산출물 생성 및 발견한 모든 서비스·엔드포인트의 `insert_assets` 등록.
 
-## 完成定义
+## 스크립트 조정과 사전 점검
 
-全部满足方可声称 recon 完成：
+`scripts/`는 참조 템플릿입니다. **읽기 → 대상에 맞게 조정 → OUTDIR(예: `recon/`)에 저장 → `CHANGES.md` 기록** 순서로 사용합니다. 맞지 않으면 구조만 참고하여 방법론에 맞게 수정하세요.
 
-- [ ] **静态**：Phase 1 harvest 产出 `api_static.txt`、`routes.txt`、`js/`
-- [ ] **运行时**：至少 depth 或 coverage 之一；coverage/both 须 **Hook 生效 + 动态枚举环**
-- [ ] **进壳**：访问业务 path 时非 `/login`（注意 hash 路由）
-- [ ] **参数**：coverage/both 完成参数触发矩阵 + `param_samples.json`；Phase 5 合并 `params_merged.json`
-- [ ] **深度**（若模块页空白）：Phase 4 权限树还原并重跑，直至出现 **module 级 API**（非仅 locale/bootstrap）
-- [ ] **交付**：Phase 5 产出齐全（见 Phase 5 产出表）；`insert_assets` 写入服务与端点资产
+**A(정적)**: Phase 0 뒤 첫 harvest/spider 전에 `harvest_static.py` / `spider_mpa.py`를 복사합니다. 대부분은 기본 정규식을 사용할 수 있습니다. manifest나 구문이 다른 경우 endpoint 정규식, webpack/Vite publicPath, MPA 제외 경로 등을 조정합니다. 복사·필요한 조정 후 **즉시 실행**하세요. 그 전에 주 번들을 수동 추출하지 마세요.
 
----
+**B(실행)**: Phase 2 뒤 depth/coverage 전에 `runtime_harvest.js`, `preload.js`, `config.json`을 조정합니다. Cookie/localStorage 키, 성공 코드, stub, 로그인 경로 정규식, API 접두사, hash/history 라우트를 확인하세요.
 
-## 脚本与门禁
+SPA는 Phase 0 뒤 다음 탐색용 Bash 호출에서 `python3 OUTDIR/harvest_static.py <URL> OUTDIR`를 실행하고, MPA는 `spider_mpa.py`를 실행합니다. Phase 1 전의 주 번들 curl/grep/Read는 금지합니다. Phase 1b부터 OUTDIR의 다운로드된 JS만 조사하세요.
 
-`scripts/` 仅为参考模板，**禁止**直接跑原版并当最终结果。
+### 도구 출력 제한
 
-**规则**：先读 → 按目标改 → 写入 `OUTDIR`（如 `recon/`）→ 记 `CHANGES.md`；不匹配则按方法论重写，只借结构。
+100KB를 넘는 `index-*.js`를 Read/grep으로 컨텍스트에 넣지 마세요. OUTDIR 스크립트로 처리합니다. grep 출력은 `| head -20` 또는 `-m 5`로 제한하고 대화에는 경로 요약만 남깁니다. `wc -l`, `ls | wc -l`로 결과를 확인하고 디렉터리 전체를 읽지 마세요. 초기 정규식 확인은 선택 사항으로, 50KB 이하의 작은 chunk나 HTML에 최대 한 번만 수행합니다. 최종 정적 결과는 harvest를 기준으로 합니다.
 
-| 门禁 | 何时 | 参考脚本 → OUTDIR 副本 | 常见必改项 |
-|---|---|---|---|
-| **A（静态）** | Phase 0 后、**第一次**跑 harvest/spider 前 | `harvest_static.py` / `spider_mpa.py` | **多数站点默认 regex 可直接跑**；仅 manifest/方言不匹配时改 endpoint 正则、webpack/Vite `publicPath`、MPA exclude/cookie |
-| **B（运行时）** | Phase 2 后、跑 depth/coverage 前 | `runtime_harvest.js` / `preload.js` + `config.json` | Cookie/localStorage 键、neutralize 成功值、stubs、login 正则、api 前缀、hash/history |
+## 실행 순서
 
-**SPA 强制顺序**（不可交换；Phase 编号优先于「先探索再脚本」）：
-
-| 步骤 | 必须 | 禁止 |
-|---|---|---|
-| Phase 0 完成后 | 下一条 Bash = `python3 OUTDIR/harvest_static.py <URL> OUTDIR` | curl/grep/Read 主 entry `index-*.js`（通常 >500KB） |
-| 门禁 A | 复制脚本 → 按需小改 → **立刻运行** | 先手工提取 API 再决定是否 harvest |
-| Phase 1 完成前 | `wc -l` 校验产出；404 改 harvest 重试 | 手写 extract 脚本；对未下载 URL 反复 grep |
-| Phase 1b 起 | grep 仅 `OUTDIR/js/*.js` | 用主 bundle 代替 harvest |
-
-- ✅ 复制 `harvest_static.py` → （可选）改 regex → **立即运行**
-- ❌ curl 主 bundle → grep 多次 → 写临时 extract → 最后才 harvest
-- **MPA**：Phase 0 后下一条 Bash = `python3 OUTDIR/spider_mpa.py ...`
-
----
-
-## 工具与输出约束
-
-| 约束 | 说明 |
-|---|---|
-| 大文件 | >100KB 的 `index-*.js` **禁止** Read/grep 进上下文；用 OUTDIR 脚本批处理 |
-| grep 输出 | 必须 `\| head -20` 或 `-m 5`；对话只保留 path 摘要，勿贴 bundle 片段 |
-| 校验 | 用 `wc -l`、`ls \| wc -l`；勿 Read 整目录 |
-| regex 初探 | 可选、≤1 次、仅 ≤50KB 小 chunk 或 HTML；正式静态以 harvest 为准 |
-| reference | 配方/模板/排障见 [reference.md](reference.md)，勿重复 inline 全文 |
-
----
-
-## 执行路线图
-
-```
-Phase 0 分类 + OUTDIR
-  → 门禁 A → Phase 1 harvest（★ 立刻运行 ★）
-  → Phase 1b 参数逆向
-  → Phase 2 鉴权三道门 → config.json
-  → 门禁 B → Phase 3 运行时 + 参数矩阵
-  → Phase 4 权限树（必要时）→ 重跑 Phase 3
-  → Phase 5 合并报告 + insert_assets批量插入所有发现的服务、端点api资产，无论如何插入时不允许漏掉已发现的资产
+```text
+Phase 0 분류 및 OUTDIR
+ → 점검 A → Phase 1 정적 harvest
+ → Phase 1b 매개변수 추적
+ → Phase 2 인증 관련 세 조건 분석 및 config.json
+ → 점검 B → Phase 3 실행 기록 및 매개변수 호출 행렬
+ → 필요한 경우 Phase 4 권한 트리 재구성 → Phase 3 재실행
+ → Phase 5 결과 통합 및 모든 발견 자산 등록
 ```
 
-按序勾选；**前一项未完成不得进入下一 Phase**。
+이전 단계를 마치기 전에 다음 단계로 넘어가지 마세요.
 
-1. [ ] **Phase 0**：初探 SPA/MPA；创建 `OUTDIR` → [Phase 0](#phase-0--分类)
-2. [ ] **门禁 A + Phase 1**：复制脚本 → **立刻** harvest → `wc -l` 校验 → [Phase 1](#phase-1--静态)
-3. [ ] **Phase 1b**：锚点扩窗 + 绑定层 → `param_candidates.json` → [Phase 1b](#phase-1b--参数逆向)
-4. [ ] **Phase 2**：鉴权三道门 → `config.json` → [Phase 2](#phase-2--鉴权三道门)
-5. [ ] **门禁 B**：调整 runtime 脚本 → [Phase 3](#phase-3--运行时)
-6. [ ] **Phase 3**：depth / coverage / both；确认进壳；参数触发矩阵 → `param_samples.json`
-7. [ ] **Phase 4**（若需要）：权限树 → patch stubs → 重跑 Phase 3 → [Phase 4](#phase-4--权限树还原)
-8. [ ] **Phase 5**：合并产出 + 报告 + `insert_assets` → [Phase 5](#phase-5--合并与报告)
+## Phase 0 — 분류
 
----
-
-## Phase 0 — 分类
-
-拉取入口 HTML，**创建 `OUTDIR`**（勿改 skill 内 `scripts/`）：
-
-- **SPA**：空壳 + `<div id=app>` + chunk → Phase 1–5
-- **MPA**：SSR + `<form>`、无 endpoint bundle → 门禁 A 后：
+진입 HTML을 읽고 OUTDIR을 만듭니다. 스킬 내부 `scripts/`를 수정하지 마세요. 빈 화면 구조, `<div id=app>`, chunk가 있으면 SPA로 Phase 1~5를 수행합니다. SSR, `<form>`이 있고 API 번들이 없는 MPA는 점검 A 후 다음을 실행합니다.
 
 ```bash
 python3 recon/spider_mpa.py <BASE_URL> <OUTDIR> [--cookie "session=..."] [--max 300] [--depth 5] [--exclude "logout|delete|destroy"]
 ```
 
-产出 `forms.txt`、`links.txt`、`api_inline.txt`。SPA 若 forms ≈ 0 → 切 Phase 1。
+`forms.txt`, `links.txt`, `api_inline.txt`가 생성됩니다. SPA에서 form이 거의 없으면 Phase 1로 전환합니다. 새 자격증명을 요청하거나 실제 로그인하지 마세요.
 
----
-
-## Phase 1 — 静态
-
-遵守 [脚本与门禁](#脚本与门禁) · [工具与输出约束](#工具与输出约束)。
+## Phase 1 — 정적 조사
 
 ```bash
 python3 recon/harvest_static.py <BASE_URL> <OUTDIR>
-```
-
-harvest：解析 HTML script → webpack/Vite manifest → 下载全部 lazy chunk → 产出 `js/`、`api_static.txt`、`routes.txt`、`chunkmap.txt`。
-
-```bash
 wc -l OUTDIR/api_static.txt OUTDIR/routes.txt
 ls OUTDIR/js | wc -l
 ```
 
-- chunk 数 vs manifest：404 须改 harvest 重试，勿手工 curl 逐个 chunk
-- `api_static.txt` 过少 → 放宽 OUTDIR 内 endpoint 正则后重跑（见 reference）
+HTML script → webpack/Vite manifest → lazy chunk 다운로드 → `js/`, `api_static.txt`, `routes.txt`, `chunkmap.txt` 순서입니다. manifest 대비 chunk 수를 확인하고 404이면 harvest를 고쳐 다시 실행합니다. chunk마다 수동 curl을 반복하지 마세요. API가 지나치게 적으면 OUTDIR의 endpoint 정규식을 수정하고 재실행합니다.
 
-### Phase 1b — 参数逆向
+### Phase 1b — 매개변수 추적
 
-path 来自 Phase 1；参数字段须单独 recon。grep 规则见 [工具与输出约束](#工具与输出约束)。
+중요 API마다 필드명, 전송 위치, 추정 타입, 필수 여부, 예시 값, 근거 수준을 기록합니다.
 
-**完成标准**：重要接口能答——字段名、传输位置、类型推断、是否必填、样本值、置信度。
+| 전송 형식 | 확인할 곳 |
+| --- | --- |
+| REST JSON | 경로 주변의 params/data/body 객체, body와 query |
+| GraphQL | variables와 gql 선언의 타입 |
+| form | `<form>`, urlencoded, FormData |
+| 파일 업로드 | multipart와 FormData.append |
+| 경로 매개변수 | `/user/:id`, 라우트, useParams / $route.params |
+| 암호화·서명 | sign/data를 만드는 암호화 함수의 입력 |
 
-#### 1b.0 — 传输形态
-
-| 形态 | 参数在哪 | 静态优先看 |
-|---|---|---|
-| REST JSON | body + query | path 锚点旁 `(params\|data\|body)\s*:\s*\{` |
-| GraphQL | `variables` | gql 模板、`$page: Int` |
-| 传统 form | urlencoded | `<form>`、`FormData` |
-| 文件上传 | multipart | `FormData.append` |
-| 路径参数 | `/user/:id` | 路由表 + `useParams` / `$route.params` |
-| 加密/签名 | 包进 `sign`/`data` | Hook 加密函数入参（reference D 节） |
-
-产出：每接口标注 `transport: query|json|form|graphql|encrypted`。
-
-#### 1b.1 — 锚点扩窗
-
-以已知 path 为锚，扩窗口找组包对象：
+각 API의 transport를 `query|json|form|graphql|encrypted`로 기록합니다.
 
 ```bash
 grep -n '"/api/user/list"' OUTDIR/js/*.js | head -20
@@ -202,190 +134,78 @@ grep -rhoaE '.{0,120}("/api[^"]+").{0,200}' OUTDIR/js/*.js | head -20
 grep -rhoaE '(params|data|body|payload)\s*:\s*\{' OUTDIR/js/*.js | head -20
 ```
 
-| 包装层 | 参数线索 |
-|---|---|
-| axios 实例 | `data` / `params` |
-| 统一 request | 拦截器注入全局字段 |
-| OpenAPI 客户端 | 生成 method 签名 |
-| React Query / SWR | hook 第二参数 |
-| Vue composable | composable 入参 |
+axios의 data/params, 공통 request 인터셉터, 생성된 OpenAPI 메서드, React Query/SWR 및 Vue composable의 매개변수를 추적합니다. yup/zod/rules, Form.Item name, 내장 Swagger도 근거가 될 수 있습니다. `param_candidates.json`에 `{path,fields[],source:"static-callsite",confidence}`를 저장합니다.
 
-类型残留：`yup`/`zod`/rules、`Form.Item name=`、内嵌 Swagger。
+`Form field → submit → transform → API payload` 경로를 확인합니다. 테이블 검색의 getFieldsValue, 경로의 `:id/?tab=`, 인터셉터의 tenantId/페이지/sign, select의 options도 검토합니다. DevTools에서 fetch/XHR.send의 상위 호출 스택을 따라 요청 생성 지점을 찾을 수 있습니다.
 
-→ `param_candidates.json`：`{ path, fields[], source: "static-callsite", confidence }`
+세 질문에 답하세요. **어디서 조립하는가**, **required/pattern/enum으로 어떻게 검증하는가**, **path/query/body/multipart/header 중 어디로 보내는가**. 필수·선택·조건부 의존성은 정적 추측만으로 단정하지 말고 Phase 3 표본과 Phase 5 오류 분석으로 보완하세요.
 
-#### 1b.2 — 绑定层
+## Phase 2 — 인증 관련 세 조건
 
-```
-Form field → onFinish/handleSubmit → transform → API payload
-```
+OUTDIR의 JS에서 출력 제한을 지켜 조사하고 config.json에 반영합니다.
 
-| 绑定源 | 手法 |
-|---|---|
-| 表单 submit | 跟 submit → transform → API |
-| 表格搜索 | `getFieldsValue()` → `params` |
-| 路由 | `:id` / `?tab=` |
-| 拦截器 | 全局 `tenantId`、分页、sign |
-| 枚举 select | `options` → API 枚举值 |
+| 조건 | 질문 | 단서 |
+| --- | --- | --- |
+| 렌더링 | 로그인 상태를 무엇으로 판단하는가? | isLogin, getToken, Cookie/localStorage |
+| 인터셉터 | 무엇이 /login 전환을 유발하는가? | response_code, errno, axios interceptor |
+| 콘텐츠 | 메뉴와 권한은 어디서 오는가? | menu, permission, role, acl, routes |
 
-DevTools call stack 从 `fetch`/`XHR.send` 往上追组包函数。
+localStorage의 키 이름을 자격증명으로 간주하지 마세요. chunk와 요청 흐름으로 확인합니다. 결과를 config.json 및 OUTDIR의 runtime/preload에 반영하고 점검 B를 마칩니다.
 
-#### 1b.3 — 组包三问（≠ Phase 2 鉴权三门）
+선택적으로 `recordDetail:true`, `observe.xhrHeaders:true`, `extractUrlsFromResponse:true`, `observe.storageReads/cookieReads:true`, `neutralizeVueRouter:true`를 사용합니다. coverage 라운드마다 `__API_RECON_LOG__`, `__API_RECON_DETAIL__`, `__API_RECON_ROUTES__`, `__API_RECON_OBSERVE__`를 내보냅니다.
 
-| 问 | 要答什么 |
-|---|---|
-| **组装** | payload 在哪 build、transform 痕迹 |
-| **校验** | required、pattern、enum |
-| **传输** | path / query / body / multipart / 头 |
+## Phase 3 — 실행 중 조사
 
-拦截器门（Phase 2）顺带读全局注入字段（Authorization、`X-Tenant-Id`、sign）。
+config.json의 runtimeMode는 depth, coverage 또는 both입니다. 점검 B를 마치고 자격증명 없는 mock 경계를 준수하세요.
 
-#### 1b.4 — 与 Phase 3 衔接
+L1은 정확한 인증·권한·bootstrap stub, L2는 JSON의 미로그인 업무 코드를 성공으로 교체, L3는 남은 `/api` 등에 빈 성공 응답을 제공하여 UI 렌더링을 유지합니다. 실제 서버 권한을 우회하는 단계가 아닙니다.
 
-候选字段来自静态/绑定层；**必填/可选/条件依赖**须 Phase 3 参数矩阵 + diff + Phase 5 错误反推。
-
----
-
-## Phase 2 — 鉴权三道门
-
-在 `OUTDIR/js/` grep（带 `head`），写入 `config.json`（配方见 reference）：
-
-| 门 | 问题 | 关键词 |
-|---|---|---|
-| **渲染门** | 如何判断已登录？ | `isLogin`、`getToken`、Cookie/localStorage |
-| **拦截器门** | 什么触发跳 `/login`？ | `response_code`、`errno`、axios interceptor |
-| **内容门** | 菜单/权限从哪来？ | `menu`、`permission`、`role`、`acl`、`routes` |
-
-禁止把 localStorage 键名当凭据——须从 chunk/请求链确认。
-
-**出口 = 门禁 B**：结论落到 `config.json`，并改 `OUTDIR/runtime_harvest.js` / `preload.js`。
-
-### Phase 2b — API 观察（可选）
-
-用 OUTDIR 内 `preload.js` 确认会话键名、Authorization、嵌套 API URL：
-
-| 配置 | 产出 |
-|---|---|
-| `recordDetail: true` | `__API_RECON_DETAIL__` |
-| `observe.xhrHeaders: true` | headers 观察 |
-| `extractUrlsFromResponse: true` | 响应内子 API |
-| `observe.storageReads/cookieReads: true` | 回填 config |
-| `neutralizeVueRouter: true` | `__API_RECON_ROUTES__` |
-
-coverage 每轮导出：`__API_RECON_LOG__`、`__API_RECON_DETAIL__`、`__API_RECON_ROUTES__`、`__API_RECON_OBSERVE__`。
-
----
-
-## Phase 3 — 运行时
-
-须已过门禁 B；遵守 [边界与禁止](#边界与禁止agent-必读--违反即越界) · 无凭据 mock 策略。
-
-`config.json` 设置 `"runtimeMode": "depth" | "coverage" | "both"`（模板见 reference）。
-
-### Hook 与 stub（depth + coverage 共用）
-
-| 层 | 范围 | 目的 |
-|---|---|---|
-| L1 精确 | auth/权限/bootstrap stub | 过首屏鉴权 |
-| L2 负向修正 | 所有 JSON 响应 | 未登录码 → 成功 |
-| L3 兜底 | 未命中 L1 的 `/api` 等 | 空成功体，撑开 UI |
-
-- **depth**：fake auth + `forward` 改业务码 + `stubs`；遍历 `routes`（hash/history）；产出 `runtime_api.json`
-- **coverage**：**document-start** 注入 `preload.js`（CDP `addScriptToEvaluateOnNewDocument` 或 Userscript）
-
-验证：`window.__API_RECON_PRELOAD__` 存在；业务 path 不回 `/login`。
+depth는 fake auth, forward, stubs 및 hash/history routes를 사용하여 `runtime_api.json`을 생성합니다. coverage는 document-start에 preload.js를 삽입합니다(CDP addScriptToEvaluateOnNewDocument 또는 Userscript). `window.__API_RECON_PRELOAD__`가 있고 업무 경로에서 로그인 화면으로 되돌아가지 않는지 확인하세요.
 
 ```bash
 cd recon && npm install
 node runtime_harvest.js config.json
 ```
 
-### 3b — coverage 动态枚举（必做）
+### Phase 3b — 동적 기능 및 매개변수 행렬
 
-1. 主导航/侧栏 — 每项点击，等网络 1–3s
-2. Tab — `role=tab`、`.ant-tabs-tab`
-3. 表格 — 首行查看/编辑/详情
-4. 工具栏 — 导出、筛选、新建（**避免不可逆删除**）
-5. 每进模块 — 合并 API/路由
-6. SPA — 对 `routes.txt` 未覆盖 path 受控 `pushState`（MPA 禁止）
+메인 메뉴·사이드바, 탭, 테이블 첫 행의 보기·상세·편집 화면, 필터·새 항목 UI 등을 순회합니다. 각 클릭 후 네트워크를 1~3초 관찰하고 모듈마다 API와 라우트를 병합합니다. 실제 삭제, 대량 쓰기, 민감정보 내보내기는 수행하지 마세요. SPA에서는 미검증 routes.txt 경로에 제한적으로 pushState를 사용할 수 있지만 MPA에는 사용하지 않습니다.
 
-**参数触发矩阵**（必做）：每模块按操作类型各录一次，**diff 多样本**：
+모듈마다 목록 최초 표시, 검색, 고급 필터, 생성·편집 양식, 정렬·일괄 기능을 각각 관찰하여 여러 표본을 비교합니다. 페이지·기본 필터, keyword, optional 필드, entity, ids[]/exportType/sortField의 차이를 기록하되 되돌릴 수 없는 요청은 mock으로 처리합니다.
 
-| 操作 | 通常多出的参数 |
-|---|---|
-| 列表首屏 | 分页 + 默认筛选 |
-| 点搜索 | keyword、filter |
-| 高级筛选 | 更多 optional |
-| 新建/编辑 | 完整 entity |
-| 批量/导出/排序 | `ids[]`、`exportType`、`sortField` |
+stub을 사용해도 outbound body/header는 프런트엔드가 실제로 구성한 값입니다. 요청을 근거로 `scan_raw.json`, `param_samples.json`, `api_detail.json`을 저장합니다. Vue는 document-start preload와 neutralizeVueRouter, React는 routes.txt와 사이드바 클릭 및 제한적 pushState를 사용합니다. both는 depth 후 coverage를 수행합니다.
 
-**stub 下 outbound body/headers 仍真实**——以请求为准。录制 → `scan_raw.json`、`param_samples.json`、`api_detail.json`。
+## Phase 4 — 권한 트리 재구성
 
-- **Vue**：`neutralizeVueRouter: true` + document-start preload
-- **React**：`routes.txt` + 侧栏点击 + `pushState`
-- **both**：先 3a depth，再 3b coverage
-
----
-
-## Phase 4 — 权限树还原
-
-**触发**：模块页空白 / 每路由仅 bootstrap（如 locale）→ 内容门未过。
-
-| 现象 | 含义 |
-|---|---|
-| 进壳成功 | 渲染门 + 拦截器门已过 |
-| 侧栏缺项/点击空白 | stub shape 或权限码不全 |
-| 每路由 API 相同且极少 | `v-if permission` 未通过 |
-| `routes.txt` 远少于 bundle | 须从 auth 模块补全 |
+모듈이 비어 있거나 모든 라우트에서 locale/bootstrap만 호출되면 콘텐츠 조건을 통과하지 못한 상태입니다. 로그인 후 화면에 진입했다고 모듈 열거가 완료된 것은 아닙니다. stub 구조·권한 코드, v-if permission, auth 모듈의 누락 경로를 확인하세요.
 
 ```bash
 grep -rhoaE '"/api[^"]*(permission|perm|role|menu|acl)[^"]*"' OUTDIR/js/*.js | sort -u | head -30
 grep -rhoaE 'userRouteAuth|getResultTree|routeMap|routeLink|menuList|authList' OUTDIR/js/*.js | head -20
-```
-
-典型链：`role_permissions`（flat codes）+ `permissions/all`（tree）→ `getResultTree` → `userRouteAuth[CODE].url`。
-
-```bash
 python3 recon/extract_route_map.py recon/js recon/
 python3 recon/build_perm_tree.py recon/js recon/ --config recon/config.json
 ```
 
-中间产出：`route_map.json`、`userRouteAuth.json`、`permissions_tree.json`、`*_stub.json`、`perm_codes_all.txt`。
+일반적인 흐름은 flat role_permissions + permissions/all 트리 → getResultTree → userRouteAuth[CODE].url입니다. `route_map.json`, `userRouteAuth.json`, `permissions_tree.json`, `*_stub.json`, `perm_codes_all.txt`를 생성합니다. response_code를 인터셉터 조건과 맞추고 flat codes와 tree를 일치시키며 routes에 route_map의 모든 link를 포함합니다. config.json을 갱신한 뒤 **Phase 3을 다시 수행**합니다. 큰 SPA는 waitUntil, routeTimeout, perRouteMs를 조정할 수 있습니다.
 
-stub 检查：外层 `response_code` 与拦截器门一致；flat codes 与 tree 对齐；`routes` 覆盖 `route_map` 全部 link。
+## Phase 5 — 통합 및 보고
 
-更新 `config.json` 后**重跑 Phase 3**。大型 SPA 可调 `waitUntil`、`routeTimeout`、`perRouteMs`（见 reference A3/I 节）。
+| 산출물 | 내용 |
+| --- | --- |
+| js/, api_static.txt, routes.txt, chunkmap.txt | 정적 번들 및 경로 |
+| param_candidates.json | 정적 매개변수 후보 |
+| config.json | 세 조건과 실행 설정 |
+| runtime_api.json | depth 기록, WS/SSE 포함 |
+| param_samples.json, scan_raw.json, api_detail.json | 표본·클릭·상세 기록 |
+| route_map.json 등 | 수행한 경우 권한 트리 중간 결과 |
+| params_merged.json | 통합 매개변수와 근거 수준 |
+| api_merged.txt | METHOD /path [params] [static|runtime|both] |
+| site_map.json | 라우트·API·매개변수·기능 및 한계 |
+| insert_assets | 발견한 모든 서비스·엔드포인트 등록 |
 
----
+param_samples.json의 여러 표본을 비교하여 필드를 병합합니다. 범용 병합 스크립트가 있다고 가정하지 마세요. 높은/중간/낮은 근거 수준과 미발생 상태를 구분합니다. 승인 범위 안에서 불완전한 요청의 400 응답을 읽어 required나 enum을 확인할 수 있으나 이는 매개변수 조사이며 취약점 테스트가 아닙니다. data/variables 포장과 암호화 전 bizData를 고려하세요.
 
-## Phase 5 — 合并与报告
-
-### 产出表
-
-| 文件 | 阶段 | 内容 |
-|---|---|---|
-| `js/`、`api_static.txt`、`routes.txt`、`chunkmap.txt` | 1 | 静态 bundle 与 path |
-| `param_candidates.json` | 1b | 静态参数字段候选 |
-| `config.json` | 2 | 三道门 + runtime 配置 |
-| `runtime_api.json` | 3a | depth 详细录制（含 WS/SSE） |
-| `param_samples.json`、`scan_raw.json`、`api_detail.json` | 3b | 多样本、点击日志、detail |
-| `route_map.json` 等 | 4 | 权限树中间文件（若执行） |
-| `params_merged.json` | 5 | 合并参数字段 + 置信度 |
-| `api_merged.txt` | 5 | `METHOD /path [params] [static\|runtime\|both]` |
-| `site_map.json` | 5 | 路由、API、params、功能点、局限 |
-| **insert_assets** | 5 | 将所有服务、端点资产写入资产库 |
-
-### 5b — 参数合并
-
-从 `param_samples.json` diff，**无通用合并脚本**。置信度规则见 reference J7（高/中/低/待触发）。
-
-### 5c — 错误反推
-
-授权范围内可发不完整请求读 400（**属参数 recon，非漏洞测试**）：`field 'x' is required`、枚举错误等。注意 `data` 包装、`variables`、加密前 `bizData`。
-
-报告须注明：runtimeMode、静态/运行时 API 数、参数置信度、未覆盖模块、相对参考脚本的 `CHANGES.md` 摘要。
-
-`site_map.json` 建议结构：
+보고서에는 runtimeMode, 정적·실행 API 수, 매개변수 근거 수준, 미검증 모듈, CHANGES.md의 조정 내역을 포함합니다. 발견한 자산을 insert_assets에 빠짐없이 등록하세요.
 
 ```json
 {
@@ -396,7 +216,7 @@ stub 检查：外层 `response_code` 与拦截器门一致；flat codes 与 tree
   "apisFromStatic": [],
   "apisFromRuntime": [],
   "apis": [],
-  "params": [{ "method": "POST", "path": "/api/user/list", "transport": "json", "fields": [] }],
+  "params": [{"method":"POST","path":"/api/user/list","transport":"json","fields":[]}],
   "frontendRoutes": [],
   "routesVerifiedByClick": [],
   "featuresTriggered": [],
@@ -404,22 +224,8 @@ stub 检查：外层 `response_code` 与拦截器门一致；flat codes 与 tree
 }
 ```
 
-更多字段与 grep 配方见 [reference.md](reference.md)。
+## 적용 범위와 한계
 
----
+webpack/Vite/Angular의 lazy load에도 같은 원칙을 적용합니다. REST/JSON, GraphQL, WebSocket, SSE를 다루며 gRPC-web은 범위 밖입니다. SSR의 클라이언트 fetch는 기록할 수 있지만 RSC/Server Actions 전체를 열거한다고 보장할 수 없습니다. JSVMP, WASM, HMAC/mTLS 등은 정적 결과와 한계를 명시하고, 조건부·숨은 매개변수나 WASM 요청 구성은 미발생/접근 불가로 표시합니다. 실행 중 접근이 막혀도 정적 결과는 보존하세요.
 
-## 通用说明
-
-- **框架无关**：webpack/Vite/Angular lazy load 方法相同
-- **传输**：REST/JSON、GraphQL、WebSocket、SSE；gRPC-web 不在范围
-- **SSR**：客户端 fetch 可录；RSC/Server Actions 不完全可枚举
-- **盲区**：JSVMP、WASM、HMAC/mTLS 强校验 → 静态 + 标注局限
-- **参数盲区**：条件联动、hidden params、WASM 组包 → 「待触发」/「不可达」
-- **静态是安全网**：runtime 被挡时静态仍能枚举 endpoint
-
----
-
-## 附加资源
-
-- Grep 配方、`config.json` 模板、排障、Hook、参数逆向 J 节、site_map 模板：**[reference.md](reference.md)**
-- 参考脚本路径见 [脚本与门禁](#脚本与门禁) 表
+세부 정규식, 대상별 설정 예시, Hook 및 문제 해결 자료는 [reference.md](reference.md)에 있습니다. 필요한 절만 확인하고 전체 내용을 중복해서 컨텍스트에 넣지 마세요.

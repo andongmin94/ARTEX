@@ -142,7 +142,7 @@ func TestHardDeletePreservesSharedAndGoal(t *testing.T) {
 	// intent1 独占 finding(proves goal),intent1 与 intentX 共享 fact1(fact1 衍生出 intent2)。
 	intent1 := mustIntent(t, es, "待删意图")
 	intentX := mustIntent(t, es, "旁路意图")
-	finding := mustNode(t, es, KindFinding, "漏洞")
+	finding := mustNode(t, es, KindFinding, "취약점")
 	mustLink(t, es, intent1, RelYields, finding)
 	mustLink(t, es, finding, RelProves, goal)
 	shared := mustNode(t, es, KindFact, "共享事实")

@@ -184,7 +184,7 @@ func (d *DB) CreateTaskWithOptions(description, goal string, opts TaskCreateOpti
 	// is global and shared, not isolated per task). Being a fact (not a special 'begin' kind) lets every
 	// intent uniformly connect to a fact node, including the first ones.
 	originPayload, _ := json.Marshal(map[string]any{
-		"summary":     "任务起点：" + description + "；目标：" + goal,
+		"summary":     "작업 시작점:" + description + "; 목표:" + goal,
 		"description": description,
 		"goal":        goal,
 	})
@@ -267,7 +267,7 @@ WITH requested(company_id, position) AS (
     FROM unnest($2::bigint[]) WITH ORDINALITY AS requested(company_id, position)
 ), inserted AS (
     INSERT INTO task_scope(task_id, kind, company_id, source, reason)
-    SELECT $1, 'company', companies.id, 'manual', '任务创建时关联企业'
+    SELECT $1, 'company', companies.id, 'manual', '작업 생성 시 연결한 기업'
     FROM requested
     JOIN companies ON companies.id=requested.company_id
     ORDER BY requested.position
@@ -295,7 +295,7 @@ WHERE company_id=ANY($2::bigint[])`, taskID, companyIDs); err != nil {
 	}
 	if _, err := tx.Exec(`
 INSERT INTO task_asset_links(task_id, asset_id, source, source_summary)
-SELECT $1, asset.id, $3, '任务创建时关联企业：' || company.name
+SELECT $1, asset.id, $3, '작업 생성 시 연결한 기업: ' || company.name
 FROM assets asset
 JOIN companies company ON company.id=asset.company_id
 WHERE asset.company_id=ANY($2::bigint[])
@@ -513,7 +513,7 @@ func (d *DB) StampFirstRun(id int64, timeoutSeconds int) (*time.Time, error) {
 UPDATE tasks
    SET first_run_at = COALESCE(first_run_at, now()),
        deadline_at  = CASE
-           WHEN first_run_at IS NOT NULL THEN deadline_at            -- 已盖过章：不动
+           WHEN first_run_at IS NOT NULL THEN deadline_at            -- 이미 기록됨: 변경하지 않음
            WHEN $2 > 0 THEN now() + make_interval(secs => $2)
            ELSE NULL END
  WHERE id = $1

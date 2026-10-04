@@ -14,3 +14,11 @@ bench/.env
 bench/scheduler.py
 bench/entrypoint_v2.sh
 bench/seed_v2.sh
+.env
+.env.*
+config.json
+config.*.json
+.localization/
+.github/
+source.tar
+*-test.log
