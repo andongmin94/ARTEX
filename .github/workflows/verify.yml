@@ -86,6 +86,27 @@ jobs:
         run: go test -race -count=1 -timeout 60s ./config
       - name: Check native HTTP and parent-pipe lifecycle
         run: go test -race -count=1 -timeout 60s cmd/artex/http_lifecycle.go cmd/artex/http_lifecycle_test.go
+  storage-inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test storage source inventory
+        run: go test -race -count=1 -timeout 60s ./scripts/sqlite-inventory
+      - name: Inventory all Go and SQL sources without a database
+        run: |
+          go run ./scripts/sqlite-inventory > sqlite-inventory.md
+          cat sqlite-inventory.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sqlite-porting-inventory
+          path: sqlite-inventory.md
+          if-no-files-found: error
+          retention-days: 14
   deployment:
     runs-on: ubuntu-latest
     steps:
