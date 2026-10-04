@@ -48,7 +48,9 @@ jobs:
       - name: Apply final source and regression fixes
         run: |
           python3 .localization/fix-tests.py
+          python3 .localization/repair-finalize.py
           python3 .localization/finalize.py
+          python3 .localization/finish-cli.py
       - name: Compile and test backend
         run: |
           go build -o /tmp/artex-check ./cmd/artex
@@ -65,12 +67,12 @@ jobs:
           POSTGRES_PASSWORD: ci-test-only
         run: |
           docker compose config --quiet
-          bash -n install.sh update.sh start.sh build.sh dev.sh
+          bash -n install.sh update.sh start.sh build.sh dev.sh reset-password.sh
       - name: Commit verified source
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add agent cmd config db enrich evidence guard intercept llmpool llmrec mcphttp notify report selfupdate server sidequestion traffic web/src web/scripts README.md .dockerignore .env.example config.example.json install.sh update.sh
+          git add agent cmd config db enrich evidence guard intercept llmpool llmrec mcphttp notify report selfupdate server sidequestion traffic web/src web/scripts README.md .dockerignore .env.example config.example.json install.sh update.sh dev.sh reset-password.sh build.sh start.sh start.bat
           if ! git diff --cached --quiet; then
             git commit -m 'feat(i18n): finish verified Korean localization and fork-safe installation'
             git pull --rebase origin feat/korean-localization
