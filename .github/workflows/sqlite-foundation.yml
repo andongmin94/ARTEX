@@ -1,0 +1,58 @@
+name: sqlite-foundation
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: sqlite-foundation-${{ github.ref }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
+jobs:
+  sqlite:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      ARTEX_PG_DSN: ''
+      ARTEX_CONFIG: ${{ runner.temp }}/artex-sqlite-no-config.json
+      ARTEX_HOME: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Check SQLite connections with the race detector
+        run: go test -race -count=1 -timeout 120s ./internal/sqlitedb
+      - name: Test actual settings, auth handlers and traffic without PostgreSQL
+        run: go test -json -p 1 -count=1 -timeout 180s -run '^(TestSQLite|TestAuthSQLite|TestTrafficSQLite)' ./db ./server ./traffic > sqlite-results.jsonl
+      - name: Require the SQLite scope to run without skips
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          events = [json.loads(line) for line in Path('sqlite-results.jsonl').read_text(encoding='utf-8').splitlines() if line.strip()]
+          skips = [e for e in events if e.get('Action') == 'skip']
+          failures = [e for e in events if e.get('Action') == 'fail']
+          passed = [e for e in events if e.get('Action') == 'pass' and e.get('Test') and '/' not in e['Test']]
+          for package in ('db', 'server', 'traffic'):
+              assert any(e['Package'].endswith('/' + package) for e in passed), f'No SQLite tests executed in {package}'
+          assert not skips, f'Unexpected skipped SQLite tests: {skips}'
+          assert not failures, f'Failed SQLite tests: {failures}'
+          print(f'PASS SQLite scope: {len(passed)} top-level tests; no PostgreSQL service, no skipped tests')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sqlite-foundation-${{ matrix.os }}
+          path: sqlite-results.jsonl
+          if-no-files-found: warn
+          retention-days: 14
