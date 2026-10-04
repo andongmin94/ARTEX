@@ -9,20 +9,13 @@ permissions:
 concurrency:
   group: verify-${{ github.ref }}
   cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
 jobs:
-  source:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Package tracked source for review
-        run: git archive --format=tar -o source.tar HEAD
-      - uses: actions/upload-artifact@v4
-        with:
-          name: reviewed-source
-          path: source.tar
-          retention-days: 3
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -32,12 +25,16 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
         working-directory: web
+      - name: Check Korean runtime text
+        run: node scripts/check-korean.cjs
+        working-directory: web
       - run: npx tsc --noEmit
         working-directory: web
       - run: npm run build:static
         working-directory: web
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:16
@@ -59,5 +56,16 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - run: go test -count=1 ./...
+      # 기존 패키지 일부가 같은 테스트 DB를 사용하므로 패키지는 순서대로 실행합니다.
+      - run: go test -p 1 -count=1 -timeout 180s ./...
       - run: go build ./cmd/artex
+  deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check installation scripts
+        run: bash -n install.sh update.sh start.sh build.sh dev.sh reset-password.sh
+      - name: Validate local-source Compose deployment
+        env:
+          POSTGRES_PASSWORD: ci-test-only
+        run: docker compose config --quiet
