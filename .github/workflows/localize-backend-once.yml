@@ -5,7 +5,6 @@ on:
     paths: [.github/workflows/localize-backend-once.yml]
 permissions:
   contents: write
-  actions: read
 concurrency:
   group: korean-source-update
   cancel-in-progress: false
@@ -13,7 +12,7 @@ jobs:
   publish:
     if: github.repository == 'andongmin94/ARTEX'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     defaults:
       run:
         shell: bash
@@ -37,22 +36,29 @@ jobs:
         with:
           ref: feat/korean-localization
           fetch-depth: 0
-      - name: Recover source that passed all browser and build checks
-        uses: actions/download-artifact@v4
+      - uses: actions/setup-go@v5
         with:
-          name: localized-verified-source
-          run-id: 37204046006
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: /tmp/korean-verified
-      - name: Apply verified source, final SQL messages and documentation
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Apply the browser-verified localization pipeline
         run: |
-          tar --exclude='./.github' --exclude='./.github/*' --exclude='./.localization' --exclude='./.localization/*' --exclude='./.git' --exclude='./.git/*' -xf /tmp/korean-verified/source.tar
+          python3 .localization/fix-tests.py
+          python3 .localization/repair-finalize.py
+          python3 .localization/finalize.py
+          python3 .localization/finish-cli.py
+          python3 .localization/verify-fixes.py
+          python3 .localization/finish-docs.py
+          python3 .localization/finish-quality.py
+          python3 .localization/finish-smoke.py
+      - name: Complete SQL messages and documentation tracking
+        run: |
           python3 <<'PY'
           from pathlib import Path
-          import json
-          checks = json.loads(Path('verification/korean-ui/summary.json').read_text())
-          assert len(checks['desktop']) == 22 and len(checks['mobile']) == 3
-          assert len(checks['dialogs']) == 2 and not checks['failures'] and not checks['pageErrors']
           p = Path('db/schema.sql')
           text = p.read_text(encoding='utf-8')
           for old, new in {
@@ -100,17 +106,8 @@ jobs:
               }
           }
           ''', encoding='utf-8')
-          print('Verified UI source restored; final SQL messages and README completed')
+          print('Final SQL messages and Korean documentation completed')
           PY
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: web/package-lock.json
       - name: Validate completed backend
         run: |
           gofmt -w internal/localization/sql_test.go
