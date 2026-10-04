@@ -46,6 +46,7 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Apply final source and regression fixes
+        id: apply
         run: |
           python3 .localization/fix-tests.py
           python3 .localization/repair-finalize.py
@@ -53,10 +54,13 @@ jobs:
           python3 .localization/finish-cli.py
           python3 .localization/verify-fixes.py
       - name: Compile and test backend
+        id: backend
         run: |
           go build -o /tmp/artex-check ./cmd/artex
           go test -p 1 -count=1 -timeout 180s ./... 2>&1 | tee backend-test.log
       - name: Check and build Korean frontend
+        id: frontend
+        if: ${{ !cancelled() && steps.apply.outcome == 'success' }}
         working-directory: web
         run: |
           npm ci
@@ -64,19 +68,21 @@ jobs:
           npx tsc --noEmit
           npm run build:static
       - name: Check Docker Compose and installation scripts
+        id: deployment
+        if: ${{ !cancelled() && steps.apply.outcome == 'success' }}
         env:
           POSTGRES_PASSWORD: ci-test-only
         run: |
           docker compose config --quiet
           bash -n install.sh update.sh start.sh build.sh dev.sh reset-password.sh
       - name: Commit verified source
+        if: ${{ !cancelled() && steps.backend.outcome == 'success' && steps.frontend.outcome == 'success' && steps.deployment.outcome == 'success' }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add agent cmd config db enrich evidence guard intercept llmpool llmrec mcphttp notify report selfupdate server sidequestion traffic web/src web/scripts README.md .dockerignore .env.example config.example.json install.sh update.sh dev.sh reset-password.sh build.sh start.sh start.bat skills
           if ! git diff --cached --quiet; then
             git commit -m 'feat(i18n): finish verified Korean localization and fork-safe installation'
-            git pull --rebase origin feat/korean-localization
             git push origin HEAD:feat/korean-localization
           fi
       - name: Package reviewed source and test results
