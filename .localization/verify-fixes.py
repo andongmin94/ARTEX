@@ -14,9 +14,8 @@ def replace(path, old, new):
 replace(Path('server/task_templates_test.go'),
         '_, s := newRetestTestServer(t)', 's, _ := newRetestServer(t)')
 
-# graph_overview already builds coverage in a local map before assigning it.
-# Preserve the existing coverage.scope contract expected by the company-scope
-# regression test; scope is still visible when numeric coverage is disabled.
+# Coverage already uses a local map. Retain its scope contract independently
+# of whether numerical coverage is enabled; no scope membership is changed.
 p = Path('agent/tools.go')
 text = p.read_text(encoding='utf-8')
 text = text.replace('\n\tout["scope"] = t.scopeOverview()', '')
@@ -24,10 +23,11 @@ p.write_text(text, encoding='utf-8')
 replace(p, 'm := map[string]any{}\n\t\t\tif !t.coverageDisabled {',
         'm := map[string]any{"scope": t.scopeOverview()}\n\t\t\tif !t.coverageDisabled {')
 
-# Domain/IP/CIDR entries store their values in typed columns, whereas Raw
-# provides the common display value for every kind. Keyword extraction keeps
-# using its dedicated Value field.
+# Preserve the user's spelling/casing in the read-only display projection.
+# Normalized Value remains in the DB for matching and is not mutated.
 replace(Path('agent/tools_scope.go'), '"value": rule.Value', '"value": rule.Raw')
+replace(Path('agent/tools_scope.go'),
+        'keywords = append(keywords, rule.Value)', 'keywords = append(keywords, rule.Raw)')
 
 p = Path('skills/scopesentry/SKILL.md')
 text = p.read_text(encoding='utf-8')
