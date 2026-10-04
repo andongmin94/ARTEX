@@ -1,0 +1,166 @@
+1094	fail_action은 allow, ask 또는 deny여야 합니다
+1095	ask_timeout_action은 allow 또는 deny여야 합니다
+1096	name은 비워둘 수 없습니다
+1097	match_target은 tool_name 또는 tool_input이어야 합니다
+1098	match_type은 string 또는 regex여야 합니다
+1099	action은 allow, deny 또는 ask여야 합니다
+1100	pattern이 유효한 정규식이 아닙니다: %w
+1101	대화가 삭제되었습니다
+1102	승인 기록이 삭제되었거나 존재하지 않습니다
+1103	[llmpool] 회로 차단 상태 저장 실패: %v
+1104	[llmpool] 회로 차단 상태 복원: 설정 #%d 쿨다운 종료 %s
+1105	[llmpool] 폴백 체인 읽기 실패: %v
+1106	[llmpool] LLM 폴백 활성화, 체인(%d): %v
+1107	실패
+1108	제외
+1109	거부
+1110	접속 불가
+1111	비활성화
+1112	재시도
+1113	workers는 0보다 커야 합니다
+1114	[pg] DB 설정 출처: %s
+1115	보관 트래픽 임시 기록에 작업 ID가 없습니다
+1116	[proxy] 전역 프록시 %q가 유효하지 않아 무시했습니다: %v
+1117	[mcp] browser 프록시 동기화: MCP 목록 읽기 실패: %v
+1118	[mcp] browser 프록시 동기화 실패: %v
+1119	[mcp] browser MCP에 캡처 프록시 %s 적용(CA %s)
+1120	[mcp] browser MCP에서 캡처 프록시 설정 제거
+1121	stdio 전송에 명령이 없습니다
+1122	http 전송에 URL이 없습니다
+1123	sse 전송에 URL이 없습니다
+1124	알 수 없는 전송 방식 %q
+1125	[mcp] %s 도구 %d개 발견 및 캐시 저장
+1126	[mcp] 시작 시 자동 검색: 목록 읽기 실패: %v
+1127	[mcp] 시작 시 자동 검색 %s 실패: %v
+1128	[notify] 이벤트 배정 실패: %v
+1129	[notify] 채널 읽기 실패: %v
+1130	[notify] 실시간 전송 배정 실패 channel=%d: %v
+1131	[notify] 요약 묶음 판정 실패 channel=%d: %v
+1132	[notify] 요약 묶음 배정 실패 channel=%d: %v
+1133	이벤트 스냅샷을 해석할 수 없어 해당 취약점의 메시지를 생성할 수 없습니다
+1134	[notify] 손상된 스냅샷 전송 상태 표시 실패 channel=%s ids=%v: %v
+1135	[notify] 해석할 수 없는 스냅샷 %d건 건너뜀 channel=%d
+1136	[notify] 보고된 전송 완료 수 %d가 요청 수 %d를 초과함 channel=%s, 전체 완료 처리
+1137	[notify] 전송 완료 상태 저장 실패 channel=%s ids=%v: %v
+1138	메시지 길이 상한에 도달하여 처음 %d건만 전송했습니다. 나머지는 다음 묶음에서 전송합니다
+1139	[notify] 분할 전송 대기열 추가 실패 channel=%s ids=%v: %v
+1140	채널이 전송 완료 수를 보고하지 않았습니다(delivered=%d)
+1141	[notify] 실패 상태 기록 오류 channel=%s ids=%v: %v
+1142	%d회 재시도 후에도 실패: %s
+1143	[notify] 전송 대기열 재배정 실패 channel=%s ids=%v: %v
+1144	[notify] 전송 실패 channel=%d kind=%s 영구 실패=%d 재시도 소진=%d 재시도 대기=%d: %s
+1145	[notify] 요약 묶음의 해석 불가 스냅샷 건너뜀 delivery=%d: %v
+1146	요약 묶음의 전송 %d건 모두 해석할 수 없습니다
+1147	[notify] 자산 이름 해석 실패 finding=%d: %v
+1148	전송 %d의 이벤트 스냅샷이 비어 있습니다
+1149	전송 %d의 이벤트 스냅샷 해석 실패: %w
+1150	요청 본문이 유효한 JSON이 아닙니다:
+1151	유효하지 않은 채널 유형입니다. 사용 가능: %s
+1152	채널 이름이 없습니다
+1153	유효하지 않은 전송 모드입니다. realtime / digest를 사용하세요
+1154	채널 ID가 유효하지 않습니다
+1155	채널 이름은 비워둘 수 없습니다
+1156	테스트 메시지 · 채널 설정 정상
+1157	연결 테스트
+1158	ARTEX 알림 채널의 테스트 메시지입니다. 수신했다면 채널을 사용할 수 있습니다.
+1159	전송 ID가 유효하지 않습니다
+1160	[custom-tool] 불러오기 실패: %v
+1161	task_id는 필수입니다
+1162	task가 존재하지 않습니다:
+1163	전체 작업의 ID, 설명, 목표, 상태, 실행 시간, 상위 작업, LLM 설정을 나열합니다. 관리 에이전트가 진행 지연 및 사용 모델을 파악하는 용도입니다. 실행 시간은 실행 중이면 생성부터 현재, 종료 상태이면 생성부터 마지막 활동까지의 초 단위 시간입니다. llm_profile은 planner/worker의 설정 이름이며 (활성 설정)은 전역 설정을 따른다는 뜻입니다.
+1164	(활성 설정)
+1165	#%d(삭제됨)
+1166	사용 가능한 LLM 프로필의 ID, 이름, 모델, 형식, 활성 여부를 나열합니다. spawn_task의 llm_profile_id에 ID를 지정하여 하위 작업별 모델을 선택할 수 있습니다. API Key는 포함하지 않습니다.
+1167	하위 작업을 생성하고 탐색 엔진을 시작하여 task_id를 반환합니다. 개별 문제나 목표를 독립 작업으로 배정할 때 사용합니다. parent_ref는 선택 사항이며 현재 관리하는 상위 작업 ID를 지정하면 부모·자식 관계를 연결합니다.
+1168	작업 설명(짧은 제목)
+1169	작업 목표(달성할 결과)
+1170	선택: 부모·자식 관계를 연결할 상위 작업 ID
+1171	선택: 읽기 전용으로 상속할 소스 작업 ID 목록(최대 %d개). 해당 작업의 확인된 자산·결론을 시작점으로 사용합니다. 단순 관계 포인터인 parent_ref와 달리 내용 상속입니다.
+1172	선택: 하위 작업의 planner/worker용 LLM 설정 ID(list_llm_profiles 참조). 생략하면 상위 작업, 그다음 전역 활성 설정을 따릅니다
+1173	선택: 작업 시간 제한(초). 만료 시 정상 마무리 후 timeout으로 종료합니다. 생략 또는 0이면 제한 없음
+1174	선택: planner 하트비트 간격(초). 이전 계획 종료 또는 작업 시작 후 해당 시간 동안 다른 트리거가 없으면 계획 라운드를 실행하여 정체를 방지하고 Worker를 감독합니다. 생략/0이면 기본 600초(10분);
+1175	선택: 단순 작업이면 생성 즉시 설명+목표를 첫 의도로 전달하여 Worker가 첫 계획 라운드를 기다리지 않고 실행하게 할 수 있습니다. 기본 false이며 먼저 계획한 뒤 실행합니다.
+1176	goal은 필수입니다
+1177	연결 작업은 최대 %d개까지 선택할 수 있습니다
+1178	연결 작업 ID가 유효하지 않거나 중복되었습니다
+1179	연결 작업 #%d가 존재하지 않습니다
+1180	LLM 설정 #%d가 없거나 API Key가 설정되지 않았습니다
+1181	지정한 작업을 일시 중지하여 planner/worker 루프를 멈춥니다.
+1182	일시 중지할 작업 ID
+1183	task_id로 지정한 작업의 탐색 그래프 개요를 읽습니다. graph_overview와 동일하게 자산 수, frontier, 취약점, 커버리지 등을 반환합니다.
+1184	작업 ID
+1185	task_id로 지정한 작업의 확인된 취약점(flag/PoC 포함)을 읽습니다. 각 항목은 id/task_id/intent_id/vulnclass/severity/요약/상태를 포함합니다.
+1186	지정한 작업의 계획 에이전트가 다음 의도 생성 시 읽을 전략 힌트를 전달합니다.\n
+1187	여러 힌트는 hints 배열로 일괄 제출하세요. ids는 같은 길이·순서이며 실패는 0입니다. 단일 항목은 hints를 생략하고 최상위 text를 사용합니다.
+1188	우선 사용: 힌트 배열. 각 항목에 text/asset_ids/traffic_refs를 지정합니다.
+1189	단일 항목: 힌트 내용
+1190	해당 작업에서 앵커로 연결할 자산 ID(선택, 0/1/여러 개)
+1191	지정한 작업의 의도 실행 과정을 조회합니다. get_task_worker_trace(task_id,intent_id)로 단계 요약을 보고 step_ids를 추가하여 전체 내용을 읽으세요. 한 번에 최대 5개이며 더 전달하면 처음 5개만 반환합니다.
+1192	해당 작업의 의도(work) ID
+1193	선택: 전체 내용을 읽을 step_id. 최대 5개이며 초과 항목은 omitted_step_ids에 표시합니다
+1194	지정한 작업에서 실행한 의도와 단계 수를 조회합니다. 참고할 실행을 찾은 뒤 get_task_worker_trace로 상세를 읽으세요.
+1195	지정한 작업의 모든 Worker 실행 과정을 키워드로 검색하여 단계 요약과 intent_id를 반환합니다.
+1196	검색 키워드
+1197	지정 작업의 탐색 노드(취약점/사실/의도/목표)의 전체 요약·상세·증거·PoC를 읽습니다. id는 report_finding 또는 list_task_findings의 탐색 노드 ID입니다. 취약점 보고서 작성 전에 전체 증거를 확인하는 데 사용하세요.
+1198	등록된 취약점의 상세 Markdown 보고서를 저장하거나 전체 내용으로 덮어씁니다. finding_id에는 report_finding의 첫 줄 「finding recorded: <id>」에 있는 탐색 노드 ID를 사용합니다. 취약점 개요, 영향, 재현 절차, 증거/PoC, 개선 권고를 포함하세요.
+1199	report_finding에서 반환한 취약점 탐색 노드 ID
+1200	전체 Markdown 상세 보고서
+1201	get_finding_traffic에서 읽은 증거 version. 새 증거 변경을 이전 보고서가 덮어쓰지 못하게 합니다
+1202	finding_id가 유효하지 않습니다
+1203	finding_id=%d에 대응하는 취약점 기록이 없습니다. 먼저 report_finding으로 등록하세요
+1204	[tools] 관리·플랫폼 도구 schema를 코드 기본값으로 한 번 갱신했습니다
+1205	[tools] planner에서 goal_met 연결 해제 실패: %v
+1206	[prompts] goals 프롬프트 기본값 갱신 실패: %v
+1207	[prompts] goals 프롬프트의 새 기본 버전 추가(실행 제약 추출 단계, 한 번 적용)
+1208	[prompts] mainagent 프롬프트 기본값 갱신 실패: %v
+1209	[prompts] mainagent 프롬프트의 새 기본 버전 추가(목표 완료 후 새 목표 등록 확인, 한 번 적용)
+1210	[prompts] planner 프롬프트 기본값 갱신 실패: %v
+1211	[prompts] planner 프롬프트의 새 기본 버전 추가(중복 방지·심층 검증·부정 결론 재검증 상한, 한 번 적용)
+1212	[prompts] worker 프롬프트 기본값 갱신 실패: %v
+1213	[prompts] worker 프롬프트의 새 기본 버전 추가(컨텍스트 조회 지침 정리, 한 번 적용)
+1214	방금 report_finding으로 취약점이 등록되었습니다. 반환 JSON에서 finding_id(독립 기록 ID)와 finding_node_id(탐색 노드 ID)를 구분하여 읽고,
+1215	get_finding_traffic(finding_id)로 현재 증거 목록과 version을 읽으세요. 목록이 비어 있어도 보고서를 작성할 수 있습니다.
+1216	실행 지침에서 자동 연결을 켰다면 조회 전에 이번 취약점의 트래픽을 검토하고 연결하세요. 노드 상세 조회에는 finding_node_id를 사용합니다.
+1217	마지막에 update_finding_report(finding_id=finding_node_id,report,evidence_version=실제로 읽은 버전)로 저장하세요.
+1218	evidence_version을 생략하면 보고서가 계속 업데이트 필요로 표시됩니다. 두 ID를 혼동하지 마세요.
+1219	방금 report_finding으로 취약점이 등록되었습니다. 트리거 컨텍스트의 finding_id
+1220	(도구 응답 「finding recorded: <id>」의 숫자)와 작업 ID를 읽고 해당 취약점의 상세 보고서를 작성한 뒤
+1221	update_finding_report(finding_id,report)로 저장하세요.
+1222	[reporter] 트리거 읽기 실패: %v
+1223	[reporter] 트리거 메시지 갱신 실패: %v
+1224	[reporter] 증거 버전을 읽고 전달하도록 트리거 메시지를 갱신했습니다
+1225	보고서 작성
+1226	취약점 발견 시 자동으로 시작하여 증거와 실행 과정을 검토하고 상세 Markdown 보고서를 작성·저장합니다.
+1227	[reporter] 에이전트 생성 실패: %v
+1228	[reporter] 기본 프롬프트 생성 실패: %v
+1229	[reporter] 트리거 실행 정책 설정 실패: %v
+1230	[reporter] 도구 연결 실패: %v
+1231	[reporter] 트리거 생성 실패: %v
+1232	[reporter] 보고서 작성 에이전트와 finding 트리거 초기화 완료
+1233	[auto] report_finding 기본 연결 실패: %v
+1234	[planner] report_finding 기본 연결 실패: %v
+1235	[planner] list_assets 기본 연결 실패: %v
+1236	[planner] add_company_scope 기본 연결 실패: %v
+1237	[worker] add_company_scope 연결 해제 실패: %v
+1238	[worker] %s 연결 해제 실패: %v
+1239	[worker] 실행 기록·상세 조회 도구 연결 실패: %v
+1240	[auto] 기본 연결 실패: %v
+1241	host의 도메인/서브도메인과 그 아래 service/endpoint 자산을 삭제합니다.\n
+1242	소문자 변환과 공백 제거 후 host가 정확히 일치해야 하며 부분 일치·와일드카드는 아닙니다.\n
+1243	루트 도메인(example.com)을 지정하면 하위 서브도메인과 service/endpoint도 삭제합니다. 서브도메인(a.example.com) 또는 IP는 해당 host와 그 service/endpoint만 삭제합니다.\n
+1244	작업 간 공유하는 전역 자산 저장소에서 완전히 삭제하며 되돌릴 수 없습니다.
+1245	삭제할 host: 도메인/서브도메인/IP. 예: example.com, a.example.com, 1.2.3.4
+1246	자산 저장소가 초기화되지 않았습니다
+1247	host는 비워둘 수 없습니다
+1248	삭제 실패:
+1249	agentskills.io 규격의 SKILL.md를 작성하여 새 스킬을 생성합니다. name은 소문자·숫자·하이픈을 사용합니다.
+1250	스킬 이름(소문자로 시작, 영문·숫자·하이픈)
+1251	스킬 설명(필수, 역할과 사용 시점)
+1252	Markdown 본문(선택)
+1253	스킬 이름이 유효하지 않습니다. 소문자로 시작하고 영문·숫자·하이픈만 사용하며 최대 64자입니다
+1254	description은 필수입니다
+1255	스킬이 이미 존재합니다:
+1256	스킬 내부 파일을 작성하거나 덮어씁니다(기본 SKILL.md). 스킬 내용을 변경하거나 스크립트·참조를 추가하는 데 사용합니다.
+1257	스킬 이름
+1258	상대 경로(선택, 기본 SKILL.md, 예: scripts/run.py)
+1259	파일 전체 내용
