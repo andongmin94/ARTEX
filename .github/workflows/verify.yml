@@ -63,7 +63,38 @@ jobs:
         with:
           node-version: '22'
       # 기존 패키지 일부가 같은 테스트 DB를 사용하므로 패키지는 순서대로 실행합니다.
-      - run: go test -p 1 -count=1 -timeout 180s ./...
+      - name: Run all backend tests and retain per-test results
+        run: |
+          git rev-parse HEAD > backend-source.txt
+          git ls-files '*.go' '*.sql' >> backend-source.txt
+          status=0
+          go test -json -p 1 -count=1 -timeout 180s ./... > backend-results.jsonl || status=$?
+          python3 - <<'PY'
+          import json
+          from collections import Counter
+          from pathlib import Path
+          counts = Counter()
+          for line in Path('backend-results.jsonl').read_text(encoding='utf-8').splitlines():
+              event = json.loads(line)
+              action = event.get('Action')
+              if action == 'output':
+                  print(event.get('Output', ''), end='')
+              if event.get('Test') and '/' not in event['Test'] and action in ('pass', 'fail', 'skip'):
+                  counts[action] += 1
+              if action in ('fail', 'skip'):
+                  print(f"TEST {action}: {event.get('Package')} {event.get('Test', '')}")
+          print(f'Backend top-level test outcomes: {dict(counts)}')
+          PY
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-test-results
+          path: |
+            backend-source.txt
+            backend-results.jsonl
+          if-no-files-found: warn
+          retention-days: 14
       - run: go build ./cmd/artex
       - name: Check real backend desktop lifecycle
         env:
