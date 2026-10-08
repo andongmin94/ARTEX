@@ -7,28 +7,29 @@ UI 기준: **[andongmin94/neobrutal-ui](https://github.com/andongmin94/neobrutal
 ## 현재 상태와 다음 시작점
 
 작업 시작 때 main과 전환 브랜치의 최신 ref를 모두 확인한다.
-이번 시작 기준은 main `5017b37194a7d364cd9fec193f6b4bb12db4b7ee`, 전환 브랜치 `11b732cc9a8fb3cf73d87d34dad89f0267acf28c`다.
+이번 시작 기준은 main `b5ab9ea8135995f28ca8ad30ad8055d30e94f35d`, 전환 브랜치 `af39b22a9487388896134a8a4ef08288d47c06c4`다.
 진행 중인 브랜치를 무시하고 main에서 이식을 다시 만들거나 옛 ZIP으로 덮어쓰지 않는다.
 미완성 전환 코드는 main에 병합하지 않는다. main에는 현재 계획만 갱신한다.
 
-**이번 M2.2f:** 모델 삭제와 에이전트/대화의 모델 연결, 대화 저장 SQL을 SQLite에 맞게 이식했다.
-`DeleteProfileContext`는 기존 업무 opener의 IMMEDIATE 트랜잭션 안에서 활성 모델 보호 → 영향받는 작업 조회 → 삭제/FK 정리 → 다음 모델/리비전 갱신을 수행한다.
-PG 행 잠금, 참조 변경 재시도 루프, 그 전용 오류와 보조 함수를 제거했다.
-삭제한 커서보다 뒤의 ready 모델만 선택한다. 다음 모델이 없으면 명시적 체인을 비우며 앞의 모델이나 할당량을 소진한 모델을 되살리지 않는다.
-체인 없는 직접 참조도 리비전을 갱신한다. 에이전트/대화 참조는 FK로 비우되 대화와 활동 기록은 보존한다.
-`SetAgentLLMProfile`, `CreateConversation`, `UpdateConversationProfile`은 같은 쓰기 트랜잭션에서 모델 존재를 확인한다.
-대화 제목/고정 수정은 SQLite AFTER 트리거가 갱신한 시간을 같은 트랜잭션에서 다시 읽어 응답한다.
-대화 일괄 삭제는 검증된 int64 목록의 JSON TEXT 매개변수와 json_each를 사용한다. PG 배열/불리언 캐스트/now()/시간 캐스트를 제거했다.
+**이번 M2.2g:** 재검증 에이전트의 실제 초기화 호출을 하나의 SQLite 쓰기 트랜잭션으로 이식했다.
+기존 `seedFindingRetester`는 에이전트가 없는데 먼저 `SeedTool`로 `tool_agents` 연결을 넣어 새 외래키 제약에 실패했다. 이 순서의 실패를 SQLite에서 재현했다.
+`db.SeedFindingRetester`가 초기화 상태 확인 → 에이전트 → 프롬프트/현재 포인터 → 두 도구/관계 → 완료 기록을 같은 IMMEDIATE 트랜잭션에서 처리한다.
+기존 도구 저장 SQL/JSON 검증을 재사용하고, 트랜잭션 안에서 부모 풀의 SeedTool을 다시 호출하지 않는다.
+`server/finding_retests.go`는 실제 두 도구의 설명/스키마와 기존 기본 프롬프트를 전달한다. JSON 직렬화 실패와 저장 오류를 반환한다.
+PG advisory lock와 구 `finding_retester_seed_v1` 실행 경로를 제거했다. 새 완료 키 `finding_retester_initialized`는 최초 설치 상태이지 구 데이터 마이그레이션이 아니다.
+기존 에이전트/프롬프트/도구/연결/비활성 설정은 덮어쓰지 않는다. 완료 후 사용자가 에이전트나 도구를 삭제하면 다음 시작에서 재생성하거나 재연결하지 않는다.
+도구 실행 본문, 세션별 결과 귀속, 승인·차단·대상 범위 정책과 자동 트리거 동작은 변경하지 않았다.
 
 **전체 앱의 SQLite 부팅은 아직 미완료다.** main은 여전히 PostgreSQL이며, 전환 브랜치의 NewManager는 아직 기존 DSN을 전달한다.
-작업의 모델 체인 교체/조회 전체, 자산/범위, 작업/탐색, 증거/보관, 재검증 직접 SQL, LLM 별도 DDL, server.New 오류 반환과 프록시 bind는 남아 있다.
-이번 변경은 모델 삭제와 에이전트/대화 연결의 저장 단위이며, 전체 모델 실행·재검증·도구 시드의 완료가 아니다.
-초기화 실패를 무시하거나 빈 결과로 바꾸어 ready를 내보내지 않는다.
+작업 모델 체인/조회 전체, 자산/범위, 탐색/증거/보관, 실제 재검증 업무 SQL, LLM 중복 DDL, server.New 오류 반환과 프록시 bind가 남아 있다.
+특히 `server.New`는 재검증 시드 오류를 아직 로그만 남긴다. 이번 저장 단위를 전체 startup 오류 전파/ready 차단 완료로 표시하지 않는다.
+이번에는 재검증 초기화만 이식했다. LLM DDL 제거, 전체 앱/GUI/실제 드라이버 검증은 하지 않았다.
 
-**즉시 다음 작업:** 같은 전환 브랜치에서 `server/finding_retests.go:seedFindingRetester`의 직접 tools.agents/PG 잠금을 관계 테이블 기반으로 이식한다.
-LLM 기록/사용량의 중복 PG DDL과 startup 호출을 제거하고 새 기본 스키마만 사용하게 한다.
-작업 모델 체인과 재검증/로그/알림/작업 복원 쿼리를 연결한 뒤 NewManager/New의 파일 경로, 오류 반환, 종료 정리, 실제 부팅 검사를 완성한다.
-이후 자산/범위·탐색·증거/보관까지 M2.7 검증 후 main에 병합한다. 이미 끝난 연결/도구/설정 fixture를 반복 구현하지 않는다.
+**즉시 다음 작업:** 같은 전환 브랜치에서 LLM 기록/사용량의 중복 PG DDL과 startup 호출을 제거하고 새 기본 스키마만 사용하게 한다.
+`db/commands.go`의 `EnsureLLMRecordsTable`/마이그레이션과 `db/llm_usage.go`의 `EnsureLLMUsageTable`, 실제 호출자/테스트를 함께 정리한다. 사용량 날짜 집계/기록 검색의 PG SQL도 남아 있다.
+작업 모델 체인과 재검증/로그/알림/작업 복원 쿼리를 이식한 뒤 NewManager/New의 파일 경로·오류 반환·정리와 실제 부팅 검사를 완성한다.
+자산/범위·탐색·증거/보관까지 M2.7 검증 후 main에 병합한다. 이미 끝난 연결/도구/설정/재검증 시드를 반복 구현하지 않는다.
+로컬 지정 Go/의존성을 갖추면 아래 신규 6개와 이전 미실행 modernc 테스트를 먼저 실행한다. 실패를 건너뛰거나 격리 검사로 대체하지 않는다.
 
 ## 검증 자원 정책
 
@@ -57,7 +58,8 @@ Electron, 전체 업무 SQLite, 도구/자손 프로세스, server.New 오류 �
 - [ ] **M2.2c 부팅/설정 일관성:** manager 동기 오류/정리, 설정 snapshot/묶음 저장 구현. 독립 Go 11개/SQL 7개 통과. 통합 10개 미실행.
 - [ ] **M2.2d 업무 스키마/원자 생성:** 58개 테이블(기존 51+관계 7)/시드/식별자/버전/IMMEDIATE 구현. SQL 17개/제어 6개 통과, opener 통합 6개/전체 앱 미실행.
 - [ ] **M2.2e 도구 관계/MCP:** tool_agents 기반 실제 CRUD/원자성/집계와 조건부 MCP args/env 갱신 구현. SQL 21개/제어 5+3개 통과. 실제 opener 도구 8개/MCP 4개 미실행.
-- [ ] **M2.2f 모델 참조/대화:** 이번 저장 메서드 이식. SQL 15개, 삭제 제어 15개 하위 사례 및 취소를 race 10회 통과. 실제 업무 opener 기반 Go 테스트 7개/전체 회귀 미실행. 작업 체인 전체 및 실제 앱 부팅과 구분한다.
+- [ ] **M2.2f 모델 참조/대화:** 저장 메서드 이식. SQL 15개, 삭제 제어 15개 하위 사례 및 취소를 race 10회 통과. 실제 업무 opener 기반 Go 7개/전체 회귀 미실행. 작업 체인 전체 및 실제 부팅과 구분한다.
+- [ ] **M2.2g 재검증 최초 초기화:** 실제 server→db 호출 연결과 단일 트랜잭션 구현. SQL 10개/Go 제어 3개(22개 하위 사례) 통과. 실제 업무 opener 기반 Go 6개/전체 부팅 미실행.
 - [ ] **M2.3 설정·인증 통합:** setup/로그인/모델 저장·복원을 부팅과 연결. JWT 분리, 모든 생성 오류/정리와 기존 인증 정책 검증.
 - [ ] **M2.4 자산·범위:** 관계/DSL/net/netip, IPv4·IPv6 경계, 기업 귀속/중복 원자성 검증.
 - [ ] **M2.5 작업·탐색:** 작업/세션/의도/대화/사실/취약점/승인/재검증/사용량/기록, 다중 저장/취소 검증.
@@ -87,36 +89,36 @@ UI 작업은 `docs/ui-design.md`와 최신 원본을 먼저 읽는다. 이번 �
 
 ## 이전 기록
 
-이전 상세 구현/검사 기록은 `11b732cc9a8fb3cf73d87d34dad89f0267acf28c`의 이 문서 및 `docs/sqlite-business-store.md`에 보존되어 있다.
+M2.2f 상세 기록은 `af39b22a9487388896134a8a4ef08288d47c06c4`의 이 문서에, 그 이전 기록은 `11b732cc9a8fb3cf73d87d34dad89f0267acf28c` 및 `docs/sqlite-business-store.md`에 보존되어 있다.
 M1/M2.1/M2.2a/M2.3a의 과거 CI 성공은 새 전환 코드의 빌드/통합 성공이 아니다.
 M2.2b 이후 modernc 통합 미실행 기록은 이번에도 그대로 유지한다. 기존 artifact 확인을 위해 CI를 재실행하지 않는다.
 
-## 이번 로컬 검증 — M2.2f
+## 이번 로컬 검증 — M2.2g
 
-기준: 전환 브랜치 `11b732cc9a8fb3cf73d87d34dad89f0267acf28c`. Linux Go 1.23.2, Python SQLite 3.46.1.
-현재 세션에는 전체 clone/프로젝트 지정 Go 1.26.3/modernc 의존성이 없다. GitHub와 proxy.golang.org DNS 연결 실패를 확인했다.
-새 소스를 live GitHub에서 읽고 원본 3개 파일의 Git blob SHA를 일치시킨 후 변경했다. 옛 ZIP/패치를 가져오지 않았다.
+기준: 전환 브랜치 `af39b22a9487388896134a8a4ef08288d47c06c4`. Linux Go 1.23.2, Python SQLite 3.46.1.
+현재 세션의 git 접속과 Go 1.26.3 다운로드는 DNS 제약으로 실패했다. 프로젝트 버전/드라이버를 바꾸거나 원격 runner로 우회하지 않았다.
+최신 GitHub에서 읽은 server 원본 blob `df311390ae4e1ac592eea68439ec35368fb4ae82`와 재사용 tools.go `eaf9c330202d82905a31f64c131e49d76047d663`를 로컬 Git blob SHA와 일치시켰다.
 
-실행 결과:
+실행한 검사:
 
-- `check-sqlite-profile-references.py`: **SQL 수준 15개 통과**. 실제 새 Go 소스의 SQL과 기준 schema.sql에서 읽은 11개 테이블 및 관련 인덱스/트리거를 사용했다. 로컬 부분 스냅샷은 `--schema`로 전달했다.
-- 활성/없는 모델 삭제 거부, 뒤의 ready 모델만 선택, 체인 없는 직접 참조/리비전, 여러 작업, FK 참조 정리/대화 활동 보존, 실패 롤백, 삭제와 연결 변경 경쟁, WAL 읽기, 재열기/무결성을 검사했다.
-- 대화 생성 실패의 orphan 방지, 연결 검증/해제, 제목/고정/AFTER 트리거 시간, 일괄 삭제의 중복/없는 ID, result 사용량 집계도 SQL로 검사했다. 전체 58개 스키마/시드나 실제 Go 드라이버 검사가 아니다.
-- 실제 `DeleteProfile`/`DeleteProfileContext`와 `profile_references_control_test.go`를 격리해 `GO111MODULE=off go test -race -count=10 -timeout 60s -v .` 실행. **제어 테스트 2개: 15개 하위 사례+취소, 각 10회 통과**. driver는 오류 주입용이다.
-- 새 3개 업무 소스와 테스트 전체도 외부 타입/함수 경계를 명시한 격리 패키지에서 컴파일하고 위 제어 테스트만 실행했다. 이 경계의 Open은 사용 불가 오류만 반환하며 통합 테스트를 실행하지 않았다.
-- gofmt/Go parser 및 선언 대조 통과. config는 모델 연결/존재 확인 2개 함수만 변경. 프로필의 PG 재시도/잠금 helper와 전용 오류를 제거. 대화의 저장/조회 쿼리 변경 외 활동 페이지/상세 메서드는 유지한다.
+- 실제 새 `finding_retester_seed.go`, 기존 `tools.go`와 제어 테스트를 정확한 DB 래핑 타입/에이전트 키 경계로 격리해 `GO111MODULE=off go test -race -count=10 -timeout=60s -json .` 실행. **최상위 3개 + 하위 22개, 각 10회 통과**, 실패/skip 없음. 드라이버는 오류 주입용이며 modernc가 아니다.
+- begin/상태조회/에이전트/프롬프트/현재 포인터/두 도구/두 연결/완료기록/commit 오류, 잘못된 ID 스캔/수정 행 누락, 완료·손상 상태, 기존 항목, 입력/취소를 검사했다. 단일 연결로 부모 풀 재진입이 없음을 확인했다.
+- `check-sqlite-retester.py`: **SQL 수준 10개 통과**. 스키마 blob `7e7e264ace63175496d7541ad59948eeb43efff9`에서 확인한 변경 없는 6개 CREATE TABLE(settings/llm_profiles/agents/agent_prompts/tools/tool_agents)과 실제 Go SQL 상수를 사용했다. 전체 58개 스키마 검사가 아니다.
+- 기존 도구-우선 순서의 FK 실패, 새 순서/포인터/JSON TEXT, 재열기/사용자 수정·삭제 보존, 손상 완료값, 6개 쓰기 단계 실패 롤백, 12개 동시 초기화의 단일 묶음 생성, WAL 읽기/FK/integrity를 확인했다. 로컬에는 선택 DDL을 --schema로 전달했다.
+- 신규 native 테스트 6개의 본문도 격리 패키지에서 컴파일했지만 실행하지 않았다. 격리 Open은 명시적으로 사용 불가 오류를 반환하며 실제 DB 검사로 간주하지 않는다.
+- gofmt/구문 검사 및 서버 초기화 함수 외 기존 핸들러·도구 실행 본문 동일성 검사를 수행했다. 사용자 데이터/모델 API/외부 명령/대상 호출은 없다.
 
 미실행:
 
-- `profile_references_sqlite_test.go`의 **실제 Open/전체 schema/seed 기반 Go 테스트 7개**. 모델 삭제/후속 선택/참조/보존/롤백/단일 연결/동시 변경/대화 시간/일괄 삭제/재실행을 검사하도록 작성했다.
-- 이전 modernc 테스트, Go 1.26.3 전체 빌드/회귀, NewManager/New 통합, Windows/macOS, Electron/화면/도구/전체 부하/백업.
-- 이번 변경에 retester와 LLM DDL 제거를 포함하지 않았다. 다음 시작점에 남긴다.
+- `finding_retester_seed_sqlite_test.go`의 **실제 Open/전체 schema/seed/modernc 기반 6개**. 새 생성/재열기/단일 연결, 기존 편집, 삭제, 단계별 롤백, 동시 초기화, 취소/손상 상태/닫힌 DB를 검사하도록 작성했다.
+- 이전 modernc 테스트, 전체 Go 1.26.3 빌드/회귀, NewManager/New/HTTP 부팅, Windows/macOS, Electron/화면/도구/전체 부하/백업.
+- LLM 중복 DDL과 전체 server.New의 오류 반환은 이번 변경 범위가 아니다.
 
 ```sh
-# Python 표준 라이브러리로 실제 저장 SQL의 선택된 범위를 검사한다.
-python scripts/check-sqlite-profile-references.py
-# 지정 Go/의존성이 있는 로컬 저장소에서 실행할 실제 드라이버 검사:
-go test -race -count=1 -timeout 120s -run '^(TestProfileReferenceDelete|TestSQLiteProfileReference|TestSQLiteConversationReferences)' ./db
+# Python 표준 라이브러리의 실제 SQL 검사. 전체 Go 드라이버 검사가 아니다.
+python scripts/check-sqlite-retester.py
+# 프로젝트 지정 Go와 의존성이 있는 로컬 저장소에서 수행할 실제 드라이버 검사:
+go test -race -count=1 -timeout=120s -run '^(TestRetesterSeed|TestSQLiteRetesterSeed)' ./db
 ```
 
 Actions 실행/재실행/업로드, 릴리스 태그 생성은 하지 않는다. 부분 검증을 M2.2/M2.7 완료로 표시하지 않는다.
