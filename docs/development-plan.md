@@ -7,13 +7,20 @@ UI 기준: **[andongmin94/neobrutal-ui](https://github.com/andongmin94/neobrutal
 
 ## 현재 상태
 
-**M0/M1과 M2.1 소스 인벤토리를 완료했다. neobrutal-ui를 필수 UI 기준으로 확정했다.**
-M1 구현 커밋 `4acff4563df22a2094b7adcc8e4fde7d05267a00`의 `verify #55` 6개 job은 모두 성공했다.
-M2.1 구현 커밋 `a99972d4e8ff1eaec333aad05874374ef7c95510`의 `verify #56` 7개 job도 모두 성공했다.
-전체 Go/SQL 332개 조사 결과와 핵심 부팅/스키마/직접 SQL을 검토해 `docs/sqlite-porting-map.md`에 이식 묶음을 확정했다.
-M2.2/M2.3을 작은 검증 단위로 진행한다. 이번 단위는 **공통 SQLite 연결을 기존 트래픽에 적용하고 설정/인증의 실제 저장 경로를 SQLite fixture로 검증**하는 것이다. 전체 업무 스키마와 NewManager/New 부팅 전환은 아직 남아 있다.
-**주 DB는 아직 PostgreSQL이고 Electron 앱과 neobrutal-ui 적용 화면은 아직 없다.**
+**M0/M1, M2.1, M2.2a 공통 SQLite 연결/트래픽, M2.3a 설정/인증 저장 검증을 완료했다.**
+이번 구현은 [PR #2](https://github.com/andongmin94/ARTEX/pull/2)로 squash 병합했다.
+main 구현 커밋: `81757868533bcb7b4ba15186bfc326d6ffc8f898`.
+검증된 PR HEAD: `4460f0f32790bbf4fb14c8d3837e48f3f7875fcc`.
+해당 HEAD의 `verify #59` 7개 job과 `sqlite-foundation #4` 3개 OS job이 모두 성공했다.
+
+**주 업무 DB는 아직 PostgreSQL이다. 전체 업무 SQLite 부팅, LLM 프로필 이식, Electron 앱과 neobrutal-ui 적용 화면은 아직 없다.**
+SQLite 연결은 실제 트래픽 경로에서 사용한다. 설정/인증은 실제 메서드와 HTTP 핸들러를 최소 SQLite fixture로 검증했으며, 전체 `NewManager/New` 부팅 완료가 아니다.
 README의 Docker/PG 실행 안내는 현 제품에 해당하며 목표 아키텍처의 완료 증거가 아니다.
+
+**즉시 다음 작업:** M2.2/M2.3의 남은 업무 스키마·시드·쓰기 연결 정책과 실제 부팅/모델 프로필 저장을 이식한다.
+`docs/sqlite-porting-map.md`의 51개 업무 테이블과 startup 호출 의존을 기준으로 한다.
+조사 도구를 더 만드는 대신 실제 저장소/호출자를 이식하고, 초기화 실패를 무시한 채 ready를 내보내지 않는다.
+M2.2a/M2.3a를 반복 구현하거나 최소 fixture 성공을 전체 앱 전환 완료로 표시하지 않는다.
 
 ## M0. 방향과 작업 기준
 
@@ -22,7 +29,7 @@ README의 Docker/PG 실행 안내는 현 제품에 해당하며 목표 아키텍
 - [x] 기존 트래픽 SQLite와 PG 업무 저장소/LLM 기록 구분.
 - [x] neobrutal-ui를 필수 UI 기준으로 확정. 원본 SHA/실제 토큰·버튼 API 차이/전체 화면 검수 조건을 `docs/ui-design.md`에 기록.
 
-## M1. 데스크톱 실행 기반 — 구현·전체 CI 검증 완료
+## M1. 데스크톱 실행 기반 — 구현·CI 검증 완료
 
 - [x] `ARTEX_HOME` 절대 경로 검증·쓰기 검사, 설정/기본 data/skills 루트 연결.
 - [x] 홈에 설정이 없을 때 CWD의 다른 DB 설정으로 넘어가지 않음.
@@ -32,7 +39,7 @@ README의 Docker/PG 실행 안내는 현 제품에 해당하며 목표 아키텍
 - [x] `cmd/artex` 시작/서빙 오류의 `log.Fatal` 제거, 종료 요청 뒤 manager 정리, HTTP timeout 후 연결 정리. `server.New`의 JWT 오류 종료는 아직 남아 있어 M2에서 함께 정리한다.
 - [x] 설정 7개 + HTTP/부모 파이프 6개 독립 테스트와 race 반복 검사.
 - [x] Windows/macOS/Linux 실행 기반 CI와 실제 백엔드 smoke 검사 연결.
-- [x] Go 1.26.3의 전체 테스트·빌드와 실제 백엔드 smoke 확인. `verify #55`, run `37213127038`.
+- [x] Go 1.26.3의 전체 테스트 명령·빌드와 실제 백엔드 smoke 확인. `verify #55`, run `37213127038`.
 
 Electron 창, 주 DB SQLite 교체, 도구 설치, 앱 업데이트, 패키징, 전체 자손 프로세스 정리는 M1 완료 범위가 아니다.
 
@@ -41,10 +48,10 @@ Electron 창, 주 DB SQLite 교체, 도구 설치, 앱 업데이트, 패키징, 
 작업 재개 시 최신 main과 CI를 확인한다. 아래 순서로 진행한다.
 
 - [x] **M2.1 인벤토리:** 전체 Go/SQL 332개 조사 및 후보 214개 분류. `verify #56` 보고서와 핵심 코드 검토로 `docs/sqlite-porting-map.md`의 51개 업무 테이블/부팅 경계/직접 SQL/트랜잭션/테스트 fixture 이식 지도를 확정했다. 후보 수는 수정 파일 수나 기능 동등성 증명이 아니다.
-- [ ] **M2.2 실행 가능한 저장 기반:** 기존 modernc 드라이버로 업무 DB 스키마/연결 초기화, 연결별 PRAGMA, 쓰기 경로, 명시적 취소/닫기, Unicode/특수문자 경로 검사. `server.NewManager/New`의 전체 부팅 의존과 생성 오류 반환을 함께 연결한다. 미사용 추상 저장소를 완료 결과로 제출하지 않는다.
-- [ ] **M2.2a 공통 연결/트래픽:** `internal/sqlitedb.Open`을 실제 `traffic.Open`에 연결. URI 특수문자, 연결별 PRAGMA, WAL, 취소, 파일 보존, 재실행/FTS 검사. 코드 반영 후 원격 CI 확인 필요. M2.2 전체 완료가 아니다.
-- [ ] **M2.3a 설정/인증 저장:** 실제 설정 메서드의 SQLite 저장/재실행, 동시 최초 설정/비밀번호 변경의 단일 승자, 조회 오류 fail-closed를 HTTP fixture로 검사. 전체 NewManager/New 부팅이나 LLM 프로필 이식 완료가 아니다.
-- [ ] **M2.3 설정·인증:** 최초 setup/로그인/설정/LLM 프로필 저장·재실행 복원 경로 이식. 기존 인증 정책과 API 필드 유지. 인증 설정 조회 오류/동시 초기화/JWT 키의 작업 공간 분리를 검사한다.
+- [ ] **M2.2 실행 가능한 업무 저장 기반:** 기존 modernc 드라이버로 업무 DB 스키마/연결 초기화, 쓰기 경로, 명시적 취소/닫기를 구현. `server.NewManager/New`의 전체 부팅 의존과 생성 오류 반환을 함께 연결한다. 미사용 추상 저장소를 완료 결과로 제출하지 않는다.
+- [x] **M2.2a 공통 연결/트래픽:** `internal/sqlitedb.Open`을 실제 `traffic.Open`에 연결. URI 특수문자, 연결별 PRAGMA, WAL, 취소, 파일 보존, 재실행/FTS 검증 완료. 전체 업무 스키마와 writer/read pool 정책은 M2.2에 남아 있다.
+- [x] **M2.3a 설정/인증 저장:** 실제 설정 메서드의 SQLite 저장/재실행, 동시 최초 설정/비밀번호 변경의 단일 승자, 조회 오류 fail-closed를 실제 HTTP fixture로 검증 완료. 전체 NewManager/New 부팅이나 LLM 프로필 이식 완료가 아니다.
+- [ ] **M2.3 설정·인증 통합:** 최초 setup/로그인/설정/LLM 프로필 저장·재실행 복원 경로를 실제 앱 부팅과 연결한다. 기존 인증 정책과 API 필드 유지. JWT 키의 작업 공간 분리와 초기화 실패 전파를 검증한다.
 - [ ] **M2.4 자산·범위:** 관계 테이블, 자산 DSL, IP/CIDR/IPv6 포함 검색, 기업 범위 재계산/중복 처리를 실제 fixture로 검증.
 - [ ] **M2.5 작업·탐색:** 작업/세션/의도/대화/사실/취약점/승인/재검증/사용량/LLM 기록 이식. 다중 에이전트 저장과 취소 검증.
 - [ ] **M2.6 증거·보관:** 업무 DB와 기존 트래픽 인덱스/본문/보관 패키지 연결, 삭제/재검증/증거 보존 동등성 검증.
@@ -86,10 +93,10 @@ DB 동등성 검증과 UI 스타일 변경은 별도 단위로 수행한다.
 
 ## 검증 기록 — 2026-10-05
 
-### M1 로컬 독립 검사
+### M1 — 이전 검증
 
 Linux, Go 1.23.2, Node 22.16.0. 네트워크 DNS 제한으로 clone/Go 1.26.3 의존성 확보 실패.
-`go.mod`를 바꾸지 않고 다음 독립 검사를 수행했다.
+`go.mod`를 바꾸지 않고 설정/HTTP/EOF 독립 테스트 13개를 각각 race 20회 검사했다.
 
 ```text
 GO111MODULE=off go test -race -count=20 -timeout 60s ./config
@@ -97,52 +104,46 @@ GO111MODULE=off go test -race -count=20 -timeout 60s cmd/artex/http_lifecycle.go
 node --check scripts/check-backend-lifecycle.mjs
 ```
 
-설정/HTTP/EOF 테스트 13개, 각각 20회 통과. 전체 프로젝트 검증은 아래 CI에서 수행했다.
+- 커밋 `4acff4563df22a2094b7adcc8e4fde7d05267a00`, [verify #55](https://github.com/andongmin94/ARTEX/actions/runs/37213127038): 6개 job success.
+- Go 1.26.3 전체 테스트 명령·빌드, 실제 Linux 백엔드의 한글/공백 홈 → ready → health → 부모 EOF → exit 0 성공. Windows/macOS/Linux 독립 실행 기반 race 검사 성공.
+- 프런트엔드 한국어/IME/TypeScript/정적 빌드와 기존 스크립트/Compose 설정 검사 성공. Docker 이미지 빌드나 GUI 검증은 아니다.
+- PG 서비스 로그의 스키마/런타임 조회 deadlock은 별도 위험으로 남긴다. 성공한 전체 명령을 동시성 무결점의 근거로 삼지 않는다.
+- 결과 기록 커밋 `babea04074a090ae66953c43f335a8580ddaa27c`는 문서 전용이다.
 
-### M1 원격 CI — 검증 완료
+### M2.1/UI 기준 — 이전 검증
 
-- 커밋: `4acff4563df22a2094b7adcc8e4fde7d05267a00`.
-- [verify #55](https://github.com/andongmin94/ARTEX/actions/runs/37213127038): backend/frontend/deployment 및 desktop-foundation 3개 OS, 6개 job success.
-- Go 1.26.3: `go test -p 1 -count=1 -timeout 180s ./...`, `go build ./cmd/artex` 성공.
-- 실제 Linux 백엔드: 새 한글/공백 홈 + 폐기 가능한 PG DB, ready PID/loopback/실제 포트, `/api/health` 200, 부모 EOF 뒤 exit 0 확인.
-- Windows/macOS/Linux: 설정 경로와 HTTP/부모 파이프 독립 race 검사 성공. 전체 ARTEX 실행 검증과는 다르다.
-- 프런트엔드: 한국어 문자열·IME·TypeScript·정적 빌드 성공.
-- 배포: 설치 스크립트 구문/Compose 설정 성공. Docker 이미지 빌드나 데스크톱 설치 검증을 뜻하지 않는다.
+- ARTEX 기준 `babea04074a090ae66953c43f335a8580ddaa27c`, neobrutal-ui `b4da2463fe710a77bf464c65125a1a7f40424722`.
+- Go AST 읽기 전용 인벤토리와 테스트 8개. 로컬 독립 race 20회 성공. SQL 변환기나 DB 실행 기능이 아니다.
+- 커밋 `a99972d4e8ff1eaec333aad05874374ef7c95510`, [verify #56](https://github.com/andongmin94/ARTEX/actions/runs/37214597987): 7개 job success.
+- Go/SQL 332개 → 후보 214개. job `111472435421`, artifact `11308130499`(14일 보관). DSN/키 원문을 출력하지 않는다.
+- schema.sql 49개 테이블 + LLM 기록/사용량 2개, 부팅·직접 SQL·pgconn 분류·트랜잭션·테스트 skip을 검토했다. `server/auth.go`처럼 정적 조사에서 빠지는 간접 호출도 수동 확인했다.
+- UI 원본 소스/토큰/버튼 API를 검토했고, 화면 변경·GUI·스크린샷 검수는 수행하지 않았다.
+- 결과/이식 지도 기록 커밋 `c1c49e74685b49e310aa8f7e71aac5b9c95e4b9a`는 문서 전용이다.
 
-```text
-PASS real backend: isolated Unicode home → JSON ready → HTTP health → parent EOF → exit 0
-```
+### M2.2a/M2.3a — 이번 구현과 검증
 
-PG 서비스 로그에 스키마 적용/런타임 조회 사이 deadlock도 관찰됐다. 명령 성공을 동시성 무결성 보장으로 해석하지 않는다.
-`db/db_test.go`의 DB 설정/연결 실패 skip도 확인했다. M2에서는 DB 실패를 숨기는 skip 없이 SQLite fixture를 사용한다.
-M1 결과 기록 커밋 `babea04074a090ae66953c43f335a8580ddaa27c`는 문서 전용 `[skip ci]`였다.
+- 구현 main SHA: `81757868533bcb7b4ba15186bfc326d6ffc8f898`, PR #2 squash merge.
+- 검증 PR HEAD: `4460f0f32790bbf4fb14c8d3837e48f3f7875fcc`.
+- PR 병합 시험 checkout SHA: `294840749fd3057aa4ceba7fd3baca54ba7d1f48`.
+- [verify #59](https://github.com/andongmin94/ARTEX/actions/runs/37218191195): backend/frontend/deployment/storage-inventory + desktop-foundation 3개 OS, **7개 job 모두 success**.
+- [sqlite-foundation #4](https://github.com/andongmin94/ARTEX/actions/runs/37218191191): PG 서비스 없이 Windows/macOS/Linux **3개 job 모두 success**. 연결 race 검사와 설정/인증/트래픽 실제 fixture 검사, skip 금지 조건 통과.
+- `backend-test-results` artifact `11309266073`의 원본 JSON과 checkout 목록을 내려받아 확인했다. 최상위 Go 테스트 **694 pass / 0 fail / 1 skip**. 생략된 기존 `TestLiveContextReview`는 외부 개인 모델 설정 `ARTEX_REVIEW_LIVE_CONFIG`가 필요한 live 검사다. 새 테스트는 생략하지 않았다.
+- 신규 테스트 18개: 연결/경로/WAL/외래키/취소 9개, 설정 저장/경쟁/재열기 4개, 실제 인증 HTTP 4개, 트래픽 저장/재열기/한글 FTS 1개. 하위 경로/오류 사례는 별도 subtest로 포함한다.
+- Go 1.26.3 전체 suite와 `go build ./cmd/artex`, 실제 백엔드 readiness/EOF 종료 smoke 성공. 기존 한국어·IME·TypeScript·정적 UI 빌드도 성공했다.
 
-### M2.1/UI 기준 — 이번 작업
+실제 적용한 내용:
 
-- 기준: ARTEX `babea04074a090ae66953c43f335a8580ddaa27c`, neobrutal-ui `b4da2463fe710a77bf464c65125a1a7f40424722`.
-- Go AST 기반 읽기 전용 인벤토리, 독립 테스트 8개 추가. SQL 자동 변환이나 DB 실행 기능이 아니다.
-- 로컬: `GO111MODULE=off go test -race -count=20 -timeout 60s ./scripts/sqlite-inventory` 성공. `gofmt` 적용.
-- 원격: [verify #56](https://github.com/andongmin94/ARTEX/actions/runs/37214597987), 커밋 `a99972d4e8ff1eaec333aad05874374ef7c95510`. backend/frontend/deployment/storage-inventory 및 desktop-foundation 3개 OS를 포함한 **7개 job 모두 success**.
-- Go 1.26.3: 전체 테스트 명령·백엔드 빌드·실제 백엔드 준비/EOF smoke와 인벤토리 독립 race 검사 성공. UI 한국어/IME/TypeScript/정적 빌드도 성공.
-- 전체 인벤토리: Go/SQL 332개 → 후보 파일 214개. `storage-inventory` job `111472435421`, artifact `11308130499`(14일 보관). DB 서비스 없이 생성했으며 원본 값/DSN/키는 출력하지 않는다.
-- 검토 결과: schema.sql의 49개 테이블 외에 llm_records/llm_usage 2개가 런타임 생성됨을 확인. server/증거 저장소 직접 SQL, pgconn 오류 분류, 부팅 의존, PG 테스트 skip과 경쟁 경계를 이식 지도에 기록.
-- 수동 검토: `server/manager.go:NewManager`, `server/server.go:New`, `server/auth.go`, `server/engine.go`, `server/finding_retests.go:seedFindingRetester`, `db/commands.go`, `db/llm_usage.go`, `db/task_archives_restore.go`의 핵심 구간. 정적 분석이 놓친 같은 패키지의 인증 호출도 포함.
-- UI: 원본 소스/토큰/버튼 조합 API를 검토했다. 화면 변경, GUI 실행, 스크린샷 검수는 미실행.
+- `internal/sqlitedb.Open`을 기존 트래픽 생성 경로에 연결. URI 인코딩 없는 DSN과 `?` bare-path 분기를 제거했다.
+- 연결마다 foreign_keys=1, busy_timeout=5000, synchronous=FULL을 적용하고 WAL 적용 결과를 확인한다. 손상 파일을 지우거나 PG로 우회하지 않는다.
+- 설정 최초 INSERT/조건부 변경을 실제 인증 핸들러에 연결했다. bcrypt는 쓰기 구간 밖에서 수행한다. 조회 오류/비어 있는 손상 해시는 미설정으로 처리하지 않는다.
+- 최소 settings 테이블의 폐기 가능한 SQLite에서 HTTP 설정/로그인/변경과 재열기를 검증했다. 이 fixture는 전체 NewManager/New 부팅이나 51개 업무 테이블을 대체하지 않는다.
+- `verify #58`의 원본 artifact `11308149113`에서 `TestTaskMetadataPatchReturnsRenameAndPin` 종료 후 임시 폴더 쓰기 실패를 확인했다. 기존 metadata/batch-delete HTTP 테스트가 전체 `New(context.Background())`를 호출해 공유 DB의 다른 작업을 복원·실행하던 원인을 제거했다. 실제 router/auth/DB assertions는 유지했고 수정한 두 테스트는 #59에서 통과했다.
+- CI는 전체 Go 테스트별 JSON 결과와 checkout SHA/소스 목록을 14일 artifact로 보관한다. 기존 오류를 재실행만으로 숨기거나 테스트 성공 조건을 완화하지 않았다.
+- 작업 브랜치의 일회성 편집 workflow/script는 최종 tree에서 제거했다. SQL 번역기/DB 선택 옵션/데이터 자동 이전기는 없다.
 
-남은 미검증 범위: SQLite 업무 DB, Electron GUI/패키지, Windows/macOS 전체 ARTEX/도구, neobrutal-ui 실제 화면, 부하·백업·복원.
+로컬은 Go 1.23.2와 DNS 제한으로 전체 소스/의존성 실행이 불가능해 형식/구문만 검사했다. 프로젝트 Go 버전은 바꾸지 않았다.
+새 fixture는 로컬 HTTP·합성 트래픽·폐기 가능한 DB를 사용한다. 사용자 데이터는 수정/삭제하지 않았다.
+이번 변경에 UI/에이전트 기능 확장은 없다. neobrutal-ui 필수 기준은 유지한다.
 
-이 검증 결과와 확정 이식 지도를 기록하는 후속 커밋은 문서만 변경하고 `[skip ci]`를 사용한다. 위 성공 결과는 명시한 구현 커밋의 결과다.
-
-
-### M2.2a/M2.3a — SQLite 연결 및 인증 저장 구현
-
-- 공통 파일 연결 `internal/sqlitedb.Open`을 기존 트래픽의 실제 생성 경로에서 사용한다. URI 인코딩 없는 DSN과 `?` bare-path 분기를 제거한다.
-- 연결마다 foreign_keys=1, busy_timeout=5000, synchronous=FULL을 적용하고, 파일의 WAL 적용 결과를 확인한다. 손상/취소/경로 오류는 데이터를 지우거나 다른 DB로 넘어가지 않고 실패한다.
-- 연결 함수는 스키마·쓰기 큐·SQL 호환 계층이 아니다. 트래픽의 기존 쓰기 조정과 트랜잭션은 유지하며, 업무 DB의 쓰기 연결/전체 스키마 초기화는 M2.2에 남아 있다.
-- 설정의 CURRENT_TIMESTAMP/원자적 최초 삽입/조건부 변경을 실제 인증 핸들러에 연결한다. 기존 PG 업무 DB를 계속 사용하는 main에서도 이 인증 수정은 실제 사용된다. DB 종류 선택, 이중 기록, PG→SQLite 자동 데이터 변환은 추가하지 않는다.
-- 설정/인증 테스트는 최소 settings 테이블을 가진 폐기 가능한 SQLite 파일에서 실행한다. 실제 HTTP 요청 → 비밀번호 설정/로그인/변경 → 파일 닫기/다시 열기를 검증하지만, server.NewManager/New 부팅 테스트는 아니다.
-- `sqlite-foundation` CI는 PG 서비스 없이 세 OS에서 연결 race 검사와 settings/auth/traffic 테스트를 실행하고 테스트 skip을 실패로 처리한다.
-- 로컬은 여전히 네트워크 DNS 제한으로 저장소 clone/Go 1.26.3 의존성 다운로드가 불가능하다. Go 소스 형식/구문을 확인했고 전체 Go 검사는 원격 CI에서 확인한다.
-- 원격 검증 결과: 아직 확인 전. 성공 결과와 커밋/run ID를 확인한 뒤 위 하위 항목만 완료로 바꾼다.
-- 다음 단위: 업무 SQLite의 전체 스키마/시드와 startup 호출 의존 이식, NewManager/New 오류 반환, 모델 프로필 저장/재실행. 초기화 오류를 무시하고 ready를 내보내지 않는다.
-- neobrutal-ui는 필수 UI 기준으로 그대로 유지한다. 이번에는 UI/에이전트 기능/외부 테스트 대상/사용자 데이터는 변경하지 않는다.
+남은 미검증 범위: 전체 업무 SQLite와 실제 앱 부팅/LLM 프로필, Electron GUI/패키지, Windows/macOS 전체 ARTEX/도구, neobrutal-ui 화면, 부하·백업·복원.
+이 후속 커밋은 검증 결과와 계획만 갱신하며 `[skip ci]`를 사용한다. 위 성공 결과는 명시한 PR 코드와 시험 checkout의 결과다.
