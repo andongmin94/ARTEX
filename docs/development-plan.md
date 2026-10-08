@@ -4,7 +4,7 @@
 UI 기준: **[andongmin94/neobrutal-ui](https://github.com/andongmin94/neobrutal-ui)**. 기존 기능·한국어·화면 흐름을 유지하고 시각·상호작용을 통일한다.
 작업 기준: **main 단일 브랜치**. 최종 갱신: 2026-10-07.
 
-## 현재 상태 — 2026-10-07 Pretendard 단일 글꼴
+## 이전 단위 — 2026-10-07 Pretendard 단일 글꼴
 
 사용자 요청으로 한국어·영문·숫자·코드·로그·그래프와 Electron 시작/실패 화면을 로컬 Pretendard Variable 하나로 통일했다.
 미커밋 변경이 없는 main/원격 `6d76903330b63f08c9cf0421c74c127a437759af`에서 시작했다.
