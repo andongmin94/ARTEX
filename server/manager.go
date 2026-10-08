@@ -214,7 +214,7 @@ type DeleteTaskResult struct {
 	CleanupWarning    string `json:"cleanup_warning,omitempty"`
 }
 
-// Manager owns the PostgreSQL data source (asset graph + every task's exploration
+// Manager owns the SQLite data source (asset graph + every task's exploration
 // graph + config) and the in-memory set of task handles.
 type Manager struct {
 	dir         string
@@ -300,6 +300,13 @@ func (m *Manager) SetWorkers(n int) error {
 
 // Enrich returns the asset auto-completion engine (may be nil if init failed).
 func (m *Manager) Enrich() *enrich.Engine { return m.enrich }
+
+func (m *Manager) ProxyDone() <-chan error {
+	if m.traffic == nil {
+		return nil
+	}
+	return m.traffic.Done()
+}
 
 // TrafficEnabled reports whether traffic capture is on (default off). When off,
 // no proxy/traffic tools/prompt are injected into agents (nothing is recorded).
@@ -586,8 +593,9 @@ func (m *Manager) SetGlobalProxy(raw string) error {
 }
 
 func (m *Manager) Close() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	if m.enrich != nil {
+		m.enrich.Close()
+	}
 	var trafficErr, dbErr error
 	if m.traffic != nil {
 		trafficErr = m.traffic.Close()
@@ -870,12 +878,11 @@ func (m *Manager) ReplaceTaskLLMProfiles(id string, profileIDs []int64, activePr
 	return 0, nil
 }
 
-// LoadExisting rebuilds in-memory task handles from the PG task registry.
-func (m *Manager) LoadExisting() []*Task {
+// LoadExisting rebuilds in-memory task handles from the SQLite task registry.
+func (m *Manager) LoadExisting() ([]*Task, error) {
 	pts, err := m.pg.ListTasks()
 	if err != nil {
-		log.Printf("[manager] reload: %v", err)
-		return nil
+		return nil, fmt.Errorf("작업 목록 복원: %w", err)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -901,9 +908,9 @@ func (m *Manager) LoadExisting() []*Task {
 		}
 	}
 	if len(loaded) > 0 {
-		log.Printf("[manager] reloaded %d task(s) from PG", len(loaded))
+		log.Printf("[manager] reloaded %d task(s) from SQLite", len(loaded))
 	}
-	return loaded
+	return loaded, nil
 }
 
 // SetTaskPaused persists a task's paused state.
@@ -955,15 +962,15 @@ func (m *Manager) ApplyTaskAdmission(id, expectedStatus, status string, queued b
 	err = m.pg.QueryRow(`UPDATE tasks
 	SET status=$2,
 	    completed_at=CASE
-	        WHEN $2 IN ('done','failed','timeout') THEN COALESCE(completed_at, now())
+	        WHEN $2 IN ('done','failed','timeout') THEN COALESCE(completed_at, $7)
 	        ELSE NULL
 	    END,
 	    paused=false,
 	    queued=$3,
 	    queued_at=CASE
 	        WHEN NOT $3 THEN NULL
-	        WHEN $5 AND queued THEN COALESCE(queued_at, now())
-	        ELSE now()
+	        WHEN $5 AND queued THEN COALESCE(queued_at, $7)
+	        ELSE $7
 	    END,
 	    queue_mode=CASE
 	        WHEN NOT $3 THEN ''
@@ -979,7 +986,7 @@ func (m *Manager) ApplyTaskAdmission(id, expectedStatus, status string, queued b
 	        ELSE deadline_at
 	    END
 	WHERE id=$1 AND deleted_at IS NULL AND status=$6
-	RETURNING queued_at, queue_mode, completed_at, first_run_at, deadline_at`, n, status, queued, mode, preservePosition, expectedStatus).
+	RETURNING queued_at, queue_mode, completed_at, first_run_at, deadline_at`, n, status, queued, mode, preservePosition, expectedStatus, time.Now().UTC()).
 		Scan(&queuedAt, &committedMode, &completedAt, &firstRunAt, &deadlineAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("task %s lifecycle changed before admission (expected status %q)", id, expectedStatus)
@@ -1068,13 +1075,13 @@ func (m *Manager) EnqueueTask(id, mode string) error {
 	var committedMode string
 	err = m.pg.QueryRow(`UPDATE tasks
 		SET queued=true,
-		    queued_at=CASE WHEN queued THEN COALESCE(queued_at, now()) ELSE now() END,
+		    queued_at=CASE WHEN queued THEN COALESCE(queued_at, $3) ELSE $3 END,
 		    queue_mode=CASE
 		        WHEN queue_mode='bootstrap' OR $2='bootstrap' THEN 'bootstrap'
 		        ELSE 'resume'
 		    END
 		WHERE id=$1 AND deleted_at IS NULL
-		RETURNING queued_at, queue_mode`, n, mode).Scan(&queuedAt, &committedMode)
+		RETURNING queued_at, queue_mode`, n, mode, time.Now().UTC()).Scan(&queuedAt, &committedMode)
 	if errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("task %s is unavailable for enqueue", id)
 	}

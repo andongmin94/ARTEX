@@ -8,15 +8,21 @@ import (
 )
 
 func ArchiveEvidenceSnapshots(snapshot *TaskArchiveSnapshot) ([]TrafficEvidenceSnapshot, error) {
-	var out []TrafficEvidenceSnapshot
-	if rawRowCount(snapshot.Tables["traffic_evidence_snapshots"]) == 0 {
-		return out, nil
-	}
-	if snapshot.FormatVersion < 3 {
+	if snapshot == nil || !IsTaskArchiveFormatSupported(snapshot.FormatVersion) {
 		return nil, ErrTaskArchiveFormatMismatch
 	}
-	err := json.Unmarshal(snapshot.Tables["traffic_evidence_snapshots"], &out)
-	return out, err
+	raw, present := snapshot.Tables["traffic_evidence_snapshots"]
+	if !present || len(raw) == 0 {
+		return nil, errors.New("archive evidence snapshot table is missing")
+	}
+	if _, err := decodeArchiveRows(raw); err != nil {
+		return nil, err
+	}
+	var out []TrafficEvidenceSnapshot
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func restoreFindingTrafficTx(tx *sql.Tx, snapshot *TaskArchiveSnapshot) error {
@@ -38,9 +44,6 @@ func restoreFindingTrafficTx(tx *sql.Tx, snapshot *TaskArchiveSnapshot) error {
 	if err != nil {
 		return err
 	}
-	if len(rows) > 0 && snapshot.FormatVersion < 3 {
-		return ErrTaskArchiveFormatMismatch
-	}
 	for _, row := range rows {
 		fid, ok := jsonInt64(row["finding_id"])
 		if !ok {
@@ -60,26 +63,12 @@ func restoreFindingTrafficTx(tx *sql.Tx, snapshot *TaskArchiveSnapshot) error {
 		}
 	}
 	if len(rows) > 0 {
-		raw, _ := json.Marshal(rows)
-		if _, err = tx.Exec(`INSERT INTO finding_traffic_bindings SELECT * FROM json_populate_recordset(NULL::finding_traffic_bindings,$1::json)`, string(raw)); err != nil {
-			return err
-		}
-		_, err = tx.Exec(`UPDATE traffic_evidence_snapshots s SET unreferenced_at=NULL WHERE EXISTS(SELECT 1 FROM finding_traffic_bindings b WHERE b.snapshot_id=s.id)`)
-	}
-	return err
-}
-
-func normalizeArchivedFindingVersions(raw json.RawMessage) (json.RawMessage, error) {
-	rows, err := decodeArchiveRows(raw)
-	if err != nil {
-		return nil, err
-	}
-	for _, row := range rows {
-		for _, key := range []string{"evidence_version", "report_evidence_version"} {
-			if row[key] == nil {
-				row[key] = 0
+		for _, row := range rows {
+			if _, err = insertArchiveRow(tx, "finding_traffic_bindings", row); err != nil {
+				return err
 			}
 		}
+		_, err = tx.Exec(`UPDATE traffic_evidence_snapshots AS s SET unreferenced_at=NULL WHERE EXISTS(SELECT 1 FROM finding_traffic_bindings b WHERE b.snapshot_id=s.id)`)
 	}
-	return json.Marshal(rows)
+	return err
 }

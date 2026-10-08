@@ -50,17 +50,18 @@ func bindSideProvider(p llm.Provider, cfg agent.Config, id int64, name string) l
 	return sidequestion.Bind(p, sideModel(cfg, id, name))
 }
 
-func (s *Server) initSideQuestions() {
+func (s *Server) initSideQuestions() error {
 	s.side = &sideQuestionState{pending: map[string]sidequestion.Snapshot{}, latest: map[string]sidequestion.Snapshot{}, seen: map[string][2]int64{}, runs: map[string]sideRun{}, done: make(chan struct{})}
 	if n, err := strconv.Atoi(os.Getenv("ARTEX_BTW_MAX_OUTPUT_TOKENS")); err == nil && n >= 256 && n <= 32768 {
 		s.side.outputTokens = n
 	}
 	if s.m.pg == nil {
 		close(s.side.done)
-		return
+		return nil
 	}
 	if err := s.m.pg.InterruptSideRequests(s.ctx); err != nil {
-		log.Printf("[btw] recover: %v", err)
+		close(s.side.done)
+		return fmt.Errorf("부가 질문 상태 복원: %w", err)
 	}
 	s.ctx = sidequestion.WithPublisher(s.ctx, func(snap sidequestion.Snapshot) {
 		s.side.mu.Lock()
@@ -88,6 +89,7 @@ func (s *Server) initSideQuestions() {
 			}
 		}
 	}()
+	return nil
 }
 
 func (s *Server) flushSideSnapshots() {
@@ -143,6 +145,17 @@ func (s *Server) cancelSideWhere(match func(sidequestion.Parent) bool) []<-chan 
 		}
 	}
 	return done
+}
+
+func (s *Server) drainSideQuestions(ctx context.Context) error {
+	for _, done := range s.cancelSideWhere(func(sidequestion.Parent) bool { return true }) {
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
 }
 
 // Called after the task admission barrier closes and the main loops drain.

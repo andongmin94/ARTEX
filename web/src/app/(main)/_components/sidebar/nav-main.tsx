@@ -89,22 +89,27 @@ export function NavMain({ items }: NavMainProps) {
   // 路由段含中文，pathname 可能是百分号编码，解码后再与导航 url 比较，保证高亮命中。
   const path = (() => {
     try {
-      return decodeURIComponent(rawPath);
+      return decodeURIComponent(rawPath).replace(/\/+$/, "") || "/";
     } catch {
-      return rawPath;
+      return rawPath.replace(/\/+$/, "") || "/";
     }
   })();
 
+  // 정적 export의 trailingSlash와 상세 페이지도 실제 메뉴 선택에 반영한다.
+  const activeUrl = items.flatMap((group) => group.items.flatMap((item) =>
+    hasSubItems(item) ? item.subItems.map((sub) => sub.url) : [item.url],
+  )).filter((url) => path === url || path.startsWith(`${url}/`)).sort((left, right) => right.length - left.length)[0];
+
   const isItemActive = (item: NavMainItem) => {
     if (hasSubItems(item)) {
-      return item.subItems.some((sub) => path.startsWith(sub.url));
+      return item.subItems.some((sub) => activeUrl === sub.url);
     }
 
-    return path === item.url;
+    return activeUrl === item.url;
   };
 
   const isSubItemActive = (url: string) => {
-    return path === url;
+    return activeUrl === url;
   };
 
   const isSubmenuOpen = (item: NavMainParentItem) => {
@@ -192,6 +197,7 @@ function NavLinkItem({ item, isActive, showIconFallback }: NavLinkItemProps) {
         <Link
           prefetch={false}
           href={item.url}
+          aria-current={isActive ? "page" : undefined}
           target={item.newTab ? "_blank" : undefined}
           rel={item.newTab ? "noreferrer" : undefined}
         >

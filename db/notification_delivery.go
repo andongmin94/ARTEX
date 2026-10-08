@@ -84,7 +84,7 @@ func scanNotificationDelivery(sc interface{ Scan(...any) error }) (*Notification
 	if err := sc.Scan(&dl.ID, &dl.EventID, &dl.ChannelID, &dl.State, &dl.Attempts, &dl.NextAttemptAt,
 		&lastErr, &batchID, &dl.CreatedAt, &sentAt,
 		&snapshot, &eventKind, &dl.FindingID,
-		&channel.ID, &channel.Name, &channel.Kind, &chEnabled, &channel.Config, &channel.Mode, &channel.Filter, &channel.RatePerMin); err != nil {
+		&channel.ID, &channel.Name, &channel.Kind, &chEnabled, jsonColumn(&channel.Config), &channel.Mode, jsonColumn(&channel.Filter), &channel.RatePerMin); err != nil {
 		return nil, err
 	}
 	dl.LastError = lastErr.String
@@ -128,10 +128,9 @@ func (d *DB) ClaimRealtimeDeliveries(ctx context.Context, channelID int64, limit
 	return d.claimDeliveries(ctx, lease, claimQuery{
 		sql: `SELECT dd.id FROM notification_deliveries dd
 JOIN notification_channels c ON c.id = dd.channel_id
-WHERE dd.channel_id = $1 AND dd.state IN ($2,$3) AND dd.next_attempt_at <= now()
+WHERE dd.channel_id = $1 AND dd.state IN ($2,$3) AND julianday(dd.next_attempt_at) <= julianday('now')
   AND c.enabled AND c.mode = $4
 ORDER BY dd.next_attempt_at, dd.id
-FOR UPDATE OF dd SKIP LOCKED
 LIMIT $5`,
 		args: []any{channelID, NotifyStatePending, NotifyStateSending, NotifyModeRealtime, limit},
 	}, nil)
@@ -153,7 +152,7 @@ func (d *DB) DigestBatchDue(ctx context.Context, channelID int64, minAge time.Du
   JOIN notification_channels c ON c.id = d.channel_id
   WHERE d.channel_id = $1 AND d.state IN ($2,$3) AND c.enabled
   GROUP BY d.channel_id
-  HAVING min(d.created_at) <= now() - make_interval(secs => $4)
+  HAVING julianday(min(d.created_at)) <= julianday('now') - $4 / 86400.0
 )`, channelID, NotifyStatePending, NotifyStateSending, int64(minAge.Seconds())).Scan(&due)
 	return due, err
 }
@@ -186,9 +185,8 @@ func (d *DB) ClaimDigestBatch(ctx context.Context, channelID int64, limit int, l
 	out, err := d.claimDeliveries(ctx, lease, claimQuery{
 		sql: `SELECT dd.id FROM notification_deliveries dd
 JOIN notification_channels c ON c.id = dd.channel_id
-WHERE dd.channel_id = $1 AND dd.state IN ($2,$3) AND dd.next_attempt_at <= now() AND c.enabled
+WHERE dd.channel_id = $1 AND dd.state IN ($2,$3) AND julianday(dd.next_attempt_at) <= julianday('now') AND c.enabled
 ORDER BY dd.id
-FOR UPDATE OF dd SKIP LOCKED
 LIMIT $4`,
 		args: []any{channelID, NotifyStatePending, NotifyStateSending, limit},
 	}, func(tx *sql.Tx, ids []int64) error {
@@ -226,7 +224,7 @@ func (d *DB) claimDeliveries(ctx context.Context, lease time.Duration, cq claimQ
 	// 「租约未到期」与「未到重试时间」因此共用同一个条件表达，不需要新增列。
 	ph, idArgs := placeholders(3, ids)
 	if _, err := tx.ExecContext(ctx, `UPDATE notification_deliveries
-SET state=$1, attempts=attempts+1, next_attempt_at=now()+make_interval(secs => $2)
+SET state=$1, attempts=attempts+1, next_attempt_at=strftime('%Y-%m-%d %H:%M:%f','now',printf('%+.9f seconds',$2))
 WHERE id IN (`+ph+`)`,
 		append([]any{NotifyStateSending, lease.Seconds()}, idArgs...)...); err != nil {
 		return nil, err
@@ -285,7 +283,7 @@ func (d *DB) MarkDeliveriesSent(ctx context.Context, ids []int64) error {
 		return nil
 	}
 	_, err := d.ExecContext(ctx, `UPDATE notification_deliveries
-SET state=$1, sent_at=now(), last_error='' WHERE id IN (`+ph+`)`, append([]any{NotifyStateSent}, args...)...)
+SET state=$1, sent_at=strftime('%Y-%m-%d %H:%M:%f','now'), last_error='' WHERE id IN (`+ph+`)`, append([]any{NotifyStateSent}, args...)...)
 	return err
 }
 
@@ -299,7 +297,7 @@ func (d *DB) RescheduleDeliveries(ctx context.Context, ids []int64, delay time.D
 		return nil
 	}
 	_, err := d.ExecContext(ctx, `UPDATE notification_deliveries
-SET state=$1, next_attempt_at=now()+make_interval(secs => $2), last_error=$3
+SET state=$1, next_attempt_at=strftime('%Y-%m-%d %H:%M:%f','now',printf('%+.9f seconds',$2)), last_error=$3
 WHERE id IN (`+ph+`)`,
 		append([]any{NotifyStatePending, delay.Seconds(), truncateNotifyError(errMsg)}, args...)...)
 	return err
@@ -320,7 +318,7 @@ func (d *DB) DeferDeliveries(ctx context.Context, ids []int64, reason string) er
 		return nil
 	}
 	_, err := d.ExecContext(ctx, `UPDATE notification_deliveries
-SET state=$1, attempts=GREATEST(attempts-1, 0), next_attempt_at=now(), last_error=$2
+SET state=$1, attempts=max(attempts-1, 0), next_attempt_at=strftime('%Y-%m-%d %H:%M:%f','now'), last_error=$2
 WHERE id IN (`+ph+`)`,
 		append([]any{NotifyStatePending, truncateNotifyError(reason)}, args...)...)
 	return err
@@ -343,7 +341,7 @@ func (d *DB) FailDeliveries(ctx context.Context, ids []int64, errMsg string) err
 // 再拿旧计数限制它没有道理。
 func (d *DB) RetryNotificationDelivery(ctx context.Context, id int64) error {
 	res, err := d.ExecContext(ctx, `UPDATE notification_deliveries
-SET state=$2, attempts=0, next_attempt_at=now(), last_error=''
+SET state=$2, attempts=0, next_attempt_at=strftime('%Y-%m-%d %H:%M:%f','now'), last_error=''
 WHERE id=$1 AND state IN ($3,$4)`, id, NotifyStatePending, NotifyStateFailed, NotifyStateSkipped)
 	if err != nil {
 		return err

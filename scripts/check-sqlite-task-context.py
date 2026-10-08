@@ -25,7 +25,9 @@ def raw_sql(source, name, count):
     match = re.search(r"^func (?:\([^\n]+\) )?" + re.escape(name) + r"\(", source, re.M)
     if not match:
         raise ValueError(f"missing production function {name}")
-    body = re.split(r"\nfunc ", source[match.end():], maxsplit=1)[0]
+    # gofmt puts a function's closing brace at column zero. Stop there so a
+    # following const (taskCols) is not mistaken for SQL owned by this helper.
+    body = re.split(r"\n}", source[match.end():], maxsplit=1)[0]
     sql = re.findall(r"`([^`]+)`", body)
     if len(sql) != count:
         raise ValueError(f"{name}: expected {count} raw SQL statements, found {len(sql)}")

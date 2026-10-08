@@ -36,9 +36,9 @@ func TestCompanyScopeInputsAcceptStructuredAndLegacyRules(t *testing.T) {
 func TestCreateCompanyRejectsNormalizedDuplicateWithoutChangingScope(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v)", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 
 	stamp := time.Now().UnixNano()
 	name := fmt.Sprintf("HTTP Strict Company %d", stamp)
@@ -76,9 +76,9 @@ func TestCreateCompanyRejectsNormalizedDuplicateWithoutChangingScope(t *testing.
 func TestDeleteCompanyRefreshesLiveTaskCompanyIDs(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v)", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 
 	companyID, _, err := m.pg.Companies().UpsertCompany(
 		fmt.Sprintf("Delete Company DTO %d", time.Now().UnixNano()), "",
@@ -117,9 +117,9 @@ func TestDeleteCompanyRefreshesLiveTaskCompanyIDs(t *testing.T) {
 func TestCompanyScopeHTTPErrorClassificationAndBounds(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v)", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	s := &Server{m: m}
 
 	t.Run("missing company is 404", func(t *testing.T) {
@@ -191,9 +191,9 @@ func TestCompanyScopeHTTPErrorClassificationAndBounds(t *testing.T) {
 func TestListAssetsClassifiesValidationAndDatabaseErrors(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v)", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	s := &Server{m: m}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/assets?dsl=(", nil)
@@ -217,9 +217,9 @@ func TestListAssetsClassifiesValidationAndDatabaseErrors(t *testing.T) {
 func TestDeleteCompanyRejectsBadJSONAndReportsMissing(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v)", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	s := &Server{m: m}
 
 	companyID, _, err := m.pg.Companies().UpsertCompany(
@@ -256,9 +256,9 @@ func TestDeleteCompanyRejectsBadJSONAndReportsMissing(t *testing.T) {
 func TestCompanyScopeSystemFailureIsHTTP500(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v)", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	s := &Server{m: m}
 	if err := m.pg.Close(); err != nil {
 		t.Fatal(err)

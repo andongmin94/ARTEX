@@ -24,6 +24,9 @@ type mcpClient interface {
 func connectMCP(ctx context.Context, m *db.MCPServer) (mcpClient, error) {
 	switch m.Transport {
 	case "stdio":
+		if desktopToolsUnavailable() {
+			return nil, fmt.Errorf("%s", unmanagedDesktopToolsMessage)
+		}
 		if m.Command == "" {
 			return nil, fmt.Errorf("stdio 전송에 명령이 없습니다")
 		}

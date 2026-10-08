@@ -61,9 +61,9 @@ type TaskDeleteResult struct {
 	LLMRecordsDeleted int64
 }
 
-// TaskDeletePreparation is produced inside the PostgreSQL deletion transaction
+// TaskDeletePreparation is produced inside the SQLite IMMEDIATE transaction
 // after asset and anchor writers have been excluded. Prepare callbacks may use
-// TrafficHosts to stage an external traffic deletion before PostgreSQL commits.
+// TrafficHosts to stage an external traffic deletion before SQLite commits.
 type TaskDeletePreparation struct {
 	ExplorationID int64
 	TrafficHosts  []string
@@ -248,63 +248,42 @@ RETURNING id, status, paused, created_at`, opts.Name, opts.CategoryID, descripti
 	} else {
 		t.LLMFailoverState = "ready"
 	}
-	return t, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return t, nil
 }
 
 func insertTaskCompanies(tx *sql.Tx, taskID int64, companyIDs []int64) error {
 	if len(companyIDs) == 0 {
 		return nil
 	}
-	// Company scope edits rebuild assets.company_id. Serialize the creation-time
-	// snapshot with those edits so the task sees one committed attribution state.
-	if err := lockCompanyScopeMutation(tx); err != nil {
-		return err
-	}
-	var inserted int
-	err := tx.QueryRow(`
-WITH requested(company_id, position) AS (
-    SELECT company_id, position
-    FROM unnest($2::bigint[]) WITH ORDINALITY AS requested(company_id, position)
-), inserted AS (
-    INSERT INTO task_scope(task_id, kind, company_id, source, reason)
-    SELECT $1, 'company', companies.id, 'manual', '작업 생성 시 연결한 기업'
-    FROM requested
-    JOIN companies ON companies.id=requested.company_id
-    ORDER BY requested.position
-    RETURNING company_id
-)
-SELECT count(*) FROM inserted`, taskID, companyIDs).Scan(&inserted)
-	if err != nil {
-		return err
-	}
-	if inserted != len(companyIDs) {
-		return fmt.Errorf("%w: one or more companies do not exist", ErrTaskCompanyNotFound)
-	}
-
-	// Updating task_ids fires sync_task_asset_links, which first creates generic
-	// source rows. The provenance upsert must therefore run afterwards so the
-	// company name and creation-time reason remain visible to operators.
-	if _, err := tx.Exec(`
-UPDATE assets
-SET task_ids=CASE
-    WHEN $1=ANY(task_ids) THEN task_ids
-    ELSE array_append(task_ids, $1)
-END
-WHERE company_id=ANY($2::bigint[])`, taskID, companyIDs); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`
+	// BEGIN IMMEDIATE serializes this snapshot with scope/asset mutations.
+	for _, companyID := range companyIDs {
+		res, err := tx.Exec(`INSERT INTO task_scope(task_id,kind,company_id,source,reason)
+SELECT ?1,'company',id,'manual','작업 생성 시 연결한 기업' FROM companies WHERE id=?2`, taskID, companyID)
+		if err != nil {
+			return err
+		}
+		count, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if count != 1 {
+			return ErrTaskCompanyNotFound
+		}
+		if _, err := tx.Exec(`
 INSERT INTO task_asset_links(task_id, asset_id, source, source_summary)
-SELECT $1, asset.id, $3, '작업 생성 시 연결한 기업: ' || company.name
+SELECT ?1, asset.id, ?3, '작업 생성 시 연결한 기업: ' || company.name
 FROM assets asset
 JOIN companies company ON company.id=asset.company_id
-WHERE asset.company_id=ANY($2::bigint[])
-  AND $1=ANY(asset.task_ids)
+WHERE asset.company_id=?2
 ON CONFLICT (task_id, asset_id) DO UPDATE
 SET source=EXCLUDED.source,
     source_summary=EXCLUDED.source_summary,
-    source_node_id=NULL`, taskID, companyIDs, taskCompanyAssetSource); err != nil {
-		return err
+	source_node_id=NULL`, taskID, companyID, taskCompanyAssetSource); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -321,7 +300,11 @@ SELECT $1, id FROM tasks WHERE id=$2 AND deleted_at IS NULL`, taskID, sourceID)
 		if err != nil {
 			return err
 		}
-		if n, _ := res.RowsAffected(); n != 1 {
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n != 1 {
 			return fmt.Errorf("source task %d not found", sourceID)
 		}
 	}
@@ -398,10 +381,10 @@ type TaskPatch struct {
 // Re-pinning an already pinned task preserves its original position.
 func (d *DB) UpdateTask(id int64, patch TaskPatch) (*Task, error) {
 	task, err := scanTask(d.QueryRow(`UPDATE tasks SET
-	name = CASE WHEN $2::boolean THEN $3 ELSE name END,
+	name = CASE WHEN $2 THEN $3 ELSE name END,
 	pinned_at = CASE
-		WHEN $4::boolean IS NULL THEN pinned_at
-		WHEN $4::boolean THEN COALESCE(pinned_at, now())
+		WHEN $4 IS NULL THEN pinned_at
+		WHEN $4 THEN COALESCE(pinned_at, strftime('%Y-%m-%d %H:%M:%f','now'))
 		ELSE NULL
 	END
 WHERE id=$1 AND deleted_at IS NULL
@@ -444,7 +427,7 @@ func (d *DB) Enqueue(id int64, mode string) error {
 	}
 	_, err := d.Exec(`UPDATE tasks
 SET queued=true,
-    queued_at=CASE WHEN queued THEN COALESCE(queued_at, now()) ELSE now() END,
+    queued_at=CASE WHEN queued THEN COALESCE(queued_at, strftime('%Y-%m-%d %H:%M:%f','now')) ELSE strftime('%Y-%m-%d %H:%M:%f','now') END,
     queue_mode=CASE
         WHEN queue_mode='bootstrap' OR $2='bootstrap' THEN 'bootstrap'
         ELSE 'resume'
@@ -481,7 +464,7 @@ func (d *DB) SetStatus(id int64, status string) error {
 	_, err := d.Exec(`
 UPDATE tasks
    SET status = $1,
-       completed_at = CASE WHEN $1 IN ('done','failed','timeout') THEN COALESCE(completed_at, now()) ELSE NULL END
+       completed_at = CASE WHEN $1 IN ('done','failed','timeout') THEN COALESCE(completed_at, strftime('%Y-%m-%d %H:%M:%f','now')) ELSE NULL END
  WHERE id = $2`, status, id)
 	return err
 }
@@ -494,13 +477,13 @@ func (d *DB) SetTerminalStatusGuarded(id int64, status string) (won bool, err er
 	res, err := d.Exec(`
 UPDATE tasks
    SET status = $1,
-       completed_at = COALESCE(completed_at, now())
+       completed_at = COALESCE(completed_at, strftime('%Y-%m-%d %H:%M:%f','now'))
  WHERE id = $2 AND status NOT IN ('done','failed','timeout')`, status, id)
 	if err != nil {
 		return false, err
 	}
-	n, _ := res.RowsAffected()
-	return n > 0, nil
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 // StampFirstRun records a task's first-real-run moment and computes its absolute
@@ -511,10 +494,10 @@ func (d *DB) StampFirstRun(id int64, timeoutSeconds int) (*time.Time, error) {
 	var deadline *time.Time
 	err := d.QueryRow(`
 UPDATE tasks
-   SET first_run_at = COALESCE(first_run_at, now()),
+   SET first_run_at = COALESCE(first_run_at, strftime('%Y-%m-%d %H:%M:%f','now')),
        deadline_at  = CASE
            WHEN first_run_at IS NOT NULL THEN deadline_at            -- 이미 기록됨: 변경하지 않음
-           WHEN $2 > 0 THEN now() + make_interval(secs => $2)
+           WHEN $2 > 0 THEN strftime('%Y-%m-%d %H:%M:%f','now',printf('+%d seconds',$2))
            ELSE NULL END
  WHERE id = $1
  RETURNING deadline_at`, id, timeoutSeconds).Scan(&deadline)
@@ -539,13 +522,13 @@ func (d *DB) DeleteTaskCascade(id int64, deleteAssets, deleteFindings bool, dele
 }
 
 // DeleteTaskCascadePrepared coordinates reversible external deletion with the
-// PostgreSQL cascade. When prepare is non-nil, host ownership is resolved and
+// SQLite cascade. When prepare is non-nil, host ownership is resolved and
 // prepare is invoked inside this transaction while asset and anchor writers are
 // excluded. The locks remain held through commit, closing the window where a
 // host could become shared after its traffic had already been staged.
 //
 // prepare must only stage reversible work. Any returned error or later database
-// error rolls PostgreSQL back; the caller remains responsible for rolling back
+// error rolls SQLite back; the caller remains responsible for rolling back
 // external work that its callback staged successfully.
 func (d *DB) DeleteTaskCascadePrepared(
 	id int64,
@@ -559,22 +542,14 @@ func (d *DB) DeleteTaskCascadePrepared(
 	}
 	defer tx.Rollback()
 	var expID int64
-	if err := tx.QueryRow(`SELECT exploration_id FROM tasks WHERE id=$1 FOR UPDATE`, id).Scan(&expID); err != nil {
+	if err := tx.QueryRow(`SELECT exploration_id FROM tasks WHERE id=$1`, id).Scan(&expID); err != nil {
 		if err == sql.ErrNoRows {
 			return result, nil // already gone
 		}
 		return result, err
 	}
 
-	// SHARE ROW EXCLUSIVE conflicts with every INSERT/UPDATE/DELETE on these
-	// tables and with another coordinated deletion. Taking both in one fixed order
-	// prevents phantoms (a distinct asset row for the same host) as well as new
-	// ownership/anchor references until the deletion transaction commits.
-	if deleteAssets || prepare != nil {
-		if _, err := tx.Exec(`LOCK TABLE assets, exploration_anchors IN SHARE ROW EXCLUSIVE MODE`); err != nil {
-			return result, err
-		}
-	}
+	// BEGIN IMMEDIATE prevents new ownership and anchor writes until commit.
 	if prepare != nil {
 		hosts, err := hostsForTaskDeletion(tx, id, expID)
 		if err != nil {
@@ -588,13 +563,13 @@ func (d *DB) DeleteTaskCascadePrepared(
 		}
 	}
 	if deleteAssets {
-		// Ownership is the union of explicit task_ids and this exploration's anchors.
+		// Ownership is the union of task links and this exploration's anchors.
 		// An asset is deletable only when no other live task references it through
 		// either mechanism. This covers legacy anchor-only seeds without destroying
 		// evidence anchored by another task.
 		res, err := tx.Exec(`
 WITH candidate_assets AS (
-  SELECT id FROM assets WHERE $1 = ANY(task_ids)
+  SELECT asset_id AS id FROM task_asset_links WHERE task_id=$1
   UNION
   SELECT ea.asset_id
   FROM exploration_anchors ea
@@ -607,7 +582,8 @@ deletable AS (
   JOIN candidate_assets c ON c.id=a.id
   WHERE NOT EXISTS (
     SELECT 1 FROM tasks t
-    WHERE t.id<>$1 AND t.deleted_at IS NULL AND t.id=ANY(a.task_ids)
+    JOIN task_asset_links link ON link.task_id=t.id
+    WHERE t.id<>$1 AND t.deleted_at IS NULL AND link.asset_id=a.id
   ) AND NOT EXISTS (
     SELECT 1
     FROM exploration_anchors ea
@@ -616,31 +592,43 @@ deletable AS (
     WHERE ea.asset_id=a.id AND t.id<>$1 AND t.deleted_at IS NULL
   )
 )
-DELETE FROM assets a USING deletable d WHERE a.id=d.id`, id, expID)
+DELETE FROM assets WHERE id IN (SELECT id FROM deletable)`, id, expID)
 		if err != nil {
 			return result, err
 		}
-		result.AssetsDeleted, _ = res.RowsAffected()
+		result.AssetsDeleted, err = res.RowsAffected()
+		if err != nil {
+			return TaskDeleteResult{}, err
+		}
 
-		res, err = tx.Exec(`UPDATE assets SET task_ids = array_remove(task_ids, $1) WHERE $1 = ANY(task_ids)`, id)
+		res, err = tx.Exec(`DELETE FROM task_asset_links WHERE task_id=$1`, id)
 		if err != nil {
 			return result, err
 		}
-		result.AssetsDetached, _ = res.RowsAffected()
+		result.AssetsDetached, err = res.RowsAffected()
+		if err != nil {
+			return TaskDeleteResult{}, err
+		}
 	}
 	if deleteFindings {
 		res, err := tx.Exec(`DELETE FROM findings WHERE task_id = $1`, id)
 		if err != nil {
 			return result, err
 		}
-		result.FindingsDeleted, _ = res.RowsAffected()
+		result.FindingsDeleted, err = res.RowsAffected()
+		if err != nil {
+			return TaskDeleteResult{}, err
+		}
 	}
 	if deleteLLMRecords {
 		res, err := tx.Exec(`DELETE FROM llm_records WHERE COALESCE(task_id,'')=$1`, strconv.FormatInt(id, 10))
 		if err != nil {
 			return result, err
 		}
-		result.LLMRecordsDeleted, _ = res.RowsAffected()
+		result.LLMRecordsDeleted, err = res.RowsAffected()
+		if err != nil {
+			return TaskDeleteResult{}, err
+		}
 	}
 	// llm_usage (the token metering ledger) is intentionally NOT deleted with the
 	// task — it is kept as historical accounting even after the task is gone.
@@ -650,5 +638,8 @@ DELETE FROM assets a USING deletable d WHERE a.id=d.id`, id, expID)
 	if _, err := tx.Exec(`DELETE FROM explorations WHERE id=$1`, expID); err != nil {
 		return result, err
 	}
-	return result, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return TaskDeleteResult{}, err
+	}
+	return result, nil
 }

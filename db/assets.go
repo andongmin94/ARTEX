@@ -110,9 +110,6 @@ func (s *AssetStore) withCompanyScopeMutation(fn func(*AssetStore) (int64, error
 		return 0, err
 	}
 	defer tx.Rollback() //nolint:errcheck
-	if err := lockCompanyScopeMutation(tx); err != nil {
-		return 0, err
-	}
 	scoped := &AssetStore{db: s.db, company: s.company, tx: tx}
 	id, err := fn(scoped)
 	if err != nil {
@@ -194,44 +191,6 @@ func parseURL(raw string) (domain string, port int, serviceName string) {
 	return
 }
 
-func marshalJSONBArray(items []map[string]any) (string, error) {
-	if len(items) == 0 {
-		return "{}", nil
-	}
-	parts := make([]string, len(items))
-	for i, m := range items {
-		b, err := json.Marshal(m)
-		if err != nil {
-			return "", err
-		}
-		// PostgreSQL array literal for jsonb[]: each element must be
-		// double-quoted with internal backslashes and double-quotes escaped.
-		s := strings.ReplaceAll(string(b), `\`, `\\`)
-		s = strings.ReplaceAll(s, `"`, `\"`)
-		parts[i] = `"` + s + `"`
-	}
-	return "{" + strings.Join(parts, ",") + "}", nil
-}
-
-func marshalStringArray(items []string) string {
-	if len(items) == 0 {
-		return "{}"
-	}
-	escaped := make([]string, len(items))
-	for i, s := range items {
-		escaped[i] = `"` + strings.ReplaceAll(s, `"`, `\"`) + `"`
-	}
-	return "{" + strings.Join(escaped, ",") + "}"
-}
-
-func marshalPortServices(ps []PortService) (string, error) {
-	items := make([]map[string]any, len(ps))
-	for i, p := range ps {
-		items[i] = map[string]any{"port": p.Port, "service": p.Service}
-	}
-	return marshalJSONBArray(items)
-}
-
 // nullableInt64 returns sql.NullInt64.
 func nullableInt(v int) interface{} {
 	if v == 0 {
@@ -258,47 +217,9 @@ func (s *AssetStore) UpsertRootDomain(req UpsertRootDomainReq) (int64, error) {
 		return 0, fmt.Errorf("domain is required")
 	}
 	if s.tx == nil {
-		return s.withCompanyScopeMutation(func(scoped *AssetStore) (int64, error) {
-			return scoped.UpsertRootDomain(req)
-		})
+		return s.withCompanyScopeMutation(func(scoped *AssetStore) (int64, error) { return scoped.UpsertRootDomain(req) })
 	}
-	companyID, err := s.resolveCompanyWithICP(domain, "", req.ICP)
-	if err != nil {
-		return 0, err
-	}
-
-	var taskIDs string
-	if req.TaskID > 0 {
-		taskIDs = fmt.Sprintf("{%d}", req.TaskID)
-	} else {
-		taskIDs = "{}"
-	}
-
-	var icpVal any
-	if req.ICP != "" {
-		icpVal = req.ICP
-	}
-
-	var id int64
-	err = s.tx.QueryRow(`
-INSERT INTO assets(type, domain, root_domain, icp, company_id, company_source, task_ids)
-VALUES ('root_domain', $1, $1, $2, $3, 'scope', $4::bigint[])
-ON CONFLICT (domain) WHERE type = 'root_domain' DO UPDATE SET
-    icp        = COALESCE(EXCLUDED.icp, assets.icp),
-    company_id = CASE
-        WHEN assets.company_source = 'explicit' AND assets.company_id IS NOT NULL THEN assets.company_id
-        ELSE COALESCE(EXCLUDED.company_id, assets.company_id)
-    END,
-    company_source = CASE
-        WHEN assets.company_source = 'explicit' AND assets.company_id IS NOT NULL THEN 'explicit'
-        WHEN EXCLUDED.company_id IS NOT NULL THEN 'scope'
-        ELSE assets.company_source
-    END,
-    task_ids   = (SELECT ARRAY(SELECT DISTINCT unnest(assets.task_ids || EXCLUDED.task_ids))),
-    extra      = assets.extra || EXCLUDED.extra,
-    last_seen  = now()
-RETURNING id`, domain, icpVal, companyID, taskIDs).Scan(&id)
-	return id, err
+	return s.saveAsset(&Asset{Type: "root_domain", Domain: domain, RootDomain: domain, ICP: req.ICP}, req.TaskID, false)
 }
 
 // ErrAssetIPInvalid marks a non-address value in an asset's ip field. Both
@@ -306,12 +227,9 @@ RETURNING id`, domain, icpVal, companyID, taskIDs).Scan(&id)
 // bad entry never costs the rest of the batch.
 var ErrAssetIPInvalid = errors.New("invalid asset ip")
 
-// ValidateAssetIP keeps hostnames out of assets.ip. Network attribution casts
-// that column to inet (see try_inet in schema.sql), so a hostname stored here is
-// silently invisible to every IP/CIDR scope rule — the asset simply never gets
-// attributed and nobody can tell why. The message states the fix rather than
-// just the fault, so an agent can correct the item on its next turn. An empty
-// value is accepted: the ip field is optional for service and endpoint assets.
+// ValidateAssetIP keeps hostnames out of assets.ip so network scope and
+// attribution operate on addresses. Empty values are accepted for optional
+// service and endpoint IP fields; the API reports invalid items individually.
 func ValidateAssetIP(value string) error {
 	if value == "" || net.ParseIP(value) != nil {
 		return nil
@@ -336,102 +254,35 @@ type UpsertIPReq struct {
 
 // UpsertIP idempotently inserts or merges an IP asset.
 func (s *AssetStore) UpsertIP(req UpsertIPReq) (int64, error) {
-	if req.IP == "" {
+	ip, _, _, err := sqliteAddress(req.IP)
+	if err != nil {
+		return 0, err
+	}
+	if ip == "" {
 		return 0, fmt.Errorf("ip is required")
 	}
-	if err := ValidateAssetIP(req.IP); err != nil {
-		return 0, err
-	}
 	if s.tx == nil {
-		return s.withCompanyScopeMutation(func(scoped *AssetStore) (int64, error) {
-			return scoped.UpsertIP(req)
-		})
+		return s.withCompanyScopeMutation(func(scoped *AssetStore) (int64, error) { return scoped.UpsertIP(req) })
 	}
-	cseg := calcCSegment(req.IP)
-	companyID, err := s.resolveCompanyWithICP("", req.IP, "")
-	if err != nil {
-		return 0, err
+	ports := make([]map[string]any, 0, len(req.OpenPorts))
+	for _, port := range req.OpenPorts {
+		if port.Port < 1 || port.Port > 65535 {
+			return 0, fmt.Errorf("port must be between 1 and 65535")
+		}
+		ports = append(ports, map[string]any{"port": port.Port, "service": port.Service})
 	}
-
-	var taskIDs string
-	if req.TaskID > 0 {
-		taskIDs = fmt.Sprintf("{%d}", req.TaskID)
-	} else {
-		taskIDs = "{}"
-	}
-
-	boundDomains := marshalStringArray(req.BoundDomains)
-	openPortsJSON, err := marshalPortServices(req.OpenPorts)
-	if err != nil {
-		return 0, err
-	}
-
-	var csegVal any
-	if cseg != "" {
-		csegVal = cseg
-	}
-
-	var id int64
-	err = s.tx.QueryRow(`
-INSERT INTO assets(type, ip, c_segment, bound_domains, open_ports, company_id, company_source, task_ids)
-VALUES ('ip', $1, $2::cidr, $3::text[], $4::jsonb[], $5, 'scope', $6::bigint[])
-ON CONFLICT (ip) WHERE type = 'ip' DO UPDATE SET
-    bound_domains = (SELECT ARRAY(SELECT DISTINCT unnest(assets.bound_domains || EXCLUDED.bound_domains))),
-    open_ports    = (
-        SELECT ARRAY(
-            SELECT DISTINCT ON ((elem->>'port')::int) elem
-            FROM unnest(assets.open_ports || EXCLUDED.open_ports) AS elem
-            ORDER BY (elem->>'port')::int,
-                     CASE WHEN elem->>'service' IS NOT NULL AND elem->>'service' <> '' THEN 0 ELSE 1 END
-        )
-    ),
-    c_segment  = COALESCE(assets.c_segment, EXCLUDED.c_segment),
-    company_id = CASE
-        WHEN assets.company_source = 'explicit' AND assets.company_id IS NOT NULL THEN assets.company_id
-        ELSE COALESCE(EXCLUDED.company_id, assets.company_id)
-    END,
-    company_source = CASE
-        WHEN assets.company_source = 'explicit' AND assets.company_id IS NOT NULL THEN 'explicit'
-        WHEN EXCLUDED.company_id IS NOT NULL THEN 'scope'
-        ELSE assets.company_source
-    END,
-    task_ids   = (SELECT ARRAY(SELECT DISTINCT unnest(assets.task_ids || EXCLUDED.task_ids))),
-    last_seen  = now()
-RETURNING id`, req.IP, csegVal, boundDomains, openPortsJSON, companyID, taskIDs).Scan(&id)
-	return id, err
+	return s.saveAsset(&Asset{Type: "ip", IP: ip, CSegment: calcCSegment(ip), BoundDomains: req.BoundDomains, OpenPorts: ports}, req.TaskID, false)
 }
 
 // AppendIPPort appends a {port, service} entry to an existing IP asset's open_ports.
-func (s *AssetStore) AppendIPPort(ipStr string, port int, serviceName string) error {
-	if ipStr == "" || port == 0 {
-		return nil
-	}
-	entry, _ := json.Marshal(map[string]any{"port": port, "service": serviceName})
-	_, err := s.db.Exec(`
-UPDATE assets SET
-    open_ports = (
-        SELECT ARRAY(
-            SELECT DISTINCT ON ((elem->>'port')::int) elem
-            FROM unnest(open_ports || ARRAY[$1::jsonb]) AS elem
-            ORDER BY (elem->>'port')::int,
-                     CASE WHEN elem->>'service' IS NOT NULL AND elem->>'service' <> '' THEN 0 ELSE 1 END
-        )
-    ),
-    last_seen = now()
-WHERE type = 'ip' AND ip = $2`, string(entry), ipStr)
+func (s *AssetStore) AppendIPPort(ip string, port int, service string) error {
+	_, err := s.UpsertIP(UpsertIPReq{IP: ip, OpenPorts: []PortService{{Port: port, Service: service}}})
 	return err
 }
 
 // AppendIPBoundDomain appends a domain to an existing IP asset's bound_domains.
-func (s *AssetStore) AppendIPBoundDomain(ipStr, domain string) error {
-	if ipStr == "" || domain == "" {
-		return nil
-	}
-	_, err := s.db.Exec(`
-UPDATE assets SET
-    bound_domains = (SELECT ARRAY(SELECT DISTINCT unnest(bound_domains || ARRAY[$1::text]))),
-    last_seen = now()
-WHERE type = 'ip' AND ip = $2`, domain, ipStr)
+func (s *AssetStore) AppendIPBoundDomain(ip, domain string) error {
+	_, err := s.UpsertIP(UpsertIPReq{IP: ip, BoundDomains: []string{DomainKey(domain)}})
 	return err
 }
 
@@ -450,103 +301,39 @@ type UpsertSubdomainReq struct {
 
 // UpsertSubdomain idempotently inserts or merges a subdomain asset and triggers
 // side effects: root_domain upsert + IP bound_domains update.
-func (s *AssetStore) UpsertSubdomain(req UpsertSubdomainReq) (id int64, err error) {
+func (s *AssetStore) UpsertSubdomain(req UpsertSubdomainReq) (int64, error) {
 	domain := DomainKey(req.Domain)
 	if domain == "" {
 		return 0, fmt.Errorf("domain is required")
 	}
 	if s.tx == nil {
-		return s.withCompanyScopeMutation(func(scoped *AssetStore) (int64, error) {
-			return scoped.UpsertSubdomain(req)
-		})
+		return s.withCompanyScopeMutation(func(scoped *AssetStore) (int64, error) { return scoped.UpsertSubdomain(req) })
 	}
-
-	rootDomain, _ := RootDomain(domain)
-	if rootDomain == "" {
-		rootDomain = domain
+	root, _ := RootDomain(domain)
+	if root == "" {
+		root = domain
 	}
-
-	// Resolve by root domain first, then the asset's exact normalized ICP.
-	companyID, err := s.resolveCompanyWithICP(rootDomain, "", req.ICP)
-	if err != nil {
+	if _, err := s.UpsertRootDomain(UpsertRootDomainReq{Domain: root, TaskID: req.TaskID}); err != nil {
 		return 0, err
 	}
-
-	// side effect 1: ensure root domain exists
-	_, _ = s.UpsertRootDomain(UpsertRootDomainReq{
-		Domain: rootDomain,
-		TaskID: req.TaskID,
-	})
-
-	// side effect 2: if A/AAAA record, upsert each IP + bind domain.
-	// RecordValue is []string; each element may itself be comma-separated (legacy).
-	var ipStr string // first valid IP, used for the subdomain row itself
+	var ip string
 	if req.RecordType == "A" || req.RecordType == "AAAA" {
-		for _, rv := range req.RecordValue {
-			for _, part := range strings.Split(rv, ",") {
-				candidate := strings.TrimSpace(part)
-				if candidate == "" || net.ParseIP(candidate) == nil {
+		for _, value := range req.RecordValue {
+			for _, part := range strings.Split(value, ",") {
+				normalized, _, _, err := sqliteAddress(strings.TrimSpace(part))
+				if err != nil || normalized == "" {
 					continue
 				}
-				if ipStr == "" {
-					ipStr = candidate
+				if ip == "" {
+					ip = normalized
 				}
-				_, _ = s.UpsertIP(UpsertIPReq{
-					IP:           candidate,
-					BoundDomains: []string{domain},
-					TaskID:       req.TaskID,
-				})
+				if _, err := s.UpsertIP(UpsertIPReq{IP: normalized, BoundDomains: []string{domain}, TaskID: req.TaskID}); err != nil {
+					return 0, err
+				}
 			}
 		}
 	}
-
-	cseg := calcCSegment(ipStr)
-	if companyID == nil && ipStr != "" {
-		companyID, _ = s.resolveCompanyWithICP("", ipStr, "")
-	}
-
-	var taskIDs string
-	if req.TaskID > 0 {
-		taskIDs = fmt.Sprintf("{%d}", req.TaskID)
-	} else {
-		taskIDs = "{}"
-	}
-
-	var icpVal, csegVal, ipVal any
-	if req.ICP != "" {
-		icpVal = req.ICP
-	}
-	if cseg != "" {
-		csegVal = cseg
-	}
-	if ipStr != "" {
-		ipVal = ipStr
-	}
-	recordType := req.RecordType
-	recordValueArr := marshalStringArray(req.RecordValue)
-
-	err = s.tx.QueryRow(`
-INSERT INTO assets(type, domain, root_domain, record_type, record_value, ip, c_segment, icp, company_id, company_source, task_ids)
-VALUES ('subdomain', $1, $2, $3, $4::text[], $5, $6::cidr, $7, $8, 'scope', $9::bigint[])
-ON CONFLICT (domain, COALESCE(record_type,'')) WHERE type = 'subdomain' DO UPDATE SET
-    ip           = COALESCE(EXCLUDED.ip, assets.ip),
-    c_segment    = COALESCE(EXCLUDED.c_segment, assets.c_segment),
-    icp          = COALESCE(EXCLUDED.icp, assets.icp),
-    company_id   = CASE
-        WHEN assets.company_source = 'explicit' AND assets.company_id IS NOT NULL THEN assets.company_id
-        ELSE COALESCE(EXCLUDED.company_id, assets.company_id)
-    END,
-    company_source = CASE
-        WHEN assets.company_source = 'explicit' AND assets.company_id IS NOT NULL THEN 'explicit'
-        WHEN EXCLUDED.company_id IS NOT NULL THEN 'scope'
-        ELSE assets.company_source
-    END,
-    task_ids     = (SELECT ARRAY(SELECT DISTINCT unnest(assets.task_ids || EXCLUDED.task_ids))),
-    record_value = (SELECT ARRAY(SELECT DISTINCT unnest(assets.record_value || EXCLUDED.record_value))),
-    extra        = assets.extra || EXCLUDED.extra,
-    last_seen    = now()
-RETURNING id`, domain, rootDomain, recordType, recordValueArr, ipVal, csegVal, icpVal, companyID, taskIDs).Scan(&id)
-	return id, err
+	return s.saveAsset(&Asset{Type: "subdomain", Domain: domain, RootDomain: root, RecordType: req.RecordType, RecordValue: req.RecordValue, IP: ip, CSegment: calcCSegment(ip), ICP: req.ICP}, req.TaskID, false)
 }
 
 // =====================================================================
@@ -570,95 +357,9 @@ func (s *AssetStore) UpsertApp(req UpsertAppReq) (int64, error) {
 		return 0, fmt.Errorf("app name is required")
 	}
 	if s.tx == nil {
-		return s.withCompanyScopeMutation(func(scoped *AssetStore) (int64, error) {
-			return scoped.UpsertApp(req)
-		})
+		return s.withCompanyScopeMutation(func(scoped *AssetStore) (int64, error) { return scoped.UpsertApp(req) })
 	}
-
-	var taskIDs string
-	if req.TaskID > 0 {
-		taskIDs = fmt.Sprintf("{%d}", req.TaskID)
-	} else {
-		taskIDs = "{}"
-	}
-
-	var bundleVal, catVal, descVal, icpVal, companyIDVal any
-	companySource := "scope"
-	if req.BundleID != "" {
-		bundleVal = req.BundleID
-	}
-	if req.Category != "" {
-		catVal = req.Category
-	}
-	if req.Description != "" {
-		descVal = req.Description
-	}
-	if req.ICP != "" {
-		icpVal = req.ICP
-	}
-	if req.CompanyID != nil {
-		companyIDVal = *req.CompanyID
-		companySource = "explicit"
-	} else {
-		companyID, err := s.resolveCompanyWithICP("", "", req.ICP)
-		if err != nil {
-			return 0, err
-		}
-		if companyID != nil {
-			companyIDVal = *companyID
-		}
-	}
-
-	var id int64
-	var err error
-
-	if req.BundleID != "" {
-		err = s.tx.QueryRow(`
-INSERT INTO assets(type, bundle_id, app_name, category, app_description, app_icp, company_id, company_source, task_ids)
-VALUES ('app', $1, $2, $3, $4, $5, $6, $7, $8::bigint[])
-ON CONFLICT (bundle_id) WHERE type = 'app' AND bundle_id IS NOT NULL DO UPDATE SET
-    app_name        = COALESCE(EXCLUDED.app_name, assets.app_name),
-    category        = COALESCE(EXCLUDED.category, assets.category),
-    app_description = COALESCE(EXCLUDED.app_description, assets.app_description),
-    app_icp         = COALESCE(EXCLUDED.app_icp, assets.app_icp),
-    company_id      = CASE
-        WHEN EXCLUDED.company_source = 'explicit' THEN EXCLUDED.company_id
-        WHEN assets.company_source = 'explicit' AND assets.company_id IS NOT NULL THEN assets.company_id
-        ELSE COALESCE(EXCLUDED.company_id, assets.company_id)
-    END,
-    company_source  = CASE
-        WHEN EXCLUDED.company_source = 'explicit' THEN 'explicit'
-        WHEN assets.company_source = 'explicit' AND assets.company_id IS NOT NULL THEN 'explicit'
-        WHEN EXCLUDED.company_id IS NOT NULL THEN 'scope'
-        ELSE assets.company_source
-    END,
-    task_ids        = (SELECT ARRAY(SELECT DISTINCT unnest(assets.task_ids || EXCLUDED.task_ids))),
-    last_seen       = now()
-RETURNING id`, bundleVal, req.Name, catVal, descVal, icpVal, companyIDVal, companySource, taskIDs).Scan(&id)
-	} else {
-		err = s.tx.QueryRow(`
-INSERT INTO assets(type, bundle_id, app_name, category, app_description, app_icp, company_id, company_source, task_ids)
-VALUES ('app', NULL, $1, $2, $3, $4, $5, $6, $7::bigint[])
-ON CONFLICT (app_name) WHERE type = 'app' AND bundle_id IS NULL DO UPDATE SET
-    category        = COALESCE(EXCLUDED.category, assets.category),
-    app_description = COALESCE(EXCLUDED.app_description, assets.app_description),
-    app_icp         = COALESCE(EXCLUDED.app_icp, assets.app_icp),
-    company_id      = CASE
-        WHEN EXCLUDED.company_source = 'explicit' THEN EXCLUDED.company_id
-        WHEN assets.company_source = 'explicit' AND assets.company_id IS NOT NULL THEN assets.company_id
-        ELSE COALESCE(EXCLUDED.company_id, assets.company_id)
-    END,
-    company_source  = CASE
-        WHEN EXCLUDED.company_source = 'explicit' THEN 'explicit'
-        WHEN assets.company_source = 'explicit' AND assets.company_id IS NOT NULL THEN 'explicit'
-        WHEN EXCLUDED.company_id IS NOT NULL THEN 'scope'
-        ELSE assets.company_source
-    END,
-    task_ids        = (SELECT ARRAY(SELECT DISTINCT unnest(assets.task_ids || EXCLUDED.task_ids))),
-    last_seen       = now()
-RETURNING id`, req.Name, catVal, descVal, icpVal, companyIDVal, companySource, taskIDs).Scan(&id)
-	}
-	return id, err
+	return s.saveAsset(&Asset{Type: "app", AppName: req.Name, BundleID: req.BundleID, Category: req.Category, AppDescription: req.Description, AppICP: req.ICP, CompanyID: req.CompanyID}, req.TaskID, req.CompanyID != nil)
 }
 
 // =====================================================================
@@ -688,116 +389,33 @@ func (s *AssetStore) UpsertHTTPService(req UpsertHTTPServiceReq) (int64, error) 
 		return 0, err
 	}
 	if s.tx == nil {
-		return s.withCompanyScopeMutation(func(scoped *AssetStore) (int64, error) {
-			return scoped.UpsertHTTPService(req)
-		})
+		return s.withCompanyScopeMutation(func(scoped *AssetStore) (int64, error) { return scoped.UpsertHTTPService(req) })
 	}
-	normURL := normalizeURL(req.URL)
-	domain, port, serviceName := parseURL(normURL)
-	rootDomain, _ := RootDomain(domain)
-	if rootDomain == "" {
-		rootDomain = domain
+	raw := normalizeURL(req.URL)
+	domain, port, service := parseURL(raw)
+	root, _ := RootDomain(domain)
+	if root == "" {
+		root = domain
 	}
-
-	cseg := calcCSegment(req.IP)
-	companyID, err := s.resolveCompanyWithICP(rootDomain, req.IP, "")
+	a := &Asset{Type: "service", ServiceType: "http", URL: raw, Domain: domain, RootDomain: root, IP: req.IP, CSegment: calcCSegment(req.IP), ServiceName: service, Technologies: req.Technologies, StatusCode: req.StatusCode, ContentLength: req.ContentLength, PageTitle: req.PageTitle, FaviconMMH3: req.FaviconMMH3, Auth: req.Auth}
+	if port > 0 {
+		a.Port = &port
+	}
+	id, err := s.saveAsset(a, req.TaskID, false)
 	if err != nil {
 		return 0, err
 	}
-
-	var taskIDs string
-	if req.TaskID > 0 {
-		taskIDs = fmt.Sprintf("{%d}", req.TaskID)
-	} else {
-		taskIDs = "{}"
-	}
-
-	techsArr := marshalStringArray(req.Technologies)
-	authJSON, err := marshalJSONBArray(req.Auth)
-	if err != nil {
+	if err := s.linkHostAssets(domain, root, req.TaskID); err != nil {
 		return 0, err
-	}
-
-	var domainVal, ipVal, csegVal, titleVal, faviconVal any
-	if domain != "" {
-		domainVal = domain
 	}
 	if req.IP != "" {
-		ipVal = req.IP
-	}
-	if cseg != "" {
-		csegVal = cseg
-	}
-	if req.PageTitle != "" {
-		titleVal = req.PageTitle
-	}
-	if req.FaviconMMH3 != "" {
-		faviconVal = req.FaviconMMH3
-	}
-
-	var id int64
-	err = s.tx.QueryRow(`
-INSERT INTO assets(
-    type, url, service_type, service_name, domain, ip, port, root_domain,
-    c_segment, favicon_mmh3, technologies, status_code, content_length, page_title,
-    auth, company_id, company_source, task_ids
-)
-VALUES (
-    'service', $1, 'http', $2, $3, $4, $5, $6,
-    $7::cidr, $8, $9::text[], $10, $11, $12,
-    $13::jsonb[], $14, 'scope', $15::bigint[]
-)
-ON CONFLICT (url) WHERE type = 'service' AND service_type = 'http' DO UPDATE SET
-    status_code    = COALESCE(EXCLUDED.status_code,    assets.status_code),
-    content_length = COALESCE(EXCLUDED.content_length, assets.content_length),
-    page_title     = COALESCE(EXCLUDED.page_title,     assets.page_title),
-    favicon_mmh3   = COALESCE(EXCLUDED.favicon_mmh3,   assets.favicon_mmh3),
-    ip             = COALESCE(EXCLUDED.ip,             assets.ip),
-    c_segment      = COALESCE(EXCLUDED.c_segment,      assets.c_segment),
-    technologies   = (SELECT ARRAY(SELECT DISTINCT unnest(assets.technologies || EXCLUDED.technologies))),
-    auth           = (
-        SELECT ARRAY(
-            SELECT DISTINCT ON (elem::text) elem
-            FROM unnest(assets.auth || EXCLUDED.auth) AS elem
-        )
-    ),
-    task_ids       = (SELECT ARRAY(SELECT DISTINCT unnest(assets.task_ids || EXCLUDED.task_ids))),
-    company_id     = CASE
-        WHEN assets.company_source = 'explicit' AND assets.company_id IS NOT NULL THEN assets.company_id
-        ELSE COALESCE(EXCLUDED.company_id, assets.company_id)
-    END,
-    company_source = CASE
-        WHEN assets.company_source = 'explicit' AND assets.company_id IS NOT NULL THEN 'explicit'
-        WHEN EXCLUDED.company_id IS NOT NULL THEN 'scope'
-        ELSE assets.company_source
-    END,
-    last_seen      = now()
-RETURNING id`,
-		normURL, serviceName, domainVal, ipVal, nullableInt(port), rootDomain,
-		csegVal, faviconVal, techsArr, req.StatusCode, req.ContentLength, titleVal,
-		authJSON, companyID, taskIDs,
-	).Scan(&id)
-	if err != nil {
-		return 0, err
-	}
-
-	// side effects: register root_domain + subdomain as their own assets too
-	s.linkHostAssets(domain, rootDomain, req.TaskID)
-	if req.IP != "" {
-		var boundDomains []string
-		if domain != "" {
-			boundDomains = []string{domain}
-		}
-		var openPorts []PortService
+		var ports []PortService
 		if port > 0 {
-			openPorts = []PortService{{Port: port, Service: serviceName}}
+			ports = []PortService{{Port: port, Service: service}}
 		}
-		_, _ = s.UpsertIP(UpsertIPReq{
-			IP:           req.IP,
-			BoundDomains: boundDomains,
-			OpenPorts:    openPorts,
-			TaskID:       req.TaskID,
-		})
+		if _, err := s.UpsertIP(UpsertIPReq{IP: req.IP, BoundDomains: []string{domain}, OpenPorts: ports, TaskID: req.TaskID}); err != nil {
+			return 0, err
+		}
 	}
 	return id, nil
 }
@@ -824,125 +442,52 @@ func (s *AssetStore) UpsertOtherService(req UpsertOtherServiceReq) (int64, error
 	if err := ValidateAssetIP(req.IP); err != nil {
 		return 0, err
 	}
-	if req.Port == 0 {
-		return 0, fmt.Errorf("port is required")
+	if req.Port < 1 || req.Port > 65535 {
+		return 0, fmt.Errorf("port must be between 1 and 65535")
 	}
-	if req.ServiceName == "" {
+	service := strings.ToLower(strings.TrimSpace(req.ServiceName))
+	if service == "" {
 		return 0, fmt.Errorf("service_name is required")
 	}
 	if s.tx == nil {
-		return s.withCompanyScopeMutation(func(scoped *AssetStore) (int64, error) {
-			return scoped.UpsertOtherService(req)
-		})
+		return s.withCompanyScopeMutation(func(scoped *AssetStore) (int64, error) { return scoped.UpsertOtherService(req) })
 	}
-	// normalize service_name (lowercase) so the (domain,ip,port,service_name)
-	// dedup key doesn't split "SSH" and "ssh" into separate rows.
-	serviceName := strings.ToLower(strings.TrimSpace(req.ServiceName))
-
 	domain := DomainKey(req.Domain)
-	var rootDomain string
-	if domain != "" {
-		rootDomain, _ = RootDomain(domain)
-		if rootDomain == "" {
-			rootDomain = domain
-		}
+	root, _ := RootDomain(domain)
+	if root == "" {
+		root = domain
 	}
-
-	cseg := calcCSegment(req.IP)
-	companyID, err := s.resolveCompanyWithICP(rootDomain, req.IP, "")
+	port := req.Port
+	id, err := s.saveAsset(&Asset{Type: "service", ServiceType: "other", ServiceName: service, Domain: domain, RootDomain: root, IP: req.IP, Port: &port, CSegment: calcCSegment(req.IP), Auth: req.Auth}, req.TaskID, false)
 	if err != nil {
 		return 0, err
-	}
-
-	var taskIDs string
-	if req.TaskID > 0 {
-		taskIDs = fmt.Sprintf("{%d}", req.TaskID)
-	} else {
-		taskIDs = "{}"
-	}
-
-	authJSON, err := marshalJSONBArray(req.Auth)
-	if err != nil {
-		return 0, err
-	}
-
-	var domainVal, rootDomainVal, ipVal, csegVal any
-	if domain != "" {
-		domainVal = domain
-	}
-	if rootDomain != "" {
-		rootDomainVal = rootDomain
 	}
 	if req.IP != "" {
-		ipVal = req.IP
+		if _, err := s.UpsertIP(UpsertIPReq{IP: req.IP, BoundDomains: []string{domain}, OpenPorts: []PortService{{Port: port, Service: service}}, TaskID: req.TaskID}); err != nil {
+			return 0, err
+		}
 	}
-	if cseg != "" {
-		csegVal = cseg
-	}
-
-	var id int64
-	err = s.tx.QueryRow(`
-INSERT INTO assets(
-    type, service_type, service_name, domain, ip, port, root_domain,
-    c_segment, auth, company_id, company_source, task_ids
-)
-VALUES ('service', 'other', $1, $2, $3, $4, $5, $6::cidr, $7::jsonb[], $8, 'scope', $9::bigint[])
-ON CONFLICT (COALESCE(domain,''), COALESCE(ip,''), port, service_name) WHERE type = 'service' AND service_type = 'other' DO UPDATE SET
-    domain     = COALESCE(EXCLUDED.domain,     assets.domain),
-    ip         = COALESCE(EXCLUDED.ip,         assets.ip),
-    c_segment  = COALESCE(EXCLUDED.c_segment,  assets.c_segment),
-    auth       = (
-        SELECT ARRAY(
-            SELECT DISTINCT ON (elem::text) elem
-            FROM unnest(assets.auth || EXCLUDED.auth) AS elem
-        )
-    ),
-    task_ids   = (SELECT ARRAY(SELECT DISTINCT unnest(assets.task_ids || EXCLUDED.task_ids))),
-    company_id = CASE
-        WHEN assets.company_source = 'explicit' AND assets.company_id IS NOT NULL THEN assets.company_id
-        ELSE COALESCE(EXCLUDED.company_id, assets.company_id)
-    END,
-    company_source = CASE
-        WHEN assets.company_source = 'explicit' AND assets.company_id IS NOT NULL THEN 'explicit'
-        WHEN EXCLUDED.company_id IS NOT NULL THEN 'scope'
-        ELSE assets.company_source
-    END,
-    last_seen  = now()
-RETURNING id`,
-		serviceName, domainVal, ipVal, req.Port, rootDomainVal,
-		csegVal, authJSON, companyID, taskIDs,
-	).Scan(&id)
-	if err != nil {
+	if err := s.linkHostAssets(domain, root, req.TaskID); err != nil {
 		return 0, err
 	}
-
-	// side effects
-	if req.IP != "" && req.Port > 0 {
-		var boundDomains []string
-		if domain != "" {
-			boundDomains = []string{domain}
-		}
-		_, _ = s.UpsertIP(UpsertIPReq{
-			IP:           req.IP,
-			BoundDomains: boundDomains,
-			OpenPorts:    []PortService{{Port: req.Port, Service: serviceName}},
-			TaskID:       req.TaskID,
-		})
-	}
-	s.linkHostAssets(domain, rootDomain, req.TaskID)
 	return id, nil
 }
 
 // linkHostAssets ensures a service/endpoint's host is also registered as its own
 // root_domain and (when it's a real subdomain, not the apex or an IP) subdomain
 // asset — so those asset types stay populated and can anchor task scope. Best-effort.
-func (s *AssetStore) linkHostAssets(domain, rootDomain string, taskID int64) {
-	if rootDomain != "" {
-		_, _ = s.UpsertRootDomain(UpsertRootDomainReq{Domain: rootDomain, TaskID: taskID})
+func (s *AssetStore) linkHostAssets(domain, root string, taskID int64) error {
+	if root != "" && net.ParseIP(root) == nil {
+		if _, err := s.UpsertRootDomain(UpsertRootDomainReq{Domain: root, TaskID: taskID}); err != nil {
+			return err
+		}
 	}
-	if domain != "" && domain != rootDomain && net.ParseIP(domain) == nil {
-		_, _ = s.UpsertSubdomain(UpsertSubdomainReq{Domain: domain, TaskID: taskID})
+	if domain != "" && domain != root && net.ParseIP(domain) == nil {
+		if _, err := s.UpsertSubdomain(UpsertSubdomainReq{Domain: domain, TaskID: taskID}); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // =====================================================================
@@ -961,100 +506,36 @@ type UpsertEndpointReq struct {
 // UpsertEndpoint inserts or merges an endpoint asset. Domain, port, root_domain
 // are auto-extracted from the URL.
 func (s *AssetStore) UpsertEndpoint(req UpsertEndpointReq) (int64, error) {
-	if req.URL == "" {
-		return 0, fmt.Errorf("url is required")
-	}
-	if req.Method == "" {
-		return 0, fmt.Errorf("method is required")
+	if req.URL == "" || req.Method == "" {
+		return 0, fmt.Errorf("url and method are required")
 	}
 	if err := ValidateAssetIP(req.IP); err != nil {
 		return 0, err
 	}
 	if s.tx == nil {
-		return s.withCompanyScopeMutation(func(scoped *AssetStore) (int64, error) {
-			return scoped.UpsertEndpoint(req)
-		})
+		return s.withCompanyScopeMutation(func(scoped *AssetStore) (int64, error) { return scoped.UpsertEndpoint(req) })
 	}
-	method := strings.ToUpper(req.Method)
-	normURL := normalizeURL(req.URL)
-	domain, port, _ := parseURL(normURL)
-	rootDomain, _ := RootDomain(domain)
-	if rootDomain == "" {
-		rootDomain = domain
+	raw := normalizeURL(req.URL)
+	domain, port, _ := parseURL(raw)
+	root, _ := RootDomain(domain)
+	if root == "" {
+		root = domain
 	}
-
-	cseg := calcCSegment(req.IP)
-	companyID, err := s.resolveCompanyWithICP(rootDomain, req.IP, "")
+	a := &Asset{Type: "endpoint", URL: raw, Method: strings.ToUpper(req.Method), Domain: domain, RootDomain: root, IP: req.IP, CSegment: calcCSegment(req.IP), Params: req.Params}
+	if port > 0 {
+		a.Port = &port
+	}
+	id, err := s.saveAsset(a, req.TaskID, false)
 	if err != nil {
 		return 0, err
 	}
-
-	var taskIDs string
-	if req.TaskID > 0 {
-		taskIDs = fmt.Sprintf("{%d}", req.TaskID)
-	} else {
-		taskIDs = "{}"
-	}
-
-	paramsJSON, err := marshalJSONBArray(req.Params)
-	if err != nil {
+	if err := s.linkHostAssets(domain, root, req.TaskID); err != nil {
 		return 0, err
-	}
-
-	var domainVal, rootDomainVal, ipVal, csegVal any
-	if domain != "" {
-		domainVal = domain
-	}
-	if rootDomain != "" {
-		rootDomainVal = rootDomain
 	}
 	if req.IP != "" {
-		ipVal = req.IP
-	}
-	if cseg != "" {
-		csegVal = cseg
-	}
-
-	var id int64
-	err = s.tx.QueryRow(`
-INSERT INTO assets(
-    type, url, method, domain, ip, port, root_domain,
-    params, company_id, company_source, task_ids, c_segment
-)
-VALUES ('endpoint', $1, $2, $3, $4, $5, $6, $7::jsonb[], $8, 'scope', $9::bigint[], $10::cidr)
-ON CONFLICT (url, method) WHERE type = 'endpoint' DO UPDATE SET
-    params     = (
-        SELECT ARRAY(
-            SELECT DISTINCT ON ((elem->>'location'), (elem->>'name')) elem
-            FROM unnest(assets.params || EXCLUDED.params) AS elem
-            ORDER BY (elem->>'location'), (elem->>'name'), elem::text DESC
-        )
-    ),
-    ip         = COALESCE(EXCLUDED.ip,        assets.ip),
-    c_segment  = COALESCE(EXCLUDED.c_segment, assets.c_segment),
-    task_ids   = (SELECT ARRAY(SELECT DISTINCT unnest(assets.task_ids || EXCLUDED.task_ids))),
-    company_id = CASE
-        WHEN assets.company_source = 'explicit' AND assets.company_id IS NOT NULL THEN assets.company_id
-        ELSE COALESCE(EXCLUDED.company_id, assets.company_id)
-    END,
-    company_source = CASE
-        WHEN assets.company_source = 'explicit' AND assets.company_id IS NOT NULL THEN 'explicit'
-        WHEN EXCLUDED.company_id IS NOT NULL THEN 'scope'
-        ELSE assets.company_source
-    END,
-    last_seen  = now()
-RETURNING id`,
-		normURL, method, domainVal, ipVal, nullableInt(port), rootDomainVal,
-		paramsJSON, companyID, taskIDs, csegVal,
-	).Scan(&id)
-	if err != nil {
-		return 0, err
-	}
-	// side effects: endpoint previously registered none — register its host as
-	// root_domain + subdomain(+IP) so those asset types get populated too.
-	s.linkHostAssets(domain, rootDomain, req.TaskID)
-	if req.IP != "" {
-		_, _ = s.UpsertIP(UpsertIPReq{IP: req.IP, TaskID: req.TaskID})
+		if _, err := s.UpsertIP(UpsertIPReq{IP: req.IP, TaskID: req.TaskID}); err != nil {
+			return 0, err
+		}
 	}
 	return id, nil
 }
@@ -1071,18 +552,7 @@ func (s *AssetStore) QueryByType(typ string, limit, offset int) ([]*Asset, error
 	if offset < 0 {
 		offset = 0
 	}
-	rows, err := s.db.Query(`
-SELECT id, type, company_id, array_to_json(task_ids)::text,
-       COALESCE(domain,''), COALESCE(root_domain,''), COALESCE(ip,''),
-       COALESCE(c_segment::text,''), port,
-       COALESCE(icp,''), array_to_json(bound_domains)::text, array_to_json(open_ports)::text, COALESCE(record_type,''),
-       array_to_json(record_value)::text, COALESCE(bundle_id,''), COALESCE(app_name,''),
-       COALESCE(category,''), COALESCE(app_description,''), COALESCE(app_icp,''),
-       COALESCE(url,''), COALESCE(service_type,''), COALESCE(service_name,''),
-       COALESCE(favicon_mmh3,''), status_code, content_length,
-       COALESCE(page_title,''), array_to_json(technologies)::text, array_to_json(auth)::text,
-       COALESCE(method,''), array_to_json(params)::text, extra, last_seen::text
-FROM assets
+	rows, err := s.db.Query(assetSelectCols+`
 WHERE type = $1
 ORDER BY last_seen DESC, id DESC
 LIMIT $2 OFFSET $3`, typ, limit, offset)
@@ -1103,17 +573,7 @@ func (s *AssetStore) CountByType(typ string) (int, error) {
 // QueryByCompany returns assets for a company, optionally filtered by type.
 // limit <= 0 means no limit.
 func (s *AssetStore) QueryByCompany(companyID int64, typ string, limit, offset int) ([]*Asset, error) {
-	q := `SELECT id, type, company_id, array_to_json(task_ids)::text,
-       COALESCE(domain,''), COALESCE(root_domain,''), COALESCE(ip,''),
-       COALESCE(c_segment::text,''), port,
-       COALESCE(icp,''), array_to_json(bound_domains)::text, array_to_json(open_ports)::text, COALESCE(record_type,''),
-       array_to_json(record_value)::text, COALESCE(bundle_id,''), COALESCE(app_name,''),
-       COALESCE(category,''), COALESCE(app_description,''), COALESCE(app_icp,''),
-       COALESCE(url,''), COALESCE(service_type,''), COALESCE(service_name,''),
-       COALESCE(favicon_mmh3,''), status_code, content_length,
-       COALESCE(page_title,''), array_to_json(technologies)::text, array_to_json(auth)::text,
-       COALESCE(method,''), array_to_json(params)::text, extra, last_seen::text
-FROM assets WHERE company_id = $1`
+	q := assetSelectCols + ` WHERE company_id = $1`
 	args := []any{companyID}
 	if typ != "" {
 		args = append(args, typ)
@@ -1147,25 +607,18 @@ func pageClause(args *[]any, limit, offset int) string {
 		q += fmt.Sprintf(` LIMIT $%d`, len(*args))
 	}
 	if offset > 0 {
+		if limit <= 0 {
+			q += ` LIMIT -1`
+		}
 		*args = append(*args, offset)
 		q += fmt.Sprintf(` OFFSET $%d`, len(*args))
 	}
 	return q
 }
 
-// QueryByTask returns assets rows that have a given task_id in task_ids.
+// QueryByTask returns assets linked to the given task.
 func (s *AssetStore) QueryByTask(taskID int64, typ string, limit, offset int) ([]*Asset, error) {
-	q := `SELECT id, type, company_id, array_to_json(task_ids)::text,
-       COALESCE(domain,''), COALESCE(root_domain,''), COALESCE(ip,''),
-       COALESCE(c_segment::text,''), port,
-       COALESCE(icp,''), array_to_json(bound_domains)::text, array_to_json(open_ports)::text, COALESCE(record_type,''),
-       array_to_json(record_value)::text, COALESCE(bundle_id,''), COALESCE(app_name,''),
-       COALESCE(category,''), COALESCE(app_description,''), COALESCE(app_icp,''),
-       COALESCE(url,''), COALESCE(service_type,''), COALESCE(service_name,''),
-       COALESCE(favicon_mmh3,''), status_code, content_length,
-       COALESCE(page_title,''), array_to_json(technologies)::text, array_to_json(auth)::text,
-       COALESCE(method,''), array_to_json(params)::text, extra, last_seen::text
-FROM assets WHERE $1 = ANY(task_ids)`
+	q := assetSelectCols + ` WHERE EXISTS (SELECT 1 FROM task_asset_links link WHERE link.asset_id=assets.id AND link.task_id=$1)`
 	args := []any{taskID}
 	if typ != "" {
 		args = append(args, typ)
@@ -1188,7 +641,7 @@ FROM assets WHERE $1 = ANY(task_ids)`
 }
 
 func (s *AssetStore) CountByTask(taskID int64, typ string) (int, error) {
-	q := `SELECT count(*) FROM assets WHERE $1 = ANY(task_ids)`
+	q := `SELECT count(*) FROM assets WHERE EXISTS (SELECT 1 FROM task_asset_links link WHERE link.asset_id=assets.id AND link.task_id=$1)`
 	args := []any{taskID}
 	if typ != "" {
 		args = append(args, typ)
@@ -1200,7 +653,7 @@ func (s *AssetStore) CountByTask(taskID int64, typ string) (int, error) {
 }
 
 func (s *AssetStore) CountsByTypeForTask(taskID int64) (map[string]int, error) {
-	rows, err := s.db.Query(`SELECT type, COUNT(*) FROM assets WHERE $1 = ANY(task_ids) GROUP BY type`, taskID)
+	rows, err := s.db.Query(`SELECT type, COUNT(*) FROM assets WHERE EXISTS (SELECT 1 FROM task_asset_links link WHERE link.asset_id=assets.id AND link.task_id=$1) GROUP BY type`, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -1213,15 +666,26 @@ func (s *AssetStore) CountsByTypeForTask(taskID int64) (map[string]int, error) {
 // transaction in DeleteTaskCascadePrepared; this method remains for callers
 // that explicitly manage only asset associations.
 func (s *AssetStore) DeleteByTaskID(taskID int64) (int64, error) {
-	res, err := s.db.Exec(`DELETE FROM assets WHERE task_ids = ARRAY[$1]::bigint[]`, taskID)
+	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
 	}
-	deleted, _ := res.RowsAffected()
-	if _, err := s.db.Exec(`UPDATE assets SET task_ids = array_remove(task_ids, $1) WHERE $1 = ANY(task_ids)`, taskID); err != nil {
-		return deleted, err
+	defer tx.Rollback()
+	res, err := tx.Exec(`DELETE FROM assets WHERE id IN (SELECT asset_id FROM task_asset_links WHERE task_id=?1) AND NOT EXISTS (SELECT 1 FROM task_asset_links link WHERE link.asset_id=assets.id AND link.task_id<>?1) AND NOT EXISTS (SELECT 1 FROM exploration_anchors anchor JOIN exploration_nodes node ON node.id=anchor.node_id JOIN tasks task ON task.exploration_id=node.exploration_id WHERE anchor.asset_id=assets.id AND task.id<>?1 AND task.deleted_at IS NULL)`, taskID)
+	if err != nil {
+		return 0, err
 	}
-	return deleted, nil
+	count, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if _, err := tx.Exec(`DELETE FROM task_asset_links WHERE task_id=?1`, taskID); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 // HostsByTask returns the exact HTTP host candidates attached to a task's
@@ -1230,7 +694,7 @@ func (s *AssetStore) DeleteByTaskID(taskID int64) (int64, error) {
 func (s *AssetStore) HostsByTask(taskID int64) ([]string, error) {
 	rows, err := s.db.Query(`
 SELECT COALESCE(domain,''), COALESCE(ip,''), COALESCE(url,'')
-FROM assets WHERE $1 = ANY(task_ids)`, taskID)
+FROM assets WHERE EXISTS (SELECT 1 FROM task_asset_links link WHERE link.asset_id=assets.id AND link.task_id=$1)`, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -1267,7 +731,7 @@ FROM assets WHERE $1 = ANY(task_ids)`, taskID)
 
 // HostsForTaskDeletion returns hosts that belong to the task being deleted and
 // are not referenced by any other live task. Current-task candidates include
-// both task_ids ownership and exploration anchors so legacy seeded assets (which
+// both task links and exploration anchors so anchor-only assets (which
 // were anchor-only) are covered. Protection is host-wide: if another live task
 // references any asset for a candidate host, that host's global traffic remains.
 func (s *AssetStore) HostsForTaskDeletion(taskID, explorationID int64) ([]string, error) {
@@ -1285,7 +749,7 @@ type rowsQuerier interface {
 func hostsForTaskDeletion(q rowsQuerier, taskID, explorationID int64) ([]string, error) {
 	rows, err := q.Query(`
 WITH current_assets AS (
-  SELECT id FROM assets WHERE $1 = ANY(task_ids)
+  SELECT asset_id AS id FROM task_asset_links WHERE task_id=$1
   UNION
   SELECT ea.asset_id
   FROM exploration_anchors ea
@@ -1297,7 +761,8 @@ other_assets AS (
   FROM assets a
   WHERE EXISTS (
     SELECT 1 FROM tasks t
-    WHERE t.id<>$1 AND t.deleted_at IS NULL AND t.id=ANY(a.task_ids)
+    JOIN task_asset_links link ON link.task_id=t.id
+    WHERE t.id<>$1 AND t.deleted_at IS NULL AND link.asset_id=a.id
   ) OR EXISTS (
     SELECT 1
     FROM exploration_anchors ea
@@ -1353,17 +818,17 @@ FROM assets a JOIN other_assets o ON o.id=a.id`, taskID, explorationID)
 	return out, nil
 }
 
-const assetSelectCols = `SELECT id, type, company_id, array_to_json(task_ids)::text,
-       COALESCE(domain,''), COALESCE(root_domain,''), COALESCE(ip,''),
-       COALESCE(c_segment::text,''), port,
-       COALESCE(icp,''), array_to_json(bound_domains)::text, array_to_json(open_ports)::text, COALESCE(record_type,''),
-       array_to_json(record_value)::text, COALESCE(bundle_id,''), COALESCE(app_name,''),
-       COALESCE(category,''), COALESCE(app_description,''), COALESCE(app_icp,''),
-       COALESCE(url,''), COALESCE(service_type,''), COALESCE(service_name,''),
-       COALESCE(favicon_mmh3,''), status_code, content_length,
-       COALESCE(page_title,''), array_to_json(technologies)::text, array_to_json(auth)::text,
-       COALESCE(method,''), array_to_json(params)::text, extra, last_seen::text
-FROM assets`
+const assetSelectCols = `SELECT id,type,company_id,
+(SELECT json_group_array(task_id) FROM (SELECT task_id FROM task_asset_links WHERE asset_id=assets.id ORDER BY task_id)),
+COALESCE(domain,''),COALESCE(root_domain,''),COALESCE(ip,''),COALESCE(c_segment,''),port,COALESCE(icp,''),
+(SELECT json_group_array(domain) FROM (SELECT domain FROM asset_bound_domains WHERE asset_id=assets.id ORDER BY position)),
+(SELECT json_group_array(json(item)) FROM (SELECT json_patch(extra,json_object('port',port,'service',service)) AS item FROM asset_open_ports WHERE asset_id=assets.id ORDER BY position)),
+COALESCE(record_type,''),
+(SELECT json_group_array(value) FROM (SELECT value FROM asset_records WHERE asset_id=assets.id ORDER BY position)),
+COALESCE(bundle_id,''),COALESCE(app_name,''),COALESCE(category,''),COALESCE(app_description,''),COALESCE(app_icp,''),
+COALESCE(url,''),COALESCE(service_type,''),COALESCE(service_name,''),COALESCE(favicon_mmh3,''),status_code,content_length,COALESCE(page_title,''),
+(SELECT json_group_array(technology) FROM (SELECT technology FROM asset_technologies WHERE asset_id=assets.id ORDER BY position)),
+auth,COALESCE(method,''),params,extra,CAST(last_seen AS TEXT) FROM assets`
 
 // GetByIDs returns assets with the given ids (order preserved by id array order).
 func (s *AssetStore) GetByIDs(ids []int64) ([]*Asset, error) {
@@ -1505,30 +970,17 @@ func scanAssets(rows *sql.Rows) ([]*Asset, error) {
 			cl := contentLength.Int64
 			a.ContentLength = &cl
 		}
-		// parse arrays
-		if len(taskIDsRaw) > 0 {
-			_ = json.Unmarshal(taskIDsRaw, &a.TaskIDs)
-		}
-		if len(boundDomainsRaw) > 0 {
-			_ = json.Unmarshal(boundDomainsRaw, &a.BoundDomains)
-		}
-		if len(openPortsRaw) > 0 {
-			_ = json.Unmarshal(openPortsRaw, &a.OpenPorts)
-		}
-		if len(recordValueRaw) > 0 {
-			_ = json.Unmarshal(recordValueRaw, &a.RecordValue)
-		}
-		if len(techsRaw) > 0 {
-			_ = json.Unmarshal(techsRaw, &a.Technologies)
-		}
-		if len(authRaw) > 0 {
-			_ = json.Unmarshal(authRaw, &a.Auth)
-		}
-		if len(paramsRaw) > 0 {
-			_ = json.Unmarshal(paramsRaw, &a.Params)
-		}
-		if len(extraRaw) > 0 {
-			_ = json.Unmarshal(extraRaw, &a.Extra)
+		for _, field := range []struct {
+			raw  []byte
+			dest any
+		}{
+			{taskIDsRaw, &a.TaskIDs}, {boundDomainsRaw, &a.BoundDomains}, {openPortsRaw, &a.OpenPorts},
+			{recordValueRaw, &a.RecordValue}, {techsRaw, &a.Technologies}, {authRaw, &a.Auth},
+			{paramsRaw, &a.Params}, {extraRaw, &a.Extra},
+		} {
+			if err := json.Unmarshal(field.raw, field.dest); err != nil {
+				return nil, fmt.Errorf("asset %d JSON: %w", a.ID, err)
+			}
 		}
 		out = append(out, a)
 	}

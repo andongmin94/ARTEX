@@ -14,9 +14,9 @@ import (
 func TestTaskArchiveAPIQueueListAndLimits(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) - skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	task, err := m.CreateTask("archive api", "verify 202", nil, 0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -30,12 +30,16 @@ func TestTaskArchiveAPIQueueListAndLimits(t *testing.T) {
 		_ = m.pg.DeleteTask(taskID)
 	}()
 
-	// Start with an already-cancelled context so the background archive worker
-	// exits before these route-contract assertions enqueue work.
+	// Complete initialization, then stop the background archive worker before
+	// these route-contract assertions enqueue work.
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
 	dataDir := t.TempDir()
-	s := New(ctx, m, dataDir, dataDir, dataDir)
+	s, err := New(ctx, m, dataDir, dataDir, dataDir)
+	if err != nil {
+		t.Fatalf("initialize server: %v", err)
+	}
+	cancel()
+	t.Cleanup(func() { _ = s.Close(context.Background()) })
 	s.archiveWG.Wait()
 	token, err := signJWT(s.jwtKey)
 	if err != nil {

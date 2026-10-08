@@ -4,7 +4,7 @@
 
 2026-10-07 사용자 요청으로 작업 브랜치의 내용을 `main`에 통합한다. 이후 재개 기준은 최신 `main`이다.
 과거의 기능 브랜치 유지/통합 검증 뒤 main 병합 지침은 종료한다. 새 장기 전환 브랜치를 만들지 않는다.
-현재 main의 SQLite 전환은 미완료이며, main 병합만으로 실행/배포 가능한 버전이라고 판단하지 않는다.
+main의 실제 SQLite/Electron 검증 범위는 development-plan.md에 기록한다. main 병합만으로 배포 가능한 버전이라고 판단하지 않는다.
 최신 ref와 미커밋 변경을 확인하고 유일한 현재 작업 목록인 `docs/development-plan.md`의 앞선 미완료 단위를 진행한다.
 한 단위는 구현 → 실제 호출자 연결 → 검사 → 계획 갱신 → 원격 반영이다.
 
@@ -30,7 +30,7 @@ go test -race -count=1 -timeout 120s -run '^TestRecorderPersistsRawWireBodies$' 
 ```
 
 이전 미실행 SQLite 테스트의 범위와 결과는 계획과 해당 구현 커밋을 확인한다.
-전체 SQL/fixture 이식이 끝난 뒤 다음 검사를 수행한다. 현재 PG 전용 fixture가 남아 있으므로 전체 통과를 전제하지 않는다.
+다음 검사는 독립된 실제 SQLite 임시 파일로 실행한다. 전체 통과 여부는 현재 소스의 실제 결과로 기록한다.
 
 ```sh
 go test -p 1 -count=1 -timeout 180s ./...
@@ -43,8 +43,8 @@ npx tsc --noEmit
 npm run build:static
 ```
 
-`check-backend-lifecycle.mjs`는 아직 PG 준비를 전제하는 과거 검사다. 현재 SQLite main을 검증한 것으로 사용하지 않는다.
-실제 부팅 연결 시 PG 조건을 제거하고 새 한글/공백 데이터 경로에서 ready/HTTP/종료/재시작을 확인하도록 함께 이식한다.
+`check-backend-lifecycle.mjs`는 새 한글/공백 SQLite 데이터 홈에서 실제 ready/HTTP/부모 EOF 종료를 검사한다.
+`desktop`의 `npm run test:electron`은 실제 Go와 정적 UI를 포함한 Electron을 실행한다.
 외부 모델이나 실제 대상에 작업을 실행하지 않는다. 요청하지 않은 운영 DB를 테스트에 사용하지 않는다.
 
 ## 환경 제약

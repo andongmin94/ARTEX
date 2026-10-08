@@ -1,5 +1,4 @@
-// Uses a fresh home and an explicitly supplied disposable PostgreSQL database.
-// Replace the DB requirement when M2 switches the real backend to SQLite.
+// 실제 SQLite 백엔드를 새 Unicode home에서 시작하고 부모 EOF 종료를 검증합니다.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -23,10 +22,6 @@ async function bounded(promise, milliseconds, label) {
 
 async function main() {
   assert(process.argv[2], 'Pass the compiled artex executable path');
-  const dsn = process.env.ARTEX_SMOKE_PG_DSN;
-  assert(dsn, 'Set ARTEX_SMOKE_PG_DSN to a disposable database, not production');
-  assert.equal(new URL(dsn).pathname, '/artex_desktop_smoke',
-    'The smoke test only accepts a database named artex_desktop_smoke');
   const home = await mkdtemp(join(tmpdir(), 'artex 데스크톱-'));
   const child = spawn(resolve(process.argv[2]), [
     '-addr', '127.0.0.1:0', '-proxy', '', '-ready-stdout', '-parent-stdin',
@@ -37,7 +32,7 @@ async function main() {
       ARTEX_HOME: home,
       ARTEX_CONFIG: '',
       ARTEX_SKILL_DIR: '',
-      ARTEX_PG_DSN: dsn,
+      ARTEX_DESKTOP_SESSION: "",
       ANTHROPIC_API_KEY: '',
       OPENAI_API_KEY: '',
     },

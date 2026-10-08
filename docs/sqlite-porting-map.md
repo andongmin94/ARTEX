@@ -3,7 +3,7 @@
 조사 기준: ARTEX `babea04074a090ae66953c43f335a8580ddaa27c`의 업무 코드.
 전체 소스 조사 실행 커밋: `a99972d4e8ff1eaec333aad05874374ef7c95510` (2026-10-05).
 진행 상태는 `development-plan.md`만 관리한다. 이 문서는 이식 범위/순서의 근거다.
-현재 업무 DB는 PostgreSQL이다. 인벤토리 완료와 SQLite 구현 완료는 다르다.
+아래 표는 조사 당시 PostgreSQL 코드의 이식 범위다. 현재 저장소는 SQLite이며 구현·검증 상태는 development-plan.md를 확인한다. 과거 인벤토리 완료와 현재 기능 검증은 다르다.
 
 ## 1. 재현 가능한 전체 소스 조사
 

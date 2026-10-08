@@ -52,7 +52,7 @@ export function mentionToken(item: ChatMention) {
 }
 
 export function selectedMentions(value: string) {
-  return [...value.matchAll(/@\[(漏洞|资产|企业|接口|IP|应用|域名|子域名|服务)#([0-9]+)(?: ([^\]\r\n]*))?\]/g)].map(
+  return [...value.matchAll(/@\[(취약점|자산|기업|엔드포인트|IP|애플리케이션|도메인|서브도메인|서비스)#([0-9]+)(?: ([^\]\r\n]*))?\]/g)].map(
     (match) => ({
       token: match[0],
       label: `${match[1]} #${match[2]}${match[3] ? ` · ${match[3]}` : ""}`,

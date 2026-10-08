@@ -30,7 +30,7 @@ func TestHTTPReadyAndGracefulShutdown(t *testing.T) {
 	srv := &http.Server{Addr: "127.0.0.1:0", Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, "healthy")
 	})}
-	listener, done, err := startHTTP(srv)
+	listener, done, err := startHTTP(srv, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestHTTPPortConflictIsSynchronous(t *testing.T) {
 	}
 	defer occupied.Close()
 	srv := &http.Server{Addr: occupied.Addr().String()}
-	listener, done, err := startHTTP(srv)
+	listener, done, err := startHTTP(srv, nil)
 	if err == nil {
 		_ = srv.Close()
 		t.Fatal("expected port conflict")
@@ -99,7 +99,7 @@ func TestHTTPShutdownTimeoutClosesActiveConnection(t *testing.T) {
 		<-r.Context().Done()
 		close(cancelled)
 	})}
-	listener, done, err := startHTTP(srv)
+	listener, done, err := startHTTP(srv, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -66,3 +66,16 @@ DB 이식과 스타일 교체는 별도 검증 단위로 유지해 오류 원인
 한글 IME 조합 중 입력/Enter 제출, 긴 한국어 라벨, 긴 URL·코드, 빈/로딩/오류 상태를 검사한다.
 스크린샷은 컴포넌트 쇼케이스가 아니라 실제 setup → 설정 → 작업 → 증거 → 재실행 흐름에서 얻는다.
 원본 느낌과 공통 규칙을 비교해 확인하고, 빌드/타입 검사 성공만으로 시각 품질을 완료 처리하지 않는다.
+
+## 2026-10-07 적용 근거
+
+원본 최신 main을 재확인했고 SHA b4da2463fe710a77bf464c65125a1a7f40424722가 동일했다.
+Mono 라이트/다크 역할 색상, 2px 테두리·4px 하드 섀도·5px 모서리·140ms 눌림을 공통 CSS와 실제 UI 컨트롤에 적용했다.
+기존 Radix/native primitive의 API·포커스·폼·오버레이 동작은 유지하며 원본 Button variants의 시각 규칙을 적용했다.
+외부 런타임 CSS/JS는 주입하지 않는다. 불필요한 shadcn CLI는 제거하고 필요한 MIT CSS만 소스와 저작권을 보존한다.
+
+Noto Sans KR Variable을 로컬 파일로 제공하고 OFL을 포함한다. 고정폭은 기존 로컬 Geist Mono를 사용한다.
+한국어 참조 token·IME 입력, 사이드바 선택 경로·aria-current, 실제 설정의 토스트 테마도 함께 연결했다.
+Playwright는 실제 Electron/Go에서 주요 21개 화면을 라이트/다크·1280/1440으로 열고 캡처한다.
+125/150% Electron zoom 검사는 실제 Windows 디스플레이 배율 검사와 다르다. DOM composition 검사도 OS 네이티브 한글 IME의 완전한 대체가 아니다.
+최종 실행 결과·업무 fixture 검증과 미실행 범위는 development-plan.md만 현재 목록으로 관리한다.

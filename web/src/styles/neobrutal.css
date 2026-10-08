@@ -1,0 +1,79 @@
+/* andongmin94/neobrutal-ui b4da2463fe710a77bf464c65125a1a7f40424722의
+ * Mono 색상·토큰을 ARTEX의 표/로그 의미에 맞게 적용. MIT 고지는 licenses/ 참조. */
+:root {
+  --radius: 5px;
+  --base-font-weight: 500;
+  --heading-font-weight: 700;
+  --background: #f4f5f7;
+  --foreground: #18191c;
+  --card: #fff;
+  --card-foreground: var(--foreground);
+  --popover: #fff;
+  --popover-foreground: var(--foreground);
+  --primary: #27282b;
+  --primary-foreground: #f4f5f7;
+  --secondary: #e4e7ec;
+  --secondary-foreground: #18191c;
+  --muted: #e9ecf0;
+  --muted-foreground: #5b6069;
+  --accent: #dce1e8;
+  --accent-foreground: #18191c;
+  --destructive: #c73532;
+  --destructive-foreground: #fff;
+  --border: #27282b;
+  --input: #27282b;
+  --ring: #27282b;
+  --shadow-color: #27282b;
+  --control-shadow: 4px 4px 0 var(--shadow-color);
+  --sidebar: #f4f5f7;
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+  --chart-1: #526e85;
+  --chart-2: #687e62;
+  --chart-3: #9a744c;
+  --chart-4: #887196;
+  --chart-5: #477c79;
+  --font-sans: var(--font-noto-sans-kr);
+  --font-mono: var(--font-geist-mono), var(--font-noto-sans-kr);
+}
+
+.dark {
+  --background: #18191c;
+  --foreground: #e4e7ec;
+  --card: #23252a;
+  --popover: #23252a;
+  --primary: #e4e7ec;
+  --primary-foreground: #18191c;
+  --secondary: #343840;
+  --secondary-foreground: #e4e7ec;
+  --muted: #2d3037;
+  --muted-foreground: #b8c0ce;
+  --accent: #3c424c;
+  --accent-foreground: #e4e7ec;
+  --destructive: #f08079;
+  --destructive-foreground: #18191c;
+  --border: #aab2c0;
+  --input: #aab2c0;
+  --ring: #e4e7ec;
+  --shadow-color: #07080a;
+  --sidebar: #1e2025;
+  --chart-1: #9db8cc;
+  --chart-2: #a3b997;
+  --chart-3: #d3b083;
+  --chart-4: #baa3c9;
+  --chart-5: #8bbab5;
+}
+
+@layer base {
+  h1, h2, h3, h4, [data-slot="card-title"], [data-slot="dialog-title"] {
+    font-weight: var(--heading-font-weight);
+  }
+  button:not(:disabled), [role="button"]:not([aria-disabled="true"]), a {
+    cursor: pointer;
+  }
+}

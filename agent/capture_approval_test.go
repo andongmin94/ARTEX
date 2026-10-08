@@ -17,41 +17,40 @@ import (
 // Exercise the actual SDK event -> hook -> execution -> result path. No real
 // model or command is used; the probe tool only returns a fixed string.
 func TestCaptureApprovalLifecycle(t *testing.T) {
-	dsn, _, err := db.DSN()
-	if err != nil {
-		t.Skip("no test database configured")
-	}
-	d, err := db.Open(dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = d.Close() })
+	d := testDB(t)
 	ic := intercept.New(d)
 	priorTools, err := ic.GetEnabledTools()
 	if err != nil {
 		t.Fatal(err)
 	}
-	priorConfig := ic.GetJudgeConfig()
+	priorConfig, err := ic.GetJudgeConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() { _ = ic.SetEnabledTools(priorTools); _ = ic.SetJudgeConfig(priorConfig) })
 	if err := ic.SetEnabledTools([]string{"ApprovalAuditProbe"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := ic.SetJudgeConfig(intercept.JudgeConfig{Enabled: true, AskTimeoutSeconds: 1, AskTimeoutAction: "allow"}); err != nil {
-		t.Fatal(err)
-	}
-
 	for _, tc := range []struct {
 		name, action, status, execution string
 		manual, approve, toolError      bool
 	}{
-		{"model_fallback", "invalid", "allowed", "succeeded", false, false, false},
+		{"model_fallback", "invalid", "denied", "not_executed", false, false, false},
 		{"model_allow", "allow", "allowed", "succeeded", false, false, false},
 		{"model_deny", "deny", "denied", "not_executed", false, false, false},
 		{"human_allow_tool_error", "ask", "allowed", "failed", true, true, true},
 		{"human_deny", "ask", "denied", "not_executed", true, false, false},
 		{"timeout_allow", "ask", "timeout", "succeeded", false, false, false},
+		{"timeout_deny", "ask", "timeout", "not_executed", false, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			timeoutAction := "allow"
+			if tc.name == "timeout_deny" {
+				timeoutAction = "deny"
+			}
+			if err := ic.SetJudgeConfig(intercept.JudgeConfig{Enabled: true, AskTimeoutSeconds: 1, AskTimeoutAction: timeoutAction}); err != nil {
+				t.Fatal(err)
+			}
 			ic.SetReviewer(func(context.Context, int64, string, intercept.ReviewInput) (intercept.Decision, error) {
 				return intercept.Decision{Action: tc.action, Message: "probe review", ProfileID: 7}, nil
 			})
@@ -114,7 +113,7 @@ func TestCaptureApprovalLifecycle(t *testing.T) {
 			a := detail.Audit
 			initialAction := tc.action
 			if tc.action == "invalid" {
-				initialAction = "allow"
+				initialAction = "deny"
 			}
 			wantUserMessage := "record this review"
 			if initialAction == "allow" {

@@ -76,18 +76,26 @@ func (s *AssetStore) upsertTaskScopeResult(ts TaskScope) (bool, error) {
 	if src == "" {
 		src = "auto"
 	}
-	query := `
-INSERT INTO task_scope(task_id, kind, company_id, domain, net, value, source, reason)
-VALUES ($1,$2,$3,$4,$5::cidr,$6,$7,NULLIF($8,''))
-ON CONFLICT DO NOTHING`
+	normalized, family, prefix, first, last, parseErr := sqliteNetwork(ts.Net)
+	if parseErr != nil {
+		return false, parseErr
+	}
+	var familyVal, prefixVal any
+	if ts.Net != "" {
+		netVal = normalized
+		familyVal = family
+		prefixVal = prefix
+	}
+	query := `INSERT INTO task_scope(task_id,kind,company_id,domain,net,value,source,reason,net_family,net_prefix,net_first,net_last)
+VALUES (?1,?2,?3,?4,?5,?6,?7,NULLIF(?8,''),?9,?10,?11,?12) ON CONFLICT DO NOTHING`
 	var (
 		result sql.Result
 		err    error
 	)
 	if s.tx != nil {
-		result, err = s.tx.Exec(query, ts.TaskID, ts.Kind, companyVal, domainVal, netVal, valueVal, src, ts.Reason)
+		result, err = s.tx.Exec(query, ts.TaskID, ts.Kind, companyVal, domainVal, netVal, valueVal, src, ts.Reason, familyVal, prefixVal, first, last)
 	} else {
-		result, err = s.db.Exec(query, ts.TaskID, ts.Kind, companyVal, domainVal, netVal, valueVal, src, ts.Reason)
+		result, err = s.db.Exec(query, ts.TaskID, ts.Kind, companyVal, domainVal, netVal, valueVal, src, ts.Reason, familyVal, prefixVal, first, last)
 	}
 	if err != nil {
 		return false, err
@@ -227,15 +235,15 @@ func (s *AssetStore) DeleteTaskScope(taskID, scopeID int64) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	n, _ := res.RowsAffected()
-	return n > 0, nil
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 // ListTaskScope returns all scope rows for a task.
 func (s *AssetStore) ListTaskScope(taskID int64) ([]TaskScope, error) {
 	rows, err := s.db.Query(`
 SELECT ts.id, ts.kind, COALESCE(ts.company_id,0), COALESCE(c.name,''), COALESCE(ts.domain,''),
-       COALESCE(ts.net::text,''), COALESCE(ts.value,''), ts.source, COALESCE(ts.reason,'')
+       COALESCE(ts.net,''), COALESCE(ts.value,''), ts.source, COALESCE(ts.reason,'')
 FROM task_scope ts
 LEFT JOIN companies c ON c.id=ts.company_id
 WHERE ts.task_id=$1 ORDER BY ts.id`, taskID)
@@ -309,10 +317,10 @@ target AS (
        (ts.kind='company'     AND a.company_id = ts.company_id)
     OR (ts.kind='root_domain' AND a.root_domain = ts.domain)
     OR (ts.kind='subdomain'   AND a.domain = ts.domain)
-    OR (ts.kind IN ('ip','cidr') AND ts.net >>= try_inet(a.ip))
+    OR (ts.kind IN ('ip','cidr') AND ts.net_family=COALESCE(a.ip_family,artex_ip_family(a.ip)) AND COALESCE(a.ip_address,artex_ip_address(a.ip)) BETWEEN ts.net_first AND ts.net_last)
     OR (ts.kind='icp' AND (
-         lower(regexp_replace(COALESCE(a.icp,''), '[[:space:]]+', '', 'g')) = ts.value
-         OR lower(regexp_replace(COALESCE(a.app_icp,''), '[[:space:]]+', '', 'g')) = ts.value
+         artex_icp_key(a.icp) = ts.value
+         OR artex_icp_key(a.app_icp) = ts.value
        ))
   )
 ),
@@ -327,7 +335,9 @@ tested AS (
 // task_scope + assets; expID indexes the fact anchors. Reference figure only.
 func (s *AssetStore) TaskCoverage(taskID, expID int64) (*Coverage, error) {
 	cov := &Coverage{ByType: []CoverageByType{}}
-	_ = s.db.QueryRow(`SELECT count(*) FROM task_scope WHERE task_id=$1`, taskID).Scan(&cov.ScopeRows)
+	if err := s.db.QueryRow(`SELECT count(*) FROM task_scope WHERE task_id=$1`, taskID).Scan(&cov.ScopeRows); err != nil {
+		return nil, err
+	}
 	rows, err := s.db.Query(`WITH `+covTargetCTE+`
 SELECT t.type, count(*) AS total,
        count(*) FILTER (WHERE t.id IN (SELECT asset_id FROM tested)) AS tested
@@ -519,8 +529,10 @@ WHERE type='root_domain' AND domain=$1 LIMIT 1`, root).Scan(&id, &companyID)
 			if companyID > 0 {
 				companyIDs[companyID] = true
 			}
-		} else {
+		} else if err == sql.ErrNoRows {
 			node = CoverageGraphNode{Key: "r:" + root, Kind: "root_domain", Domain: root, Label: root}
+		} else {
+			return nil, err
 		}
 		add(node)
 		rootByDomain[root] = node.Key
@@ -534,7 +546,7 @@ WHERE type='root_domain' AND domain=$1 LIMIT 1`, root).Scan(&id, &companyID)
 		}
 		var name string
 		if err := s.db.QueryRow(`SELECT name FROM companies WHERE id=$1`, id).Scan(&name); err != nil {
-			continue
+			return nil, err
 		}
 		add(CoverageGraphNode{Key: key, Kind: "company", CompanyID: id,
 			Label: name, AssetID: 0})
@@ -619,8 +631,10 @@ func (s *AssetStore) ListUntestedAssets(taskID, expID int64, typ string, limit, 
 		args = append(args, typ)
 	}
 	var total int
-	_ = s.db.QueryRow(`WITH `+covTargetCTE+`
-SELECT count(*) FROM target t WHERE t.id NOT IN (SELECT asset_id FROM tested)`+typeFilter, args...).Scan(&total)
+	if err := s.db.QueryRow(`WITH `+covTargetCTE+`
+SELECT count(*) FROM target t WHERE t.id NOT IN (SELECT asset_id FROM tested)`+typeFilter, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
 	pageArgs := append(append([]any{}, args...), limit, offset)
 	limPos := strconv.Itoa(len(args) + 1)
 	offPos := strconv.Itoa(len(args) + 2)

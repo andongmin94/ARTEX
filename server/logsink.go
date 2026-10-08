@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log"
 	"os"
@@ -39,8 +40,9 @@ type logSinkT struct {
 	subs map[chan LogLine]struct{}
 	out  io.Writer // passthrough (stderr)
 
-	dbOnce sync.Once
-	dbCh   chan dbWriteReq // buffered async channel; nil until SetDB is called
+	dbCh     chan dbWriteReq // buffered async channel; nil until SetDB is called
+	dbCancel context.CancelFunc
+	dbDone   chan struct{}
 }
 
 var logSink = &logSinkT{cap: 3000, subs: map[chan LogLine]struct{}{}, out: os.Stderr}
@@ -49,22 +51,37 @@ var logSink = &logSinkT{cap: 3000, subs: map[chan LogLine]struct{}{}, out: os.St
 // (still writing to stderr). Call once at startup, as early as possible.
 func StartLogCapture() { log.SetOutput(logSink) }
 
-// SetDB wires a postgres DB into the sink once (idempotent). It:
+// SetDB restores history before starting the owned asynchronous SQLite writer.
 //  1. Restores the last 100 log rows from DB into the ring so the /logs page
 //     shows history immediately after restart.
 //  2. Starts an async goroutine that persists every subsequent log line to DB.
-func (s *logSinkT) SetDB(ctx context.Context, pg *db.DB) {
+func (s *logSinkT) SetDB(ctx context.Context, pg *db.DB) (<-chan struct{}, error) {
 	if pg == nil {
-		return
+		return nil, errors.New("로그 저장소가 준비되지 않았습니다")
 	}
-	s.dbOnce.Do(func() {
+	logs, err := pg.RecentLogs(100)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	previousCancel, previousDone := s.dbCancel, s.dbDone
+	s.dbCh = nil
+	s.mu.Unlock()
+	if previousCancel != nil {
+		previousCancel()
+		<-previousDone
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	{
 		ch := make(chan dbWriteReq, 2000)
 		s.mu.Lock()
 		s.dbCh = ch
+		s.dbCancel, s.dbDone = cancel, done
 		s.mu.Unlock()
 
 		// Restore last 100 rows from DB → prepend to ring as history context.
-		if logs, err := pg.RecentLogs(100); err == nil && len(logs) > 0 {
+		if len(logs) > 0 {
 			s.mu.Lock()
 			restored := make([]LogLine, 0, len(logs))
 			for _, l := range logs {
@@ -89,6 +106,14 @@ func (s *logSinkT) SetDB(ctx context.Context, pg *db.DB) {
 		// Async writer: picks from channel and inserts into server_logs.
 		// Uses os.Stderr directly to report errors and avoids recursive log calls.
 		go func() {
+			defer close(done)
+			defer func() {
+				s.mu.Lock()
+				if s.dbCh == ch {
+					s.dbCh = nil
+				}
+				s.mu.Unlock()
+			}()
 			for {
 				select {
 				case req, ok := <-ch:
@@ -114,7 +139,8 @@ func (s *logSinkT) SetDB(ctx context.Context, pg *db.DB) {
 				}
 			}
 		}()
-	})
+	}
+	return done, nil
 }
 
 // Write implements io.Writer for the log package: one call per log.Printf line.

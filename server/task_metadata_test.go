@@ -29,9 +29,9 @@ func metadataHTTPServer(t *testing.T, m *Manager) *Server {
 func TestTaskMetadataPatchReturnsRenameAndPin(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) — skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	task, err := m.CreateTask("metadata patch", "goal", nil, 0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -80,9 +80,9 @@ func TestTaskMetadataPatchReturnsRenameAndPin(t *testing.T) {
 func TestConversationBatchDeleteReportsMissing(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) — skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	s := metadataHTTPServer(t, m)
 	first, err := m.pg.CreateConversation("mainagent", "batch-http-first", nil)
 	if err != nil {

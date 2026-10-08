@@ -11,9 +11,30 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
+
+func init() {
+	// modernc runs DSN pragmas in Driver.Open using a background context and
+	// sorts busy_timeout first. ARTEX uses zero wait for that short setup only;
+	// this hook restores normal write contention waits on every pooled connection.
+	sqlite.RegisterConnectionHook(func(conn sqlite.ExecQuerierContext, dsn string) error {
+		uri, err := url.Parse(dsn)
+		if err != nil {
+			return err
+		}
+		for _, pragma := range uri.Query()["_pragma"] {
+			if pragma == "busy_timeout(0)" {
+				_, err := conn.ExecContext(context.Background(), `PRAGMA busy_timeout=5000`, nil)
+				return err
+			}
+		}
+		return nil
+	})
+}
 
 // fileURI accepts a filesystem path, never a user-supplied SQLite DSN. Escaping
 // the path separately from the fixed query prevents '?', '#' and '%' in a home
@@ -39,7 +60,7 @@ func fileURI(filename string) (string, error) {
 	u.RawQuery = url.Values{
 		"mode":         {"rwc"},
 		"cache":        {"private"},
-		"_pragma":      {"busy_timeout(5000)", "foreign_keys(1)", "synchronous(FULL)"},
+		"_pragma":      {"busy_timeout(0)", "foreign_keys(1)", "synchronous(FULL)"},
 		"_time_format": {"sqlite"},
 	}.Encode()
 	return u.String(), nil
@@ -92,12 +113,19 @@ func open(ctx context.Context, filename string, immediate bool) (*sql.DB, error)
 	fail := func(err error) (*sql.DB, error) {
 		return nil, errors.Join(err, database.Close())
 	}
-	conn, err := database.Conn(ctx)
+	var conn *sql.Conn
+	err = retryInitialization(ctx, func(ctx context.Context) error {
+		var err error
+		conn, err = database.Conn(ctx)
+		return err
+	})
 	if err != nil {
 		return fail(fmt.Errorf("SQLite 연결: %w", err))
 	}
 	var journal string
-	err = conn.QueryRowContext(ctx, `PRAGMA journal_mode=WAL`).Scan(&journal)
+	err = retryInitialization(ctx, func(ctx context.Context) error {
+		return conn.QueryRowContext(ctx, `PRAGMA journal_mode=WAL`).Scan(&journal)
+	})
 	closeErr := conn.Close()
 	if err != nil || closeErr != nil {
 		return fail(fmt.Errorf("SQLite WAL 초기화: %w", errors.Join(err, closeErr)))
@@ -109,4 +137,40 @@ func open(ctx context.Context, filename string, immediate bool) (*sql.DB, error)
 		return fail(err)
 	}
 	return database, nil
+}
+
+// Switching a new file to WAL races with other openers and can return BUSY
+// without invoking SQLite's busy handler. Retry only lock contention, with the
+// same five-second bound as ordinary database writes and prompt cancellation.
+func retryInitialization(ctx context.Context, operation func(context.Context) error) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	delay := 10 * time.Millisecond
+	for {
+		err := operation(ctx)
+		if err == nil {
+			return nil
+		}
+		if ctx.Err() != nil {
+			return errors.Join(ctx.Err(), err)
+		}
+		var sqliteErr *sqlite.Error
+		if !errors.As(err, &sqliteErr) {
+			return err
+		}
+		code := sqliteErr.Code() & 0xff
+		if code != sqlite3.SQLITE_BUSY && code != sqlite3.SQLITE_LOCKED {
+			return err
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return errors.Join(ctx.Err(), err)
+		case <-timer.C:
+		}
+		if delay < 100*time.Millisecond {
+			delay = min(2*delay, 100*time.Millisecond)
+		}
+	}
 }

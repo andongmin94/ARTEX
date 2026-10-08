@@ -14,18 +14,10 @@ import (
 	"github.com/Autumn-27/norma/tool"
 )
 
-// Real PostgreSQL + SDK hooks: Worker reviews receive the current call only.
+// Real SQLite + SDK hooks: Worker reviews receive the current call only.
 // Intent summaries, inherited background and prior execution are excluded.
 func TestWorkerReviewContextAcrossToolCalls(t *testing.T) {
-	dsn, _, err := db.DSN()
-	if err != nil {
-		t.Skip("no test database configured")
-	}
-	d, err := db.Open(dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = d.Close() })
+	d := testDB(t)
 	expID, err := d.CreateExploration("只操作隔离测试目录", "验证创建和清理")
 	if err != nil {
 		t.Fatal(err)
@@ -41,7 +33,10 @@ func TestWorkerReviewContextAcrossToolCalls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	priorConfig := ic.GetJudgeConfig()
+	priorConfig, err := ic.GetJudgeConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() { _ = ic.SetEnabledTools(priorTools); _ = ic.SetJudgeConfig(priorConfig) })
 	const probeName = "ContextEvidenceProbe"
 	if err := ic.SetEnabledTools([]string{probeName}); err != nil {

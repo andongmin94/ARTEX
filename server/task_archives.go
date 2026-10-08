@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -33,29 +35,21 @@ type archiveBatchItem struct {
 	Archive int64  `json:"archive_id,omitempty"`
 }
 
-func (s *Server) startTaskArchiveWorker() {
+func (s *Server) startTaskArchiveWorker() error {
 	if s.m == nil || s.m.pg == nil {
-		return
+		return errors.New("보관 작업 저장소가 준비되지 않았습니다")
 	}
 	if err := s.m.pg.RecoverTaskArchiveJobs(); err != nil {
-		log.Printf("[task-archive] recover jobs: %v", err)
+		return fmt.Errorf("보관 작업 상태 복원: %w", err)
 	}
-	recoveryFailed := false
 	if err := recoverTaskArchiveStages(s.m.dir, s.m.pg); err != nil {
-		log.Printf("[task-archive] recover file staging: %v", err)
-		recoveryFailed = true
+		return fmt.Errorf("보관 파일 상태 복원: %w", err)
 	}
 	if err := recoverTaskArchiveRestoreStages(s.m.dir, s.m.pg); err != nil {
-		log.Printf("[task-archive] recover restore staging: %v", err)
-		recoveryFailed = true
+		return fmt.Errorf("보관 복원 임시 상태 복원: %w", err)
 	}
 	if err := recoverTaskArchiveDeletePackages(s.m.dir, s.m.pg); err != nil {
-		log.Printf("[task-archive] recover delete packages: %v", err)
-		recoveryFailed = true
-	}
-	if recoveryFailed {
-		log.Printf("[task-archive] worker disabled because startup recovery is incomplete")
-		return
+		return fmt.Errorf("보관 삭제 상태 복원: %w", err)
 	}
 	s.archiveWG.Add(1)
 	go func() {
@@ -75,6 +69,7 @@ func (s *Server) startTaskArchiveWorker() {
 		}
 	}()
 	s.notifyTaskArchiveWorker()
+	return nil
 }
 
 func (s *Server) notifyTaskArchiveWorker() {
@@ -242,7 +237,7 @@ func (s *Server) restoreTaskArchive(job *pgdb.TaskArchive) (runErr error) {
 	if err := validateArchivePath(s.m.dir, job.ArchivePath); err != nil {
 		return err
 	}
-	// A prior attempt may have committed PostgreSQL and files, then failed only
+	// A prior attempt may have committed SQLite and files, then failed only
 	// while consuming the package. Finish that cleanup without replaying rows.
 	if restored, err := s.m.pg.IsTaskArchiveRestored(job.ID); err != nil {
 		return err
@@ -253,8 +248,7 @@ func (s *Server) restoreTaskArchive(job *pgdb.TaskArchive) (runErr error) {
 		if err := s.m.pg.CompleteTaskArchiveRestore(job.ID); err != nil {
 			return err
 		}
-		s.loadRestoredTask(job.TaskID)
-		return nil
+		return s.loadRestoredTask(job.TaskID)
 	}
 	_ = s.m.pg.UpdateTaskArchiveProgress(job.ID, "verify_package", 10)
 	restoreParent := filepath.Join(taskArchiveRoot(s.m.dir), ".restore")
@@ -284,17 +278,15 @@ func (s *Server) restoreTaskArchive(job *pgdb.TaskArchive) (runErr error) {
 	if err != nil {
 		return err
 	}
-	return s.evidenceStore().WithInstalledSnapshots(s.ctx, evidenceSnapshots, filepath.Join(extracted, "evidence"), func() error {
-		return s.restoreTaskArchivePayload(job, &snapshot, extracted)
-	})
+	return s.restoreTaskArchivePayload(job, &snapshot, extracted, evidenceSnapshots)
 }
 
-func (s *Server) restoreTaskArchivePayload(job *pgdb.TaskArchive, snapshot *pgdb.TaskArchiveSnapshot, extracted string) (runErr error) {
+func (s *Server) restoreTaskArchivePayload(job *pgdb.TaskArchive, snapshot *pgdb.TaskArchiveSnapshot, extracted string, evidenceSnapshots []pgdb.TrafficEvidenceSnapshot) (runErr error) {
 	var err error
 	var llmRecordsFile *os.File
 	relative, hasStreamedLLMRecords := snapshot.StreamedTables["llm_records"]
 	if len(snapshot.StreamedTables) > 0 &&
-		(snapshot.FormatVersion < 2 || !hasStreamedLLMRecords || len(snapshot.StreamedTables) != 1 ||
+		(!hasStreamedLLMRecords || len(snapshot.StreamedTables) != 1 ||
 			relative != pgdb.TaskArchiveLLMRecordsPath) {
 		return pgdb.ErrTaskArchiveFormatMismatch
 	}
@@ -328,19 +320,26 @@ func (s *Server) restoreTaskArchivePayload(job *pgdb.TaskArchive, snapshot *pgdb
 	}()
 	_ = s.m.pg.UpdateTaskArchiveProgress(job.ID, "restore_database", 70)
 	var warnings []string
-	if llmRecordsFile != nil {
-		warnings, err = s.m.pg.RestoreTaskArchiveWithLLMRecords(
-			job.ID, snapshot, job.RemainingTimeoutSeconds, llmRecordsFile,
-		)
-		closeErr := llmRecordsFile.Close()
-		llmRecordsFile = nil
-		err = errors.Join(err, closeErr)
-	} else {
-		warnings, err = s.m.pg.RestoreTaskArchive(job.ID, snapshot, job.RemainingTimeoutSeconds)
-	}
+	// Bodies are pinned and metadata is restored under the SAME SQLite writer.
+	// File/traffic preparation, progress updates and post-commit runtime loading
+	// must stay outside this callback: another Begin would wait for itself.
+	err = s.evidenceStore().WithInstalledSnapshots(s.ctx, evidenceSnapshots, filepath.Join(extracted, "evidence"), func(tx *sql.Tx) error {
+		var records io.Reader
+		if llmRecordsFile != nil {
+			records = llmRecordsFile
+		}
+		var restoreErr error
+		warnings, restoreErr = s.m.pg.RestoreTaskArchiveTx(s.ctx, tx, job.ID, snapshot, job.RemainingTimeoutSeconds, records)
+		if llmRecordsFile != nil {
+			restoreErr = errors.Join(restoreErr, llmRecordsFile.Close())
+			llmRecordsFile = nil
+		}
+		return restoreErr
+	})
 	if err != nil {
 		return err
 	}
+	databaseRestored = true
 	for _, warning := range warnings {
 		log.Printf("[task-archive] restored task %d with warning: %s", job.TaskID, warning)
 	}
@@ -351,7 +350,6 @@ func (s *Server) restoreTaskArchivePayload(job *pgdb.TaskArchive, snapshot *pgdb
 			log.Printf("[task-archive] persist restore warnings for task %d: %v", job.TaskID, err)
 		}
 	}
-	databaseRestored = true
 	if err := files.commit(); err != nil {
 		return err
 	}
@@ -362,14 +360,17 @@ func (s *Server) restoreTaskArchivePayload(job *pgdb.TaskArchive, snapshot *pgdb
 	if err := s.m.pg.CompleteTaskArchiveRestore(job.ID); err != nil {
 		return err
 	}
-	s.loadRestoredTask(job.TaskID)
-	return nil
+	return s.loadRestoredTask(job.TaskID)
 }
 
-func (s *Server) loadRestoredTask(taskID int64) {
+func (s *Server) loadRestoredTask(taskID int64) error {
 	id := strconv.FormatInt(taskID, 10)
 	var restored *Task
-	for _, task := range s.m.LoadExisting() {
+	loaded, err := s.m.LoadExisting()
+	if err != nil {
+		return fmt.Errorf("복원 작업 핸들 읽기: %w", err)
+	}
+	for _, task := range loaded {
 		if task.ID == id {
 			restored = task
 			break
@@ -381,7 +382,7 @@ func (s *Server) loadRestoredTask(taskID int64) {
 		}
 	}
 	if restored == nil {
-		return
+		return fmt.Errorf("복원 작업 %s의 핸들을 찾지 못했습니다", id)
 	}
 	lifecycle := restored.lifecycleSnapshot()
 	if lifecycle.Paused {
@@ -390,6 +391,7 @@ func (s *Server) loadRestoredTask(taskID int64) {
 	if !isTerminalStatus(lifecycle.Status) {
 		s.engine.startDeadlineCoordinator(s.ctx, restored)
 	}
+	return nil
 }
 
 func (s *Server) deleteTaskArchive(job *pgdb.TaskArchive) error {

@@ -80,30 +80,53 @@ func ValidSeverity(s string) bool {
 // nodeID may be 0 (stored as NULL). name may be "" (frontend falls back to
 // vulnclass). Returns the new finding id.
 func (d *DB) AddFinding(taskID, nodeID int64, vulnclass, name, severity, summary, evidence, worker string, assetIDs []int64) (int64, error) {
-	aidsJSON, _ := json.Marshal(assetIDs)
-	if assetIDs == nil {
-		aidsJSON = []byte("[]")
+	tx, err := d.Begin()
+	if err != nil {
+		return 0, err
 	}
-	var tid, nid *int64
-	if taskID > 0 {
-		tid = &taskID
-	}
-	if nodeID > 0 {
-		nid = &nodeID
+	defer tx.Rollback()
+	if err := LockTaskEvidenceTx(tx, taskID); err != nil {
+		return 0, err
 	}
 	var id int64
-	err := d.QueryRow(
-		`INSERT INTO findings (task_id, node_id, vulnclass, name, severity, summary, evidence, worker, asset_ids)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-		tid, nid, vulnclass, name, severity, summary, evidence, worker, string(aidsJSON),
-	).Scan(&id)
-	return id, err
+	if err := tx.QueryRow(`INSERT INTO findings(task_id,node_id,vulnclass,name,severity,summary,evidence,worker) VALUES(NULLIF(?1,0),NULLIF(?2,0),?3,?4,?5,?6,?7,?8) RETURNING id`, taskID, nodeID, vulnclass, name, severity, summary, evidence, worker).Scan(&id); err != nil {
+		return 0, err
+	}
+	if err := insertFindingAssetsTx(tx, id, assetIDs); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+// findingAssetIDsExpr preserves user-supplied order from the relation table.
+const findingAssetIDsExpr = `(SELECT json_group_array(asset_id) FROM (SELECT asset_id FROM finding_assets WHERE finding_id=f.id ORDER BY position))`
+
+func insertFindingAssetsTx(tx *sql.Tx, findingID int64, ids []int64) error {
+	seen := map[int64]bool{}
+	position := 0
+	for _, id := range ids {
+		if id <= 0 {
+			return fmt.Errorf("asset_id must be positive")
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		if _, err := tx.Exec(`INSERT INTO finding_assets(finding_id,asset_id,position) VALUES(?1,?2,?3)`, findingID, id, position); err != nil {
+			return err
+		}
+		position++
+	}
+	return nil
 }
 
 // findingSelectCols is the column list (with task_description join) every finding
 // list query selects, so scanFinding stays in sync across callers.
 const findingSelectCols = `f.id, f.task_id, f.node_id, f.vulnclass, COALESCE(f.name, ''), f.severity, f.summary,
-	       f.evidence, f.worker, f.asset_ids, COALESCE(f.status, 'pending'), f.created_at,
+	       f.evidence, f.worker, ` + findingAssetIDsExpr + `, COALESCE(f.status, 'pending'), f.created_at,
 	       COALESCE(t.description, '') AS task_description, f.evidence_version, f.report_evidence_version,
  (SELECT count(*) FROM finding_traffic_bindings b WHERE b.finding_id=f.id)`
 
@@ -121,7 +144,9 @@ func scanFindings(rows interface {
 			&f.Summary, &f.Evidence, &f.Worker, &aidsJSON, &f.Status, &f.CreatedAt, &f.TaskDescription, &f.EvidenceVersion, &f.ReportEvidenceVersion, &f.TrafficCount); err != nil {
 			return nil, err
 		}
-		_ = json.Unmarshal([]byte(aidsJSON), &f.AssetIDs)
+		if err := json.Unmarshal([]byte(aidsJSON), &f.AssetIDs); err != nil {
+			return nil, err
+		}
 		out = append(out, f)
 	}
 	return out, rows.Err()
@@ -172,7 +197,7 @@ type FindingFilter struct {
 const FindingUnassignedTask = "__unassigned__"
 
 // where builds the WHERE clause (shared by the page and count queries) plus its
-// positional args. All values are parameterized; Query also escapes ILIKE
+// positional args. All values are parameterized; Query also escapes LIKE
 // wildcards so user input is always matched literally.
 func (f FindingFilter) where() (string, []any) {
 	var conds []string
@@ -194,35 +219,25 @@ func (f FindingFilter) where() (string, []any) {
 		args = append(args, tid)
 		conds = append(conds, fmt.Sprintf("f.task_id = $%d", len(args)))
 	}
-	// 资产筛选:asset_ids 是 jsonb 数组,@> ANY(...) 能走 idx_findings_asset_ids。
 	switch {
 	case f.assetMiss:
 		conds = append(conds, "FALSE")
 	case f.assetNone:
-		// 「未关联资产」= asset_ids 为空,或者里面的 id 一个都不在 assets 表里
-		// (资产已被删除)。两类都进资产树的未关联桶,这里必须同样收下,否则桶上
-		// 的计数会大于点开后能查到的条数。
-		conds = append(conds, `(
-			jsonb_array_length(COALESCE(f.asset_ids, '[]'::jsonb)) = 0
-			OR NOT EXISTS (
-				SELECT 1 FROM jsonb_array_elements_text(f.asset_ids) e(v)
-				JOIN assets a ON a.id = e.v::bigint
-			)
-		)`)
+		conds = append(conds, `NOT EXISTS(SELECT 1 FROM finding_assets link WHERE link.finding_id=f.id)`)
 	case len(f.assetIDs) > 0:
-		args = append(args, assetIDContainments(f.assetIDs))
-		conds = append(conds, fmt.Sprintf("f.asset_ids @> ANY($%d::jsonb[])", len(args)))
+		args = append(args, string(mustJSONIDs(f.assetIDs)))
+		conds = append(conds, fmt.Sprintf(`EXISTS(SELECT 1 FROM finding_assets link WHERE link.finding_id=f.id AND link.asset_id IN(SELECT value FROM json_each($%d)))`, len(args)))
 	}
 	if query := strings.TrimSpace(f.Query); query != "" {
 		escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(query)
 		args = append(args, "%"+escaped+"%")
 		placeholder := fmt.Sprintf("$%d", len(args))
 		conds = append(conds, fmt.Sprintf(`(
-			COALESCE(f.name, '') ILIKE %s ESCAPE '\' OR
-			f.vulnclass ILIKE %s ESCAPE '\' OR
-			f.summary ILIKE %s ESCAPE '\' OR
-			f.evidence ILIKE %s ESCAPE '\' OR
-			COALESCE(f.report, '') ILIKE %s ESCAPE '\'
+			artex_lower(COALESCE(f.name, '')) LIKE artex_lower(%s) ESCAPE '\' OR
+			artex_lower(f.vulnclass) LIKE artex_lower(%s) ESCAPE '\' OR
+			artex_lower(f.summary) LIKE artex_lower(%s) ESCAPE '\' OR
+			artex_lower(f.evidence) LIKE artex_lower(%s) ESCAPE '\' OR
+			artex_lower(COALESCE(f.report, '')) LIKE artex_lower(%s) ESCAPE '\'
 		)`, placeholder, placeholder, placeholder, placeholder, placeholder))
 	}
 	if len(conds) == 0 {
@@ -350,7 +365,7 @@ func (d *DB) ListFindingGroups(f FindingFilter, page, pageSize int) ([]FindingGr
 		var group FindingGroup
 		var taskID sql.NullInt64
 		if err := rows.Scan(&taskID, &group.TaskName, &group.TaskDescription, &group.TaskStatus, &group.Count,
-			&group.Critical, &group.High, &group.Medium, &group.Low, &group.LastFoundAt); err != nil {
+			&group.Critical, &group.High, &group.Medium, &group.Low, timeColumn(&group.LastFoundAt)); err != nil {
 			return nil, 0, 0, err
 		}
 		if taskID.Valid {
@@ -384,7 +399,7 @@ func (s *ExplorationStore) AddFindingFollowUpIntent(findingID, findingNodeID int
 		JOIN tasks t ON t.id=f.task_id
 		JOIN exploration_nodes n ON n.id=f.node_id AND n.exploration_id=t.exploration_id
 		WHERE f.id=$1 AND f.node_id=$2 AND t.exploration_id=$3 AND n.kind='finding'
-		FOR SHARE OF f, t, n`, findingID, findingNodeID, s.expID).Scan(&liveNodeID)
+		`, findingID, findingNodeID, s.expID).Scan(&liveNodeID)
 	if err == sql.ErrNoRows {
 		return 0, Activity{}, ErrFindingOriginUnavailable
 	}
@@ -427,7 +442,7 @@ func (s *ExplorationStore) AddFindingFollowUpIntent(findingID, findingNodeID int
 	}
 	var intentID int64
 	if err := tx.QueryRow(`INSERT INTO exploration_nodes(exploration_id,kind,payload,priority,state,origin)
-		VALUES ($1,'intent',$2,10,'open','human') RETURNING id`, s.expID, raw).Scan(&intentID); err != nil {
+		VALUES ($1,'intent',$2,10,'open','human') RETURNING id`, s.expID, string(raw)).Scan(&intentID); err != nil {
 		return 0, Activity{}, err
 	}
 	if _, err := tx.Exec(`INSERT INTO exploration_anchors(node_id,asset_id)
@@ -454,7 +469,7 @@ func (s *ExplorationStore) AddFindingFollowUpIntent(findingID, findingNodeID int
 INSERT INTO activity(exploration_id, node_id, worker, kind, tool, tool_use_id, is_error, summary, detail, metadata, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens)
 VALUES ($1,$2,NULLIF($3,''),NULLIF($4,''),NULLIF($5,''),NULLIF($6,''),$7,NULLIF($8,''),NULLIF($9,''),$10,$11,$12,$13,$14)
 RETURNING id, created_at`, s.expID, audit.NodeID, utf8Clean(audit.Worker), utf8Clean(audit.Kind), utf8Clean(audit.Tool), utf8Clean(audit.ToolUseID), audit.IsError,
-		utf8Clean(audit.Summary), utf8Clean(audit.Detail), metadata, audit.InputTokens, audit.OutputTokens, audit.CacheReadTokens, audit.CacheWriteTokens).
+		utf8Clean(audit.Summary), utf8Clean(audit.Detail), string(metadata), audit.InputTokens, audit.OutputTokens, audit.CacheReadTokens, audit.CacheWriteTokens).
 		Scan(&audit.ID, &audit.CreatedAt); err != nil {
 		return 0, Activity{}, err
 	}
@@ -514,7 +529,9 @@ func (d *DB) ListFindingsForExport(f FindingFilter, ids []int64) ([]*DBFinding, 
 			&f.TaskDescription, &f.EvidenceVersion, &f.ReportEvidenceVersion, &f.TrafficCount, &f.Report); err != nil {
 			return nil, err
 		}
-		_ = json.Unmarshal([]byte(aidsJSON), &f.AssetIDs)
+		if err := json.Unmarshal([]byte(aidsJSON), &f.AssetIDs); err != nil {
+			return nil, err
+		}
 		out = append(out, f)
 	}
 	return out, rows.Err()
@@ -646,7 +663,9 @@ func (d *DB) GetFinding(id int64) (*DBFinding, error) {
 	if err != nil {
 		return nil, err
 	}
-	_ = json.Unmarshal([]byte(aidsJSON), &f.AssetIDs)
+	if err := json.Unmarshal([]byte(aidsJSON), &f.AssetIDs); err != nil {
+		return nil, err
+	}
 	return f, nil
 }
 
@@ -712,24 +731,34 @@ func (d *DB) SetFindingReportByNodeID(nodeID int64, report string) (int64, error
 // setFindingCol updates one text column on the standalone finding row AND mirrors
 // the new value into the originating exploration node's payload under jsonKey, so the
 // per-task 发现 Tab (which reads the node payload, not this table) stays in sync.
-// Returns rows affected (0 when no finding has that id); the node sync is best-effort.
+// Returns rows affected (0 when no finding has that id); the node sync is committed atomically.
 // col and jsonKey MUST be trusted constants (they are interpolated into SQL) — never
 // pass user input.
 func (d *DB) setFindingCol(id int64, col, jsonKey, val string) (int64, error) {
-	var nodeID *int64
-	err := d.QueryRow(`UPDATE findings SET `+col+`=$1 WHERE id=$2 RETURNING node_id`, val, id).Scan(&nodeID)
-	if err == sql.ErrNoRows {
-		return 0, nil
-	}
+	var count int64
+	err := d.WithEvidenceTx(context.Background(), func(tx *sql.Tx) error {
+		if err := LockFindingEvidenceTx(tx, id, nil); err != nil {
+			if errors.Is(err, ErrFindingNotFound) {
+				return nil
+			}
+			return err
+		}
+		var nodeID *int64
+		if err := tx.QueryRow(`UPDATE findings SET `+col+`=?1 WHERE id=?2 RETURNING node_id`, val, id).Scan(&nodeID); err != nil {
+			return err
+		}
+		if nodeID != nil {
+			if _, err := tx.Exec(`UPDATE exploration_nodes SET payload=json_set(payload,'$.`+jsonKey+`',?1),content_version=content_version+1 WHERE id=?2`, val, *nodeID); err != nil {
+				return err
+			}
+		}
+		count = 1
+		return nil
+	})
 	if err != nil {
 		return 0, err
 	}
-	if nodeID != nil {
-		_, _ = d.Exec(`UPDATE exploration_nodes
-			SET payload = jsonb_set(payload, '{`+jsonKey+`}', to_jsonb($1::text))
-			WHERE id = $2`, val, *nodeID)
-	}
-	return 1, nil
+	return count, nil
 }
 
 // SetFindingSeverity updates one finding's severity (+ node payload sync). Returns
@@ -774,7 +803,7 @@ func (d *DB) FindingMetaByNodeID(taskID int64) (map[int64]FindingMeta, error) {
 	if taskID <= 0 {
 		return out, nil
 	}
-	rows, err := d.Query(`SELECT node_id, id, COALESCE(status,'pending'), asset_ids, (SELECT count(*) FROM finding_traffic_bindings b WHERE b.finding_id=findings.id) FROM findings
+	rows, err := d.Query(`SELECT node_id, id, COALESCE(status,'pending'), `+findingAssetIDsExpr+`, (SELECT count(*) FROM finding_traffic_bindings b WHERE b.finding_id=f.id) FROM findings f
 		WHERE task_id=$1 AND node_id IS NOT NULL`, taskID)
 	if err != nil {
 		return out, err
@@ -787,7 +816,9 @@ func (d *DB) FindingMetaByNodeID(taskID int64) (map[int64]FindingMeta, error) {
 		if err := rows.Scan(&nid, &m.ID, &m.Status, &aidsJSON, &m.TrafficCount); err != nil {
 			return out, err
 		}
-		_ = json.Unmarshal([]byte(aidsJSON), &m.AssetIDs)
+		if err := json.Unmarshal([]byte(aidsJSON), &m.AssetIDs); err != nil {
+			return nil, err
+		}
 		out[nid] = m
 	}
 	return out, rows.Err()

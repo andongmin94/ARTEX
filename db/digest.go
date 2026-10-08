@@ -120,7 +120,10 @@ func (s *ExplorationStore) ActiveDigests() ([]*Node, error) {
 // single transaction. payload is the digest body + member_ids + generation +
 // signature (see cold-digest §1). Returns the new digest id.
 func (s *ExplorationStore) AddDigest(payload map[string]any, memberIDs []int64) (int64, error) {
-	raw, _ := json.Marshal(payload)
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return 0, err
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
@@ -143,7 +146,10 @@ ON CONFLICT (exploration_id, src_id, rel, dst_id) DO NOTHING`, s.expID, id, RelC
 			return 0, err
 		}
 	}
-	return id, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return id, nil
 }
 
 // CoveredMembers maps member id → covering digest id, for ACTIVE digests only

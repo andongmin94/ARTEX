@@ -18,7 +18,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     env:
-      ARTEX_PG_DSN: ''
       ARTEX_HOME: ''
     steps:
       - uses: actions/checkout@v4

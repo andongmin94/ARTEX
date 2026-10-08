@@ -1877,8 +1877,6 @@ func (s *Server) pgDeleteProfile(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, db.ErrActiveLLMProfileDelete):
 			writeErr(w, 409, "현재 활성 LLM 설정은 삭제할 수 없습니다. 먼저 다른 설정을 활성화하세요")
-		case errors.Is(err, db.ErrLLMProfileReferencesChanged):
-			writeErr(w, 409, "작업이나 세션에서 LLM 설정을 변경하는 중입니다. 다시 시도하세요")
 		case errors.Is(err, context.DeadlineExceeded):
 			writeErr(w, 409, "LLM 설정 참조 해제 대기 시간이 초과되었습니다. 다시 시도하세요")
 		case errors.Is(err, db.ErrLLMProfileNotFound):

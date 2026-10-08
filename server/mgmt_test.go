@@ -13,13 +13,18 @@ import (
 func TestMgmtAPI(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("database unavailable (%v) — skipping management API test", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
+	t.Cleanup(func() { _ = m.Close() })
 	if m.pg == nil {
-		t.Skip("postgres unavailable — skipping management API test")
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
 	td := t.TempDir()
-	s := New(context.Background(), m, td, td, td)
+	s, err := New(context.Background(), m, td, td, td)
+	if err != nil {
+		t.Fatalf("initialize server: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close(context.Background()) })
 	h := s.Handler()
 	tok, err := signJWT(s.jwtKey)
 	if err != nil {

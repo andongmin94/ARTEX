@@ -6,37 +6,50 @@ import (
 	"testing"
 )
 
-func TestPostgresDSNPrecedence(t *testing.T) {
+func TestConfigRejectsInvalidAndUnreadableFiles(t *testing.T) {
 	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.json")
-	os.WriteFile(cfgPath, []byte(`{"database":{"host":"10.1.2.3","port":6000,"user":"u","password":"p","dbname":"d","sslmode":"require"}}`), 0o644)
-	t.Setenv("ARTEX_CONFIG", cfgPath)
-
-	// no env DSN → built from config file fields
-	t.Setenv("ARTEX_PG_DSN", "")
-	got, _, err := PostgresDSN()
-	want := "postgres://u:p@10.1.2.3:6000/d?sslmode=require"
-	if err != nil || got != want {
-		t.Fatalf("from file: got %q err %v want %q", got, err, want)
+	for _, name := range []string{"broken.json", "directory"} {
+		path := filepath.Join(dir, name)
+		if name == "broken.json" {
+			if err := os.WriteFile(path, []byte(`{invalid`), 0600); err != nil {
+				t.Fatal(err)
+			}
+		} else if err := os.Mkdir(path, 0700); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("ARTEX_CONFIG", path)
+		if _, err := Load(); err == nil {
+			t.Fatal("invalid config accepted", name)
+		}
+		if _, err := SkillDir(); err == nil {
+			t.Fatal("invalid config accepted for skill directory", name)
+		}
 	}
-
-	// env wins over config file
-	t.Setenv("ARTEX_PG_DSN", "postgres://envwins/x")
-	if got, _, err := PostgresDSN(); err != nil || got != "postgres://envwins/x" {
-		t.Fatalf("env should win, got %q err %v", got, err)
+	t.Setenv("ARTEX_CONFIG", filepath.Join(dir, "missing.json"))
+	if _, err := Load(); err != nil {
+		t.Fatal("missing optional config rejected", err)
 	}
+}
 
-	// no env, no file → error (no built-in default)
-	t.Setenv("ARTEX_PG_DSN", "")
-	t.Setenv("ARTEX_CONFIG", filepath.Join(dir, "nope.json"))
-	if got, _, err := PostgresDSN(); err == nil {
-		t.Fatalf("missing config should error, got %q", got)
+func TestSkillDirRejectsFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(path, []byte("preserve"), 0600); err != nil {
+		t.Fatal(err)
 	}
+	t.Setenv("ARTEX_CONFIG", filepath.Join(t.TempDir(), "missing.json"))
+	t.Setenv("ARTEX_SKILL_DIR", path)
+	if _, err := SkillDir(); err == nil {
+		t.Fatal("file accepted as skill directory")
+	}
+}
 
-	// full dsn in config file is used verbatim
-	os.WriteFile(cfgPath, []byte(`{"database":{"dsn":"postgres://full/dsn"}}`), 0o644)
-	t.Setenv("ARTEX_CONFIG", cfgPath)
-	if got, _, err := PostgresDSN(); err != nil || got != "postgres://full/dsn" {
-		t.Fatalf("file dsn verbatim, got %q err %v", got, err)
+func TestConfigRejectsRemovedDatabaseSelection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"database":{"dsn":"postgres://obsolete"}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ARTEX_CONFIG", path)
+	if _, err := Load(); err == nil {
+		t.Fatal("removed database configuration was silently accepted")
 	}
 }

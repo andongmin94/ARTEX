@@ -14,11 +14,15 @@ import (
 func TestChatUnavailableReasonDistinguishesStates(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) — skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	td := t.TempDir()
-	s := New(context.Background(), m, td, td, td)
+	s, err := New(context.Background(), m, td, td, td)
+	if err != nil {
+		t.Fatalf("initialize server: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close(context.Background()) })
 
 	// Start from a clean profile table; other tests in the shared DB may have left rows.
 	existing, _ := m.pg.ListProfiles()
@@ -64,11 +68,15 @@ func TestChatUnavailableReasonDistinguishesStates(t *testing.T) {
 func TestResolveChatAgentHonoursConversationProfile(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) — skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	td := t.TempDir()
-	s := New(context.Background(), m, td, td, td)
+	s, err := New(context.Background(), m, td, td, td)
+	if err != nil {
+		t.Fatalf("initialize server: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close(context.Background()) })
 
 	// Force the global fallback to nil so a non-nil result can ONLY come from the
 	// conversation's own profile — this is exactly the situation the user hit

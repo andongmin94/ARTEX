@@ -11,10 +11,7 @@ import (
 )
 
 func TestInterceptFilterHTTP(t *testing.T) {
-	dsn, _, err := db.DSN()
-	if err != nil {
-		t.Skip("no test database configured")
-	}
+	dsn := testBusinessPath(t)
 	d, err := db.Open(dsn)
 	if err != nil {
 		t.Fatal(err)

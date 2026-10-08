@@ -9,15 +9,13 @@ import (
 	"github.com/Autumn-27/artex/notify"
 )
 
-// 本文件的用例都会真连 PostgreSQL（无库时跳过）。这些 SQL 用到了
-// FOR UPDATE SKIP LOCKED、make_interval、JSONB、多行 IN(...) 占位符拼接，
-// 都是「编译通过但可能运行时报错」的写法，必须实跑才算验证过。
+// 알림 검사는 실제 modernc SQLite 임시 DB에서 실행합니다.
 
 func notifyTestDB(t *testing.T) *DB {
 	t.Helper()
 	d, err := Open(testDSN(t))
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) — skipping", err)
+		t.Fatal(err)
 	}
 	t.Cleanup(func() { d.Close() })
 	return d
@@ -95,36 +93,18 @@ func TestNotificationAssetNamesResolvesAndPreservesOrder(t *testing.T) {
 	}
 }
 
-// TestRecordNotificationEventTxUnwindsOnFailure 是保存点机制的核心用例：
-// 在事务里先让 notification_events 的写入必然失败（临时加一个恒 false 的约束），
-// 断言 ① 该函数报 false ② 事务没有进入 aborted 状态，后续语句仍能执行。
-//
-// 没有保存点的话，PostgreSQL 会让整个事务作废，后续任何语句都以
-// "current transaction is aborted" 失败——那正是「一个通知表的问题导致
-// 漏洞存不进库」的故障路径。
-//
-// 这里刻意用 **ROLLBACK 收尾而不是 COMMIT**：ALTER TABLE 在 PG 里是事务性的，
-// 一旦提交，那个临时约束就会永久留在 schema 里，把后续所有用例一起打挂。
-// 回滚能自动撤销 DDL，无需手工清理。断言只需要「事务还活着」，
-// 不需要真的提交。
+// 알림 INSERT 실패가 업무 트랜잭션을 취소하지 않는지 실제 오류로 검증합니다.
 func TestRecordNotificationEventTxUnwindsOnFailure(t *testing.T) {
 	d := notifyTestDB(t)
 	ctx := context.Background()
-
-	// 防御性清理：若历史运行留下过这个约束，先摘掉。
-	if _, err := d.Exec(`ALTER TABLE notification_events DROP CONSTRAINT IF EXISTS notify_test_never`); err != nil {
-		t.Fatal(err)
-	}
 
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback() //nolint:errcheck // 撤销临时约束，见函数注释
+	defer tx.Rollback() //nolint:errcheck
 
-	// NOT VALID：只约束此后写入的行，不去校验库里已有的历史事件
-	// （否则存量行违规会导致约束加不上）。
-	if _, err := tx.ExecContext(ctx, `ALTER TABLE notification_events ADD CONSTRAINT notify_test_never CHECK (false) NOT VALID`); err != nil {
+	if _, err := tx.ExecContext(ctx, `CREATE TRIGGER notify_test_never BEFORE INSERT ON notification_events BEGIN SELECT RAISE(ABORT,'injected notification failure'); END`); err != nil {
 		t.Fatalf("加临时约束失败: %v", err)
 	}
 	if RecordNotificationEventTx(ctx, tx, notify.EventFindingCreated, 1, notify.Snapshot{Severity: "high"}) {
@@ -140,7 +120,7 @@ func TestRecordNotificationEventTxUnwindsOnFailure(t *testing.T) {
 	}
 	// 确认 DDL 已随回滚撤销，不给后续用例留雷。
 	var exists bool
-	if err := d.QueryRow(`SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE conname='notify_test_never')`).Scan(&exists); err != nil {
+	if err := d.QueryRow(`SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='trigger' AND name='notify_test_never')`).Scan(&exists); err != nil {
 		t.Fatal(err)
 	}
 	if exists {
@@ -291,7 +271,7 @@ func TestClaimExpiredLeaseRecovers(t *testing.T) {
 		t.Fatalf("首次领取失败: %v (%d 条)", err, len(first))
 	}
 	// 把租约手动推到过去，模拟「租约已过期」。
-	if _, err := d.Exec(`UPDATE notification_deliveries SET next_attempt_at = now() - interval '1 minute' WHERE id=$1`, first[0].ID); err != nil {
+	if _, err := d.Exec(`UPDATE notification_deliveries SET next_attempt_at = strftime('%Y-%m-%d %H:%M:%f','now','-1 minute') WHERE id=$1`, first[0].ID); err != nil {
 		t.Fatal(err)
 	}
 	second, err := d.ClaimRealtimeDeliveries(ctx, ch.ID, 10, time.Minute)
@@ -355,7 +335,7 @@ func TestDigestBatchDueAndStableBatchID(t *testing.T) {
 	}
 
 	// 把三条投递的创建时间一起推老，模拟一个攒够周期的批次。
-	if _, err := d.Exec(`UPDATE notification_deliveries SET created_at = now() - interval '40 minutes' WHERE channel_id=$1`, ch.ID); err != nil {
+	if _, err := d.Exec(`UPDATE notification_deliveries SET created_at = strftime('%Y-%m-%d %H:%M:%f','now','-40 minutes') WHERE channel_id=$1`, ch.ID); err != nil {
 		t.Fatal(err)
 	}
 	due, err = d.DigestBatchDue(ctx, ch.ID, 30*time.Minute)
@@ -397,7 +377,7 @@ func TestDigestBatchDueAndStableBatchID(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 把租约推到过去，模拟退避时间已到。
-	if _, err := d.Exec(`UPDATE notification_deliveries SET next_attempt_at = now() - interval '1 minute' WHERE channel_id=$1`, ch.ID); err != nil {
+	if _, err := d.Exec(`UPDATE notification_deliveries SET next_attempt_at = strftime('%Y-%m-%d %H:%M:%f','now','-1 minute') WHERE channel_id=$1`, ch.ID); err != nil {
 		t.Fatal(err)
 	}
 	reclaimed, err := d.ClaimDigestBatch(ctx, ch.ID, MaxDigestBatchSize, time.Minute)

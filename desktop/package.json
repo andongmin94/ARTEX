@@ -1,0 +1,17 @@
+{
+  "name": "artex-desktop",
+  "version": "2.2.0",
+  "private": true,
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "build": "node scripts/build.cjs",
+    "package": "node scripts/package.cjs",
+    "test:electron": "playwright test",
+    "test:package": "playwright test --config playwright.package.config.cjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "electron": "44.6.0"
+  }
+}

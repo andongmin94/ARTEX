@@ -1,11 +1,11 @@
 package db
 
 import (
+	"bytes"
 	"database/sql"
 	"errors"
 	"fmt"
 	"log"
-	"net"
 	"strings"
 	"unicode/utf8"
 )
@@ -81,12 +81,6 @@ func ValidateCompanyScopeInputBounds(inputs []ScopeInput) error {
 	return nil
 }
 
-// Scope writes rebuild derived asset ownership globally, so serialize them to
-// ensure the committed attribution always reflects the latest committed rules.
-// This key is reserved for company mutations; 7337741001 is the schema lock and
-// 7337741002 is the cross-package test-suite lock.
-const companyScopeMutationLock int64 = 7337741003
-
 // Companies returns the company store.
 func (d *DB) Companies() *CompanyStore { return &CompanyStore{db: d} }
 
@@ -103,14 +97,31 @@ func (s *CompanyStore) UpsertCompany(name, logo string) (id int64, created bool,
 	if logo != "" {
 		logoVal = logo
 	}
-	err = s.db.QueryRow(`
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, false, err
+	}
+	defer tx.Rollback()
+	var existing int64
+	err = tx.QueryRow(`SELECT id FROM companies WHERE nkey=?1`, nkey).Scan(&existing)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, false, err
+	}
+	created = errors.Is(err, sql.ErrNoRows)
+	err = tx.QueryRow(`
 INSERT INTO companies(name, nkey, logo)
 VALUES ($1, $2, $3)
 ON CONFLICT (nkey) DO UPDATE SET
     name = EXCLUDED.name,
     logo = COALESCE(EXCLUDED.logo, companies.logo),
-    updated_at = now()
-RETURNING id, (xmax = 0)`, name, nkey, logoVal).Scan(&id, &created)
+    updated_at = strftime('%Y-%m-%d %H:%M:%f','now')
+RETURNING id`, name, nkey, logoVal).Scan(&id)
+	if err != nil {
+		return 0, false, err
+	}
+	if err = tx.Commit(); err != nil {
+		return 0, false, err
+	}
 	return
 }
 
@@ -133,9 +144,7 @@ func (s *CompanyStore) CreateCompanyWithScope(name, logo string, inputs []ScopeI
 		return 0, 0, 0, invalid, validationErrors, err
 	}
 	defer tx.Rollback() //nolint:errcheck
-	if err := lockCompanyScopeMutation(tx); err != nil {
-		return 0, 0, 0, invalid, validationErrors, err
-	}
+	// The business opener reserves the SQLite writer at BEGIN.
 
 	nkey := companyNKey(name)
 	var logoVal any
@@ -174,7 +183,7 @@ RETURNING id`, name, nkey, logoVal).Scan(&id); err != nil {
 func (s *CompanyStore) GetCompany(id int64) (*Company, error) {
 	c := &Company{}
 	err := s.db.QueryRow(`
-SELECT id, name, nkey, logo, created_at::text, updated_at::text
+SELECT id, name, nkey, logo, CAST(created_at AS TEXT), CAST(updated_at AS TEXT)
 FROM companies WHERE id = $1`, id).Scan(
 		&c.ID, &c.Name, &c.NKey, &c.Logo, &c.CreatedAt, &c.UpdatedAt)
 	if err == sql.ErrNoRows {
@@ -188,7 +197,7 @@ func (s *CompanyStore) GetCompanyByName(name string) (*Company, error) {
 	nkey := companyNKey(name)
 	c := &Company{}
 	err := s.db.QueryRow(`
-SELECT id, name, nkey, logo, created_at::text, updated_at::text
+SELECT id, name, nkey, logo, CAST(created_at AS TEXT), CAST(updated_at AS TEXT)
 FROM companies WHERE nkey = $1`, nkey).Scan(
 		&c.ID, &c.Name, &c.NKey, &c.Logo, &c.CreatedAt, &c.UpdatedAt)
 	if err == sql.ErrNoRows {
@@ -219,9 +228,7 @@ func (s *CompanyStore) DeleteCompanyWithAssets(id int64, deleteAssets bool) (ass
 		return 0, err
 	}
 	defer tx.Rollback() //nolint:errcheck
-	if err := lockCompanyScopeMutation(tx); err != nil {
-		return 0, err
-	}
+	// The business opener reserves the SQLite writer at BEGIN.
 	if deleteAssets {
 		res, err := tx.Exec(`DELETE FROM assets WHERE company_id = $1`, id)
 		if err != nil {
@@ -259,7 +266,7 @@ func (s *CompanyStore) DeleteCompanyWithAssets(id int64, deleteAssets bool) (ass
 // ListCompanies returns all companies with scope and asset count.
 func (s *CompanyStore) ListCompanies() ([]*CompanyWithScope, error) {
 	rows, err := s.db.Query(`
-SELECT c.id, c.name, c.nkey, c.logo, c.created_at::text, c.updated_at::text,
+SELECT c.id, c.name, c.nkey, c.logo, CAST(c.created_at AS TEXT), CAST(c.updated_at AS TEXT),
        COUNT(DISTINCT a.id) AS asset_count
 FROM companies c
 LEFT JOIN assets a ON a.company_id = c.id
@@ -297,7 +304,7 @@ ORDER BY c.name`)
 func (s *CompanyStore) GetScope(companyID int64) ([]ScopeRule, error) {
 	rows, err := s.db.Query(`
 SELECT id, company_id, kind,
-       COALESCE(domain,''), COALESCE(net::text,''), COALESCE(value,''), raw, COALESCE(reason,'')
+       COALESCE(domain,''), COALESCE(net,''), COALESCE(value,''), raw, COALESCE(reason,'')
 FROM company_scope
 WHERE company_id = $1
 ORDER BY id`, companyID)
@@ -353,9 +360,7 @@ func (s *CompanyStore) AddScopeInputsChecked(companyID int64, inputs []ScopeInpu
 		return 0, 0, invalid, errors, err
 	}
 	defer tx.Rollback() //nolint:errcheck
-	if err := lockCompanyScopeMutation(tx); err != nil {
-		return 0, 0, invalid, errors, err
-	}
+	// The business opener reserves the SQLite writer at BEGIN.
 	if err := ensureCompanyExistsTx(tx, companyID); err != nil {
 		return 0, 0, invalid, errors, err
 	}
@@ -423,11 +428,6 @@ func ensureCompanyExistsTx(tx *sql.Tx, companyID int64) error {
 	return nil
 }
 
-func lockCompanyScopeMutation(tx *sql.Tx) error {
-	_, err := tx.Exec(`SELECT pg_advisory_xact_lock($1)`, companyScopeMutationLock)
-	return err
-}
-
 func insertScopeRulesTx(tx *sql.Tx, companyID int64, rules []ParsedScope, reason string) (
 	added, skipped int, needsAttribution bool, err error,
 ) {
@@ -455,14 +455,17 @@ func insertScopeRuleTx(tx *sql.Tx, companyID int64, rule ParsedScope, reason str
 		res, err = tx.Exec(`
 INSERT INTO company_scope(company_id, kind, domain, raw, reason)
 VALUES ($1, 'domain', $2, $3, $4)
-ON CONFLICT ON CONSTRAINT uq_sv2_domain DO NOTHING`,
+ON CONFLICT (company_id,domain) DO NOTHING`,
 			companyID, rule.Domain, rule.Raw, reason)
 	case "ip", "cidr":
+		normalized, family, prefix, first, last, parseErr := sqliteNetwork(rule.Net)
+		if parseErr != nil {
+			return false, parseErr
+		}
 		res, err = tx.Exec(`
-INSERT INTO company_scope(company_id, kind, net, raw, reason)
-VALUES ($1, $2, $3::cidr, $4, $5)
-ON CONFLICT ON CONSTRAINT uq_sv2_net DO NOTHING`,
-			companyID, rule.Kind, rule.Net, rule.Raw, reason)
+INSERT INTO company_scope(company_id,kind,net,raw,reason,net_family,net_prefix,net_first,net_last)
+VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)
+ON CONFLICT (company_id,net) DO NOTHING`, companyID, rule.Kind, normalized, rule.Raw, reason, family, prefix, first, last)
 	case "icp", "keyword":
 		res, err = tx.Exec(`
 INSERT INTO company_scope(company_id, kind, value, raw, reason)
@@ -475,8 +478,8 @@ ON CONFLICT (company_id, kind, value) WHERE kind IN ('icp','keyword') DO NOTHING
 	if err != nil {
 		return false, err
 	}
-	n, _ := res.RowsAffected()
-	return n > 0, nil
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 // RecomputeAttribution rebuilds only scope-derived ownership. Explicit company
@@ -488,9 +491,7 @@ func (s *CompanyStore) RecomputeAttribution() error {
 		return err
 	}
 	defer tx.Rollback() //nolint:errcheck
-	if err := lockCompanyScopeMutation(tx); err != nil {
-		return err
-	}
+	// The business opener reserves the SQLite writer at BEGIN.
 	warning, err := recomputeAttributionTx(tx)
 	if err != nil {
 		return err
@@ -500,76 +501,94 @@ func (s *CompanyStore) RecomputeAttribution() error {
 }
 
 // recomputeAttributionTx rebuilds scope-derived ownership. It returns a warning
-// for assets whose ip column cannot be parsed: try_inet skips them instead of
-// aborting the statement, so without this they would silently never receive a
-// network-based company. Callers surface the warning and it is always logged.
+// for assets whose ip column cannot be parsed and therefore cannot match a
+// network rule. Callers surface the warning and it is always logged.
 func recomputeAttributionTx(tx *sql.Tx) (string, error) {
-	// Only derived rows are cleared. Historical rows migrated without provenance
-	// are marked explicit by schema.sql, which is the non-destructive default.
-	if _, err := tx.Exec(`
-UPDATE assets
-SET company_id = NULL, company_source = 'scope'
-WHERE company_source = 'scope'`); err != nil {
+	rules, err := readAttributionRules(tx)
+	if err != nil {
 		return "", err
 	}
-
-	// Domain-based attribution (root_domain exact match).
-	if _, err := tx.Exec(`
-WITH matched AS (
-    SELECT DISTINCT ON (a.id) a.id AS asset_id, cs.company_id
-    FROM assets a
-    JOIN company_scope cs ON cs.kind = 'domain' AND a.root_domain = cs.domain
-    WHERE a.company_id IS NULL
-      AND a.type IN ('root_domain','subdomain','service','endpoint')
-      AND a.root_domain IS NOT NULL
-    ORDER BY a.id, length(cs.domain) DESC, cs.company_id
-)
-UPDATE assets a
-SET company_id = matched.company_id, company_source = 'scope'
-FROM matched
-WHERE a.id = matched.asset_id`); err != nil {
+	rows, err := tx.Query(`SELECT id,COALESCE(root_domain,''),COALESCE(ip,''),COALESCE(icp,''),COALESCE(app_icp,'') FROM assets WHERE company_source='scope' OR company_id IS NULL ORDER BY id`)
+	if err != nil {
 		return "", err
 	}
-
-	// IP/CIDR attribution for still-unowned assets.
-	if _, err := tx.Exec(`
-WITH matched AS (
-    SELECT DISTINCT ON (a.id) a.id AS asset_id, cs.company_id
-    FROM assets a
-    JOIN company_scope cs ON cs.kind IN ('ip','cidr') AND cs.net >>= try_inet(a.ip)
-    WHERE a.company_id IS NULL
-      AND a.type IN ('ip','subdomain','service','endpoint')
-      AND a.ip IS NOT NULL
-    ORDER BY a.id, masklen(cs.net) DESC, cs.company_id
-)
-UPDATE assets a
-SET company_id = matched.company_id, company_source = 'scope'
-FROM matched
-WHERE a.id = matched.asset_id`); err != nil {
+	type candidate struct {
+		id                      int64
+		domain, ip, icp, appICP string
+	}
+	var candidates []candidate
+	for rows.Next() {
+		var item candidate
+		if err := rows.Scan(&item.id, &item.domain, &item.ip, &item.icp, &item.appICP); err != nil {
+			rows.Close()
+			return "", err
+		}
+		candidates = append(candidates, item)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return "", err
 	}
-
-	// Exact normalized ICP attribution after domain/network precedence.
-	if _, err := tx.Exec(`
-WITH matched AS (
-    SELECT DISTINCT ON (a.id) a.id AS asset_id, cs.company_id
-    FROM assets a
-    JOIN company_scope cs ON cs.kind = 'icp'
-      AND (
-        lower(regexp_replace(COALESCE(a.icp,''), '[[:space:]]+', '', 'g')) = cs.value
-        OR lower(regexp_replace(COALESCE(a.app_icp,''), '[[:space:]]+', '', 'g')) = cs.value
-      )
-	WHERE a.company_id IS NULL
-      AND (COALESCE(a.icp,'') <> '' OR COALESCE(a.app_icp,'') <> '')
-    ORDER BY a.id, cs.company_id
-)
-UPDATE assets a
-SET company_id = matched.company_id, company_source = 'scope'
-FROM matched
-WHERE a.id = matched.asset_id`); err != nil {
-		return "", err
+	for _, item := range candidates {
+		companyID := matchAttributionRules(rules, item.domain, item.ip, item.icp, item.appICP)
+		if _, err := tx.Exec(`UPDATE assets SET company_id=?2,company_source='scope' WHERE id=?1`, item.id, companyID); err != nil {
+			return "", err
+		}
 	}
 	return malformedIPAssetWarning(tx)
+}
+
+type attributionRule struct {
+	companyID           int64
+	kind, domain, value string
+	family, prefix      int
+	first, last         []byte
+}
+
+func readAttributionRules(q rowsQuerier) ([]attributionRule, error) {
+	rows, err := q.Query(`SELECT company_id,kind,COALESCE(domain,''),COALESCE(value,''),COALESCE(net_family,0),COALESCE(net_prefix,0),net_first,net_last FROM company_scope ORDER BY company_id,id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var rules []attributionRule
+	for rows.Next() {
+		var rule attributionRule
+		if err := rows.Scan(&rule.companyID, &rule.kind, &rule.domain, &rule.value, &rule.family, &rule.prefix, &rule.first, &rule.last); err != nil {
+			return nil, err
+		}
+		rules = append(rules, rule)
+	}
+	return rules, rows.Err()
+}
+
+func matchAttributionRules(rules []attributionRule, domain, ip, icp, appICP string) *int64 {
+	_, family, address, err := sqliteAddress(ip)
+	normalizedICP, normalizedAppICP := NormalizeICP(icp), NormalizeICP(appICP)
+	rank, bits := 0, -1
+	var chosen *int64
+	for _, rule := range rules {
+		ruleRank, ruleBits := 0, 0
+		switch rule.kind {
+		case "domain":
+			if domain != "" && rule.domain == domain {
+				ruleRank = 3
+			}
+		case "ip", "cidr":
+			if err == nil && address != nil && family == rule.family && bytes.Compare(address, rule.first) >= 0 && bytes.Compare(address, rule.last) <= 0 {
+				ruleRank, ruleBits = 2, rule.prefix
+			}
+		case "icp":
+			if rule.value != "" && (rule.value == normalizedICP || rule.value == normalizedAppICP) {
+				ruleRank = 1
+			}
+		}
+		if ruleRank > rank || (ruleRank == rank && ruleRank > 0 && ruleBits > bits) {
+			id := rule.companyID
+			chosen = &id
+			rank, bits = ruleRank, ruleBits
+		}
+	}
+	return chosen
 }
 
 // malformedIPAssetsSampled bounds how many offending ids one warning names, so a
@@ -604,26 +623,25 @@ func (s *CompanyStore) MalformedIPAssetWarning() (string, error) {
 // told which rows to fix — silently skipping them would look like scope rules
 // that simply do not work.
 func malformedIPAssetWarning(q malformedIPAssetQueryer) (string, error) {
-	rows, err := q.Query(`
-SELECT id, ip, count(*) OVER () AS total
-FROM assets
-WHERE ip IS NOT NULL AND ip <> '' AND try_inet(ip) IS NULL
-  AND type IN ('ip','subdomain','service','endpoint')
-ORDER BY id
-LIMIT $1`, malformedIPAssetsSampled)
+	rows, err := q.Query(`SELECT id,ip FROM assets WHERE ip IS NOT NULL AND ip<>'' AND type IN ('ip','subdomain','service','endpoint') ORDER BY id`)
 	if err != nil {
 		return "", err
 	}
 	defer rows.Close()
-	var total int
+	total := 0
 	samples := make([]string, 0, malformedIPAssetsSampled)
 	for rows.Next() {
 		var id int64
 		var ip string
-		if err := rows.Scan(&id, &ip, &total); err != nil {
+		if err := rows.Scan(&id, &ip); err != nil {
 			return "", err
 		}
-		samples = append(samples, fmt.Sprintf("#%d %s", id, ip))
+		if _, _, _, err := sqliteAddress(ip); err != nil {
+			total++
+			if len(samples) < malformedIPAssetsSampled {
+				samples = append(samples, fmt.Sprintf("#%d %s", id, ip))
+			}
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return "", err
@@ -631,10 +649,7 @@ LIMIT $1`, malformedIPAssetsSampled)
 	if total == 0 {
 		return "", nil
 	}
-	warning := fmt.Sprintf(
-		"자산 %d개의 ip 필드가 유효하지 않아 IP/CIDR 범위 검사를 건너뛰었습니다. 이 자산은 대역 규칙으로 기업에 연결되지 않습니다: %s",
-		total, strings.Join(samples, "、"),
-	)
+	warning := fmt.Sprintf("자산 %d개의 ip 필드가 유효하지 않아 IP/CIDR 범위 검사를 건너뛰었습니다. 이 자산은 대역 규칙으로 기업에 연결되지 않습니다: %s", total, strings.Join(samples, "、"))
 	if total > len(samples) {
 		warning += fmt.Sprintf(" 등 %d건", total)
 	}
@@ -681,9 +696,7 @@ func (s *CompanyStore) UpdateScopeInputsChecked(companyID int64, inputs []ScopeI
 		return 0, invalid, errs, err
 	}
 	defer tx.Rollback() //nolint:errcheck
-	if err := lockCompanyScopeMutation(tx); err != nil {
-		return 0, invalid, errs, err
-	}
+	// The business opener reserves the SQLite writer at BEGIN.
 	if err := ensureCompanyExistsTx(tx, companyID); err != nil {
 		return 0, invalid, errs, err
 	}
@@ -720,55 +733,13 @@ func (s *CompanyStore) ResolveCompanyWithICP(rootDomain, ipStr, icp string) (*in
 }
 
 type companyScopeQueryer interface {
-	QueryRow(query string, args ...any) *sql.Row
+	Query(query string, args ...any) (*sql.Rows, error)
 }
 
 func resolveCompanyWithICP(q companyScopeQueryer, rootDomain, ipStr, icp string) (*int64, error) {
-	if rootDomain != "" {
-		var cid int64
-		err := q.QueryRow(`
-SELECT company_id FROM company_scope
-WHERE kind = 'domain'
-  AND domain = $1
-ORDER BY length(domain) DESC, company_id
-LIMIT 1`, rootDomain).Scan(&cid)
-		if err == nil {
-			return &cid, nil
-		}
-		if err != sql.ErrNoRows {
-			return nil, err
-		}
+	rules, err := readAttributionRules(q)
+	if err != nil {
+		return nil, err
 	}
-	if ipStr != "" {
-		if net.ParseIP(ipStr) != nil {
-			var cid int64
-			err := q.QueryRow(`
-SELECT company_id FROM company_scope
-WHERE kind IN ('ip','cidr')
-  AND net >>= $1::inet
-ORDER BY masklen(net) DESC, company_id
-LIMIT 1`, ipStr).Scan(&cid)
-			if err == nil {
-				return &cid, nil
-			}
-			if err != sql.ErrNoRows {
-				return nil, err
-			}
-		}
-	}
-	if normalized := NormalizeICP(icp); normalized != "" {
-		var cid int64
-		err := q.QueryRow(`
-SELECT company_id FROM company_scope
-WHERE kind = 'icp' AND value = $1
-ORDER BY company_id
-LIMIT 1`, normalized).Scan(&cid)
-		if err == nil {
-			return &cid, nil
-		}
-		if err != sql.ErrNoRows {
-			return nil, err
-		}
-	}
-	return nil, nil
+	return matchAttributionRules(rules, rootDomain, ipStr, icp, ""), nil
 }

@@ -2,7 +2,7 @@ package db
 
 import (
 	"database/sql"
-	"strings"
+	"encoding/json"
 	"time"
 )
 
@@ -56,14 +56,11 @@ type SkillStat struct {
 // that were never invoked are absent — callers merge against the skill list on disk.
 // Only resolved calls count; misses are reported separately by MissingSkillStats.
 func (d *DB) SkillStats() ([]SkillStat, error) {
-	// agent keys come back as one comma-joined string rather than text[]: the pgx
-	// stdlib driver has no database/sql Scan target for arrays, and agent keys are
-	// [a-z0-9_-] so a comma join is unambiguous.
 	rows, err := d.Query(`
 SELECT skill, COUNT(*) AS calls,
        COUNT(DISTINCT task_id) AS tasks,
-       COALESCE(STRING_AGG(DISTINCT agent_key, ','), '') AS agents,
-       MAX(ts) AS last_used
+       json_group_array(DISTINCT agent_key) FILTER(WHERE agent_key IS NOT NULL) AS agents,
+       strftime('%Y-%m-%dT%H:%M:%fZ',MAX(ts)) AS last_used
 FROM skill_usage
 WHERE found
 GROUP BY skill
@@ -76,16 +73,19 @@ ORDER BY COUNT(*) DESC, skill`)
 	for rows.Next() {
 		var s SkillStat
 		var agents string
-		var lastUsed sql.NullTime
+		var lastUsed sql.NullString
 		if err := rows.Scan(&s.Skill, &s.Calls, &s.Tasks, &agents, &lastUsed); err != nil {
 			return nil, err
 		}
 		s.Agents = []string{}
-		if agents != "" {
-			s.Agents = strings.Split(agents, ",")
+		if err := json.Unmarshal([]byte(agents), &s.Agents); err != nil {
+			return nil, err
 		}
 		if lastUsed.Valid {
-			t := lastUsed.Time
+			t, err := time.Parse(time.RFC3339Nano, lastUsed.String)
+			if err != nil {
+				return nil, err
+			}
 			s.LastUsed = &t
 		}
 		out = append(out, s)
@@ -109,8 +109,8 @@ func (d *DB) MissingSkillStats(limit int) ([]SkillStat, error) {
 	}
 	rows, err := d.Query(`
 SELECT skill, COUNT(*) AS calls,
-       COALESCE(STRING_AGG(DISTINCT agent_key, ','), '') AS agents,
-       MAX(ts) AS last_used
+       json_group_array(DISTINCT agent_key) FILTER(WHERE agent_key IS NOT NULL) AS agents,
+       strftime('%Y-%m-%dT%H:%M:%fZ',MAX(ts)) AS last_used
 FROM skill_usage
 WHERE NOT found
 GROUP BY skill
@@ -123,16 +123,19 @@ ORDER BY COUNT(*) DESC, skill`)
 	for rows.Next() {
 		var s SkillStat
 		var agents string
-		var lastUsed sql.NullTime
+		var lastUsed sql.NullString
 		if err := rows.Scan(&s.Skill, &s.Calls, &agents, &lastUsed); err != nil {
 			return nil, err
 		}
 		s.Agents = []string{}
-		if agents != "" {
-			s.Agents = strings.Split(agents, ",")
+		if err := json.Unmarshal([]byte(agents), &s.Agents); err != nil {
+			return nil, err
 		}
 		if lastUsed.Valid {
-			t := lastUsed.Time
+			t, err := time.Parse(time.RFC3339Nano, lastUsed.String)
+			if err != nil {
+				return nil, err
+			}
 			s.LastUsed = &t
 		}
 		out = append(out, s)
@@ -190,7 +193,7 @@ LIMIT $2`, skill, limit)
 // view of which procedures its agents actually reached for.
 func (d *DB) SkillCallsByTask(taskID int64) ([]SkillStat, error) {
 	rows, err := d.Query(`
-SELECT skill, COUNT(*) AS calls, MAX(ts) AS last_used
+SELECT skill, COUNT(*) AS calls, strftime('%Y-%m-%dT%H:%M:%fZ',MAX(ts)) AS last_used
 FROM skill_usage
 WHERE task_id = $1 AND found
 GROUP BY skill
@@ -202,13 +205,16 @@ ORDER BY COUNT(*) DESC, skill`, taskID)
 	out := []SkillStat{}
 	for rows.Next() {
 		var s SkillStat
-		var lastUsed sql.NullTime
+		var lastUsed sql.NullString
 		if err := rows.Scan(&s.Skill, &s.Calls, &lastUsed); err != nil {
 			return nil, err
 		}
 		s.Agents = []string{}
 		if lastUsed.Valid {
-			t := lastUsed.Time
+			t, err := time.Parse(time.RFC3339Nano, lastUsed.String)
+			if err != nil {
+				return nil, err
+			}
 			s.LastUsed = &t
 		}
 		out = append(out, s)

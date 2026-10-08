@@ -1,6 +1,7 @@
 package db
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 	"testing"
@@ -10,9 +11,11 @@ import (
 // t.Cleanup):t.Cleanup 跑在测试函数返回之后,那时 defer d.Close() 已经把连接关了,
 // 清理会静默失败并把脏数据留在共享开发库里。
 func cleanupTreeFixtures(d *DB, taskID int64, rootDomains ...string) {
-	d.Exec(`DELETE FROM assets WHERE root_domain = ANY($1::text[])`, rootDomains) //nolint:errcheck
-	d.DeleteFindingsByTask(taskID)                                                //nolint:errcheck
+	d.Exec(`DELETE FROM assets WHERE root_domain IN(SELECT value FROM json_each($1))`, string(mustJSONStrings(rootDomains))) //nolint:errcheck
+	d.DeleteFindingsByTask(taskID)                                                                                           //nolint:errcheck
 }
+
+func mustJSONStrings(values []string) []byte { raw, _ := json.Marshal(values); return raw }
 
 // seedTreeAsset inserts one asset row.
 func seedTreeAsset(t *testing.T, d *DB, kind string, cols map[string]any) int64 {
@@ -51,7 +54,7 @@ func nodeByKey(tree *FindingAssetTree, key string) *FindingAssetNode {
 func TestBuildFindingAssetTree(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) — skipping", err)
+		t.Fatal(err)
 	}
 	defer d.Close()
 
@@ -85,11 +88,15 @@ func TestBuildFindingAssetTree(t *testing.T) {
 	if _, err := d.AddFinding(tk.ID, 0, "Info", "信息泄露", "low", "s", "e", "w", []int64{svcID}); err != nil {
 		t.Fatal(err)
 	}
-	// 资产行不存在(已删除资产)→ 未关联桶。
-	if _, err := d.AddFinding(tk.ID, 0, "Misc", "孤儿", "medium", "s", "e", "w", []int64{999000111}); err != nil {
+	deletedID := seedTreeAsset(t, d, "root_domain", map[string]any{"domain": "deleted-tree.example", "root_domain": "deleted-tree.example"})
+	// A deleted asset loses its relation but the finding remains in the unassigned bucket.
+	if _, err := d.AddFinding(tk.ID, 0, "Misc", "孤儿", "medium", "s", "e", "w", []int64{deletedID}); err != nil {
 		t.Fatal(err)
 	}
 
+	if _, err := d.Exec(`DELETE FROM assets WHERE id=?1`, deletedID); err != nil {
+		t.Fatal(err)
+	}
 	tree, err := d.BuildFindingAssetTree(FindingFilter{TaskID: strconv.FormatInt(tk.ID, 10)})
 	if err != nil {
 		t.Fatal(err)
@@ -157,7 +164,7 @@ func TestBuildFindingAssetTree(t *testing.T) {
 func TestFindingAssetScopeFilter(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) — skipping", err)
+		t.Fatal(err)
 	}
 	defer d.Close()
 
@@ -184,12 +191,16 @@ func TestFindingAssetScopeFilter(t *testing.T) {
 	if _, err := d.AddFinding(tk.ID, 0, "C", "没有资产的", "high", "s", "e", "w", nil); err != nil {
 		t.Fatal(err)
 	}
-	// 指向已删除资产的发现,和 asset_ids 为空的一样属于「未关联」——树的桶收下它,
+	deletedID := seedTreeAsset(t, d, "root_domain", map[string]any{"domain": "deleted-filter.example", "root_domain": "deleted-filter.example"})
+	// A finding retained after asset deletion shares the unassigned bucket.
 	// 列表筛选也必须查得出来,两处口径不一致会让桶上的数字大于点开后的条数。
-	if _, err := d.AddFinding(tk.ID, 0, "D", "资产已删除", "high", "s", "e", "w", []int64{999000333}); err != nil {
+	if _, err := d.AddFinding(tk.ID, 0, "D", "资产已删除", "high", "s", "e", "w", []int64{deletedID}); err != nil {
 		t.Fatal(err)
 	}
 
+	if _, err := d.Exec(`DELETE FROM assets WHERE id=?1`, deletedID); err != nil {
+		t.Fatal(err)
+	}
 	base := FindingFilter{TaskID: strconv.FormatInt(tk.ID, 10)}
 	cases := []struct {
 		name  string

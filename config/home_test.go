@@ -13,7 +13,6 @@ func isolateHome(t *testing.T, home string) {
 	t.Setenv("ARTEX_HOME", home)
 	t.Setenv("ARTEX_CONFIG", "")
 	t.Setenv("ARTEX_SKILL_DIR", "")
-	t.Setenv("ARTEX_PG_DSN", "")
 }
 
 func TestHomeInitializesWritableUserDirectory(t *testing.T) {
@@ -38,10 +37,11 @@ func TestHomeInitializesWritableUserDirectory(t *testing.T) {
 	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
 		t.Fatalf("new home is accessible to other users: %v", info.Mode())
 	}
-	if got := SkillDir(); got != filepath.Join(home, "skills") {
+	got, err := SkillDir()
+	if err != nil || got != filepath.Join(home, "skills") {
 		t.Fatalf("SkillDir = %q", got)
 	}
-	if info, err := os.Stat(SkillDir()); err != nil || !info.IsDir() {
+	if info, err := os.Stat(got); err != nil || !info.IsDir() {
 		t.Fatalf("skills not initialized: %v", err)
 	}
 }
@@ -94,17 +94,15 @@ func TestHomeDoesNotUseWorkingDirectoryConfig(t *testing.T) {
 	if got := Path(); got != want {
 		t.Fatalf("Path = %q, want %q", got, want)
 	}
-	if Load().SkillDir != "" {
+	cfg, err := Load()
+	if err != nil || cfg.SkillDir != "" {
 		t.Fatal("loaded unrelated CWD config when home config was missing")
 	}
-	if _, _, err := PostgresDSN(); err == nil {
-		t.Fatal("silently used the CWD database")
-	}
-	if err := os.WriteFile(want, []byte(`{"database":{"dsn":"postgres://home/db"}}`), 0o600); err != nil {
+	if err := os.WriteFile(want, []byte(`{"skill_dir":"home-skills"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got, _, err := PostgresDSN(); err != nil || got != "postgres://home/db" {
-		t.Fatalf("home config not loaded: %q %v", got, err)
+	if got, err := Load(); err != nil || got.SkillDir != "home-skills" {
+		t.Fatalf("home config not loaded: %+v %v", got, err)
 	}
 }
 
@@ -115,7 +113,8 @@ func TestHomePreservesExplicitOverrides(t *testing.T) {
 	skills := filepath.Join(t.TempDir(), "explicit-skills")
 	t.Setenv("ARTEX_CONFIG", configPath)
 	t.Setenv("ARTEX_SKILL_DIR", skills)
-	if Path() != configPath || SkillDir() != skills {
+	got, err := SkillDir()
+	if err != nil || Path() != configPath || got != skills {
 		t.Fatal("explicit overrides were ignored")
 	}
 }

@@ -10,9 +10,78 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
+
+func TestSQLiteConcurrentWALInitialization(t *testing.T) {
+	filename := filepath.Join(t.TempDir(), "concurrent.sqlite")
+	start := make(chan struct{})
+	results := make(chan error, 12)
+	var wg sync.WaitGroup
+	for range 12 {
+		wg.Go(func() {
+			<-start
+			d, err := OpenImmediate(t.Context(), filename)
+			if err != nil {
+				results <- err
+				return
+			}
+			defer d.Close()
+			var journal string
+			err = d.QueryRow(`PRAGMA journal_mode`).Scan(&journal)
+			if err == nil && journal != "wal" {
+				err = errors.New("concurrent opener did not select WAL")
+			}
+			results <- err
+		})
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+	for err := range results {
+		if err != nil {
+			t.Error(err)
+		}
+	}
+}
+
+func TestSQLiteWALContentionHonorsCancellation(t *testing.T) {
+	filename := filepath.Join(t.TempDir(), "locked.sqlite")
+	dsn, err := fileURI(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	conn, err := raw.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(t.Context(), `CREATE TABLE fixture(id INTEGER); BEGIN EXCLUSIVE`); err != nil {
+		t.Fatal(err)
+	}
+	defer conn.ExecContext(t.Context(), `ROLLBACK`)
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	d, err := OpenImmediate(ctx, filename)
+	if d != nil {
+		d.Close()
+		t.Fatal("locked startup returned a ready database")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("cancellation: %v", err)
+	}
+	if time.Since(start) > time.Second {
+		t.Fatalf("cancellation took %v", time.Since(start))
+	}
+}
 
 func openTestDB(t *testing.T, filename string) *sql.DB {
 	t.Helper()

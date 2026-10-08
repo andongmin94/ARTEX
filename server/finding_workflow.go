@@ -5,115 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"strconv"
 
 	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/traffic"
 	actool "github.com/Autumn-27/norma/tool"
 )
-
-func (s *Server) seedFindingWorkflowTools() {
-	const hostSearchDescriptionFlag = "finding_workflow_tools_v3_host_search_description"
-	if value, _, _ := s.m.pg.GetSetting(hostSearchDescriptionFlag); value != "true" {
-		// Only replace the original built-in text. A user-edited description is
-		// authoritative and must survive upgrades.
-		legacy := "기록 프록시가 수집한 대상 트래픽을 조회합니다. host는 필수이며 URL 부분 문자열 또는 본문 키워드로 추가 필터링할 수 있습니다. body_contains는 수집된 요청/응답 헤더와 본문을 검색하며 최소 3자의 다국어 부분 문자열을 지원합니다. 비밀번호·키·오류·내부 주소 등을 확인할 수 있습니다. id/method/url/status/resp_len만 반환하며 응답 본문은 포함하지 않습니다. 기본 3개, 페이지당 최대 10개이고 page는 0부터 시작합니다. 원문은 traffic_get(id)로 읽으세요. 이미 방문한 자원을 확인할 때 같은 URL을 반복 요청하기보다 먼저 이 도구를 사용하세요."
-		if _, err := s.m.pg.Exec(`UPDATE tools SET description=$1,updated_at=now() WHERE key='traffic_search' AND system AND description=$2`, traffic.TrafficSearchDescription, legacy); err != nil {
-			// Log and leave the flag unset so the next startup retries; do not
-			// return, or a transient error here would also skip the reporter
-			// migration below — the two are independent.
-			log.Printf("[evidence] upgrade traffic_search description: %v", err)
-		} else {
-			_ = s.m.pg.SetSetting(hostSearchDescriptionFlag, "true")
-		}
-	}
-	const flag = "finding_workflow_tools_v2_reporter"
-	if value, _, _ := s.m.pg.GetSetting(flag); value == "true" {
-		return
-	}
-	for _, key := range []string{"report_finding", "add_hint", "add_task_hint"} {
-		row, err := s.m.pg.GetTool(key)
-		if err != nil {
-			log.Printf("[evidence] load %s: %v", key, err)
-			return
-		}
-		if row == nil || !row.System {
-			continue
-		}
-		var schema map[string]any
-		if err := json.Unmarshal(row.Schema, &schema); err != nil {
-			log.Printf("[evidence] invalid schema for %s: %v", key, err)
-			return
-		}
-		if schema == nil {
-			log.Printf("[evidence] missing object schema for %s", key)
-			return
-		}
-		props := objectProperty(schema, "properties")
-		if key == "report_finding" {
-			if _, exists := props["evidence_hint_id"]; !exists {
-				props["evidence_hint_id"] = map[string]any{"type": "integer", "description": "선택: 현재 작업에서 이 취약점에 대응하는 hint ID. 힌트의 traffic_refs를 함께 연결합니다. 힌트가 없으면 생략하세요"}
-			}
-		} else {
-			if _, exists := props["traffic_refs"]; !exists {
-				props["traffic_refs"] = agent.HintTrafficSchema()
-			}
-			hints := objectProperty(props, "hints")
-			if _, exists := hints["type"]; !exists {
-				hints["type"] = "array"
-			}
-			items := objectProperty(hints, "items")
-			if _, ok := items["type"]; !ok {
-				items["type"] = "object"
-			}
-			itemProps := objectProperty(items, "properties")
-			for name, value := range map[string]any{"text": strParam("힌트 내용"), "asset_ids": map[string]any{"type": "array", "items": map[string]any{"type": "integer"}}, "traffic_refs": agent.HintTrafficSchema()} {
-				if _, exists := itemProps[name]; !exists {
-					itemProps[name] = value
-				}
-			}
-		}
-		raw, _ := json.Marshal(schema)
-		result, err := s.m.pg.Exec(`UPDATE tools SET schema=$2::jsonb,updated_at=now() WHERE key=$1 AND system AND schema=$3::jsonb`, key, string(raw), string(row.Schema))
-		if err != nil {
-			log.Printf("[evidence] upgrade %s: %v", key, err)
-			return
-		}
-		if n, _ := result.RowsAffected(); n != 1 {
-			return
-		} // preserve concurrent user edits
-	}
-	// Upgrade only the original default binding. Customized lists and enabled
-	// flags survive; the one-time flag also preserves future user unbinding.
-	readers := `["worker","reporter"]`
-	for _, key := range []string{"traffic_search", "traffic_get", "traffic_blob"} {
-		if _, err := s.m.pg.Exec(`UPDATE tools SET agents=$2::jsonb WHERE key=$1 AND system AND (agents='["worker"]'::jsonb OR (agents @> '["worker","planner","mainagent","auto","pentest"]'::jsonb AND jsonb_array_length(agents)=5))`, key, readers); err != nil {
-			return
-		}
-	}
-	if _, err := s.m.pg.Exec(`UPDATE tools SET agents=$1::jsonb WHERE key='get_finding_traffic' AND system AND agents @> '["auto","reporter"]'::jsonb AND jsonb_array_length(agents)=2`, `["auto","reporter","worker","planner","mainagent","pentest"]`); err != nil {
-		return
-	}
-	// Replace the previous code default only; preserve customized binding lists.
-	if _, err := s.m.pg.Exec(`UPDATE tools SET agents='["reporter"]'::jsonb WHERE key='bind_finding_traffic' AND system AND agents @> '["worker","planner","mainagent","auto","pentest"]'::jsonb AND jsonb_array_length(agents)=5`); err != nil {
-		return
-	}
-	if err := s.m.pg.AddAgentToToolBinding("reporter", []string{"bind_finding_traffic"}); err != nil {
-		return
-	}
-	_ = s.m.pg.SetSetting(flag, "true")
-}
-
-func objectProperty(parent map[string]any, key string) map[string]any {
-	value, ok := parent[key].(map[string]any)
-	if !ok {
-		value = map[string]any{}
-		parent[key] = value
-	}
-	return value
-}
 
 func (s *Server) agentFindingTrafficAccess(ctx context.Context, id int64, write bool) error {
 	if id <= 0 {

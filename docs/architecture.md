@@ -3,15 +3,14 @@
 결정일: 2026-10-05. 최초 조사 기준: `e0354e9a7101ed4f5bb43c9136beec07acafa014`.
 이 문서는 목표 구조와 근거를 설명한다. 진행 상태는 `development-plan.md`만 관리한다.
 
-## 1. 현재 코드에서 확인한 출발점
+## 1. 구현 경계
 
-- `web/package.json`의 `build:static`과 Dockerfile의 `embedui` 빌드는 기존 웹 UI를 Go에 포함한다. Next.js 서버를 데스크톱에 별도로 띄울 필요가 없다.
-- `db/db.go`, `db/schema.sql`은 PostgreSQL 업무 저장소다. 자산/탐색 그래프와 LLM 기록도 이 저장소를 쓴다. `llmrec/llmrec.go`의 저장 대상은 PG다.
-- `traffic/traffic.go`는 별도의 SQLite 인덱스와 본문/블롭 파일을 소유한다. `go.mod`에는 `modernc.org/sqlite`가 이미 있다.
-- `db/schema.sql`에는 배열, JSONB, INET/CIDR, GIN/GiST, 트리거 및 PG 전용 함수가 있다. 드라이버만 교체해서는 안 된다.
-- `cmd/artex/main.go`, `config/config.go`의 데이터 경로·서버 수명 주기는 데스크톱 부모와 연결해야 한다.
-- Dockerfile은 Python, Node, Chromium/Playwright 및 여러 CLI를 준비한다. Docker 제거는 이 실행 환경의 명시적 재구성이기도 하다.
-- `selfupdate/`, 시작/업데이트 스크립트, CI의 PostgreSQL 서비스 및 Docker 검사는 최종 배포 정리 대상이다.
+기존 Next.js 화면은 정적 export 후 Go embedui에 포함한다. Electron은 Next.js 서버를 실행하지 않는다.
+업무 DB는 data/artex.sqlite, 트래픽 인덱스·본문·증거는 기존 별도 저장 구조를 사용한다.
+internal/sqlitedb가 고정된 파일 URI와 연결별 PRAGMA를 적용하고 업무 쓰기는 IMMEDIATE 트랜잭션으로 시작한다.
+PG 드라이버·DSN·시드 보정·자체 업데이트·Docker 시작 경로는 제거했다.
+desktop/scripts/build.cjs가 UI·CSP hash·Go·기본 스킬·글꼴·라이선스를 묶고 package.cjs는 Windows 실행 폴더를 생성한다.
+현재 검증 범위와 미완료 제품 요구사항은 development-plan.md에 기록한다.
 
 ## 2. 목표 구조와 소유권
 
@@ -52,7 +51,7 @@ userData/
   backups/
 ```
 
-DB 파일명과 도구/로그/백업 하위 폴더는 목표다. 폴더가 문서에 있다고 구현된 것으로 간주하지 않는다.
+업무 DB는 data/artex.sqlite를 사용한다. 도구/로그/자동 백업 폴더가 문서에 있다고 구현된 것으로 간주하지 않는다.
 기본 스킬은 패키지 자원에서 설치하되 사용자 수정 파일을 무조건 덮어쓰지 않는다.
 
 부모는 Go를 다음 계약으로 시작한다.
@@ -73,8 +72,9 @@ Go는 저장소 초기화와 실제 HTTP 포트 바인딩 뒤 stdout에 한 줄 
 부모가 stdin 파이프를 닫거나 죽어서 EOF가 나면 Go가 정상 종료 경로를 실행한다.
 HTTP 종료 제한 시간 후에는 남은 연결을 닫는다. 생성 실패/포트 충돌/ready 출력 실패는 오류 종료한다.
 
-이 계약만으로 단일 인스턴스, 모든 도구 자손 프로세스 정리, 저장소 초기화의 timeout 또는 Electron 보안이 완성되지는 않는다.
-이 항목은 Electron 및 도구 단계에서 실제 OS별로 검증해야 한다.
+Electron은 단일 인스턴스·30초 ready 제한·종료 대기·시작 오류/재시도 UI를 구현한다.
+32바이트 앱 세션 키는 메인 프로세스가 요청 헤더로 넣고 Go가 실제 loopback Host/Origin과 함께 검사한다.
+도구 자손 프로세스·네트워크 격리와 OS별 설치 검증은 이 앱 세션 계약과 별도다.
 
 ## 4. SQLite 전환 원칙
 
@@ -118,7 +118,7 @@ Windows의 셸/PTY/프로세스 트리와 Linux 명령 의존을 별도 검증�
 렌더러 sandbox는 Go가 실행하는 외부 명령의 sandbox가 아니다. 별도 권한·작업 공간·네트워크 제한이 필요하다.
 
 최종 업데이트 소유자는 Electron 하나다. 서명/업데이트/Go/정적 UI가 같은 배포 버전으로 움직인다.
-이때 기존 Go 자체 업데이트 API와 스크립트 경로를 제거한다. 현재 실행 기반 단계는 아직 그 전환을 완료하지 않았다.
+기존 Go 자체 업데이트 API와 스크립트 경로는 제거했다. Electron의 서명·업데이트 배포는 아직 구현하지 않았다.
 
 ## 공식 참조
 
@@ -134,7 +134,7 @@ Windows의 셸/PTY/프로세스 트리와 Linux 명령 의존을 별도 검증�
 `internal/sqlitedb.Open(ctx, absolutePath)`은 기존 `traffic.Open`에서 사용한다.
 파일 경로만 입력받고, URL의 Path와 고정 Query를 분리해 한글/공백/#/%/?를 처리한다.
 Windows 드라이브 경로는 file URI로 바꾸며 UNC/장치 경로를 허용하지 않는다. 다른 OS의 네트워크 마운트를 자동 판별한다는 뜻은 아니다.
-연결별 PRAGMA는 드라이버 DSN에 있고 WAL 전환은 열린 파일에서 확인한다. 부모 폴더는 소유자가 준비한다.
+연결별 foreign_keys는 드라이버 DSN, busy_timeout은 연결 훅에서 설정한다. WAL 초기화는 취소 가능한 제한 시간 안에서 잠금 오류만 재시도한다. 부모 폴더는 소유자가 준비한다.
 새 파일은 0600으로 만들고 기존 파일을 자르거나 손상 데이터를 초기화하지 않는다. Windows ACL이나 악성 로컬 사용자의 경로 경합까지 격리하는 API는 아니다.
 호출자가 풀/트랜잭션/쓰기 조정/스키마를 소유한다. 현재 트래픽의 wmu와 트랜잭션 경계를 유지한다.
-업무 SQLite 부팅과 writer/read pool 정책은 이 연결 함수를 사용하는 후속 M2.2에서 실제 호출자와 함께 검증해야 한다.
+업무 DB는 OpenImmediate의 쓰기 트랜잭션을 사용한다. 업무·트래픽·증거 호출자와 실제 다중 풀/취소/재열기/보관 복원 검사는 지정 modernc로 통과했다. 전체 부하·자동 백업·OS 격리 검증은 별도다.

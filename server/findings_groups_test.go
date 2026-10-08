@@ -39,9 +39,9 @@ func TestFindingPaginationParam(t *testing.T) {
 func TestFindingGroupsReturnsTaskBucketsAndNormalizesPagination(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) — skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	marker := fmt.Sprintf("__server_finding_groups_%d__", time.Now().UnixNano())
 	createdTaskIDs := []int64{}
 	defer func() {
@@ -149,9 +149,9 @@ func TestFindingGroupsReturnsTaskBucketsAndNormalizesPagination(t *testing.T) {
 func TestDeepenFindingCreatesAuditedIntentAndRevivesTask(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) — skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 
 	task, err := m.CreateTask("deepen finding", "goal", nil, 0, 0)
 	if err != nil {
@@ -278,9 +278,9 @@ func TestDeepenFindingValidatesDescription(t *testing.T) {
 func TestDeepenAdmissionFailureDiscardsFollowUpIntent(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) - skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	task, err := m.CreateTask("deepen rollback", "leave no orphan intent", nil, 0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -311,7 +311,7 @@ func TestDeepenAdmissionFailureDiscardsFollowUpIntent(t *testing.T) {
 	}
 	// Keep the in-memory handle and graph available while forcing the atomic
 	// admission UPDATE to reject this soft-deleted row.
-	if _, err := m.pg.Exec(`UPDATE tasks SET deleted_at=now() WHERE id=$1`, taskID); err != nil {
+	if _, err := m.pg.Exec(`UPDATE tasks SET deleted_at=CURRENT_TIMESTAMP WHERE id=$1`, taskID); err != nil {
 		t.Fatal(err)
 	}
 

@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -186,7 +187,17 @@ const settingPythonInterp = "python_interpreter"
 func detectPython() string {
 	for _, c := range []string{"python3", "python"} {
 		if p, err := exec.LookPath(c); err == nil {
-			return p
+			// Windows App Execution Aliases can exist without an interpreter and
+			// may open Microsoft Store. They are not a usable Python installation.
+			if runtime.GOOS == "windows" && strings.Contains(strings.ToLower(filepath.Clean(p)), `\microsoft\windowsapps\`) {
+				continue
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			version, err := exec.CommandContext(ctx, p, "--version").CombinedOutput()
+			cancel()
+			if err == nil && strings.HasPrefix(strings.TrimSpace(string(version)), "Python 3.") {
+				return p
+			}
 		}
 	}
 	return ""
@@ -194,23 +205,37 @@ func detectPython() string {
 
 // pythonInterpreter resolves the interpreter: user-set > stored auto-detect > live
 // detect. "" only when truly none found.
-func (s *Server) pythonInterpreter() string {
-	if v, ok, _ := s.m.pg.GetSetting(settingPythonInterp); ok && strings.TrimSpace(v) != "" {
-		return strings.TrimSpace(v)
+func (s *Server) pythonInterpreter() (string, error) {
+	v, ok, err := s.m.pg.GetSetting(settingPythonInterp)
+	if err != nil {
+		return "", fmt.Errorf("Python 설정 읽기: %w", err)
 	}
-	return detectPython()
+	if ok && strings.TrimSpace(v) != "" {
+		return strings.TrimSpace(v), nil
+	}
+	return detectPython(), nil
 }
 
 // seedPythonInterpreter stores the auto-detected interpreter on startup if unset
 // (never clobbers a user-set value).
-func (s *Server) seedPythonInterpreter() {
-	if v, ok, _ := s.m.pg.GetSetting(settingPythonInterp); ok && strings.TrimSpace(v) != "" {
-		return
+func (s *Server) seedPythonInterpreter() error {
+	if desktopToolsUnavailable() {
+		return nil
+	}
+	v, ok, err := s.m.pg.GetSetting(settingPythonInterp)
+	if err != nil {
+		return fmt.Errorf("Python 설정 읽기: %w", err)
+	}
+	if ok && strings.TrimSpace(v) != "" {
+		return nil
 	}
 	if p := detectPython(); p != "" {
-		_ = s.m.pg.SetSetting(settingPythonInterp, p)
+		if err := s.m.pg.SetSetting(settingPythonInterp, p); err != nil {
+			return fmt.Errorf("Python 설정 저장: %w", err)
+		}
 		log.Printf("[custom-tool] Python 인터프리터 자동 탐색: %s", p)
 	}
+	return nil
 }
 
 // ---------- exec 规格 ----------
@@ -329,6 +354,9 @@ func ensureSchema(raw json.RawMessage) map[string]any {
 // ---------- command:渲染命令 → 复用 Bash 底层 run ----------
 
 func (s *Server) runCommandTool(ctx context.Context, execRaw json.RawMessage, params map[string]any, tc *actool.ToolContext) (actool.Result, error) {
+	if desktopToolsUnavailable() {
+		return actool.Errorf(unmanagedDesktopToolsMessage), nil
+	}
 	var spec commandExec
 	_ = json.Unmarshal(execRaw, &spec)
 	if strings.TrimSpace(spec.Command) == "" {
@@ -349,12 +377,18 @@ func (s *Server) runCommandTool(ctx context.Context, execRaw json.RawMessage, pa
 // ---------- script(仅 Python):临时文件 + stdin JSON + env ----------
 
 func (s *Server) runScriptTool(ctx context.Context, key string, execRaw json.RawMessage, params map[string]any, tc *actool.ToolContext) (actool.Result, error) {
+	if desktopToolsUnavailable() {
+		return actool.Errorf(unmanagedDesktopToolsMessage), nil
+	}
 	var spec scriptExec
 	_ = json.Unmarshal(execRaw, &spec)
 	if strings.TrimSpace(spec.Code) == "" {
 		return actool.Errorf("script code가 비어 있습니다"), nil
 	}
-	interp := s.pythonInterpreter()
+	interp, err := s.pythonInterpreter()
+	if err != nil {
+		return actool.Errorf(err.Error()), nil
+	}
 	if interp == "" {
 		return actool.Errorf("Python 인터프리터가 설정되지 않았고 자동 탐색도 실패했습니다. 시스템 설정에서 지정하세요"), nil
 	}
@@ -490,8 +524,13 @@ func (s *Server) httpProxyTransport(spec httpExec) *http.Transport {
 
 func identity(s string) string { return s }
 
-// shellQuote single-quotes a value for safe shell interpolation.
-func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+// norma uses PowerShell on Windows and a POSIX shell elsewhere.
+func shellQuote(s string) string {
+	if runtime.GOOS == "windows" {
+		return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
 
 // renderTemplate replaces {name} placeholders with each param's rendered value.
 func renderTemplate(tmpl string, params map[string]any, quote func(string) string) string {

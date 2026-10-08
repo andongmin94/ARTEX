@@ -6,9 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 
-	"github.com/Autumn-27/artex/config"
 	"github.com/Autumn-27/artex/internal/sqlitedb"
 )
 
@@ -37,18 +35,4 @@ func OpenContext(ctx context.Context, filename string) (*DB, error) {
 		return nil, errors.Join(err, pool.Close())
 	}
 	return &DB{DB: pool}, nil
-}
-
-// These two existing helpers still have unported callers. They are NOT selected
-// by Open/OpenContext, and cannot provide a PostgreSQL fallback for SQLite.
-// Remove them with those callers before the SQLite application is released.
-func DSN() (dsn, source string, err error) { return config.PostgresDSN() }
-
-const schemaMigrationLockKey int64 = 7337741001
-
-func coordinateWithSchemaMigration(tx *sql.Tx) error {
-	if _, err := tx.Exec(`SELECT pg_advisory_xact_lock($1)`, schemaMigrationLockKey); err != nil {
-		return fmt.Errorf("coordinate with schema migration: %w", err)
-	}
-	return nil
 }

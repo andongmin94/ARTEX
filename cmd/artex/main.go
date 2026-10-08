@@ -1,4 +1,4 @@
-// Command artex runs the ARTEX backend: the PostgreSQL application store,
+// Command artex runs the ARTEX backend: the SQLite application store,
 // SQLite traffic index, event-driven exploration engine, and JSON HTTP API.
 package main
 
@@ -17,7 +17,6 @@ import (
 
 	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/config"
-	"github.com/Autumn-27/artex/selfupdate"
 	"github.com/Autumn-27/artex/server"
 )
 
@@ -41,15 +40,12 @@ func printBanner(addr string) {
 		version, runtime.GOOS, runtime.GOARCH, runtime.Version(), addr)
 }
 
-// main only maps run's result onto the process exit code. The exit code is part
-// of the update protocol — the supervising start script reads it to decide
-// whether to relaunch us (see selfupdate.ExitRestart) — so the body has to live
-// in a function that can *return* rather than os.Exit past its own defers.
+// Keep exit outside run so every owned service can drain its resources first.
 func main() {
 	os.Exit(run())
 }
 
-func run() int {
+func run() (code int) {
 	var (
 		addr        = flag.String("addr", "127.0.0.1:8787", "HTTP listen address")
 		dataDir     = flag.String("data", "", "data directory (default: data/ under ARTEX_HOME or the executable directory)")
@@ -62,6 +58,14 @@ func run() int {
 	if err := config.InitHome(); err != nil {
 		fmt.Fprintf(os.Stderr, "runtime home: %v\n", err)
 		return 1
+	}
+	if os.Getenv("ARTEX_DESKTOP_SESSION") != "" {
+		// Use the SDK's native Go search implementation. A desktop startup must
+		// never install a global npm package or discover host PATH as a tool bundle.
+		if err := os.Setenv("NORMA_DISABLE_RIPGREP", "1"); err != nil {
+			log.Printf("configure desktop file search: %v", err)
+			return 1
+		}
 	}
 	if *dataDir == "" {
 		*dataDir = filepath.Join(config.BaseDir(), "data")
@@ -79,14 +83,6 @@ func run() int {
 	// page can show a live log stream. Do this first, to catch startup logs too.
 	server.StartLogCapture()
 
-	// Self-update remains the standalone owner's responsibility until the
-	// desktop packaging milestone replaces it with one Electron update owner.
-	action, upState := selfupdate.Bootstrap()
-	server.SetBootUpdateState(upState)
-	if action == selfupdate.Restart {
-		return selfupdate.ExitRestart
-	}
-
 	cfgPath := config.Path()
 	if abs, e := filepath.Abs(cfgPath); e == nil {
 		cfgPath = abs
@@ -94,7 +90,7 @@ func run() int {
 	if _, e := os.Stat(cfgPath); e == nil {
 		log.Printf("[config] 설정 파일: %s", cfgPath)
 	} else {
-		log.Printf("[config] 설정 파일: %s(파일 없음 — 환경 변수 ARTEX_PG_DSN만 확인합니다)", cfgPath)
+		log.Printf("[config] 설정 파일: %s(파일 없음 — 로컬 기본값을 사용합니다)", cfgPath)
 	}
 
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -113,27 +109,43 @@ func run() int {
 	}
 	defer func() {
 		shutdown(agent.AbortShutdown)
-		mgr.Close()
+		if err := mgr.Close(); err != nil {
+			log.Printf("store shutdown: %v", err)
+			code = 1
+		}
 	}()
 	if ctx.Err() != nil {
 		return 0
 	}
 
-	settle := time.AfterFunc(selfupdate.SettleDelay, selfupdate.Settle)
-	defer settle.Stop()
-
-	skillDir := config.SkillDir()
+	skillDir, err := config.SkillDir()
+	if err != nil {
+		log.Printf("initialize skills: %v", err)
+		return 1
+	}
 	if abs, err := filepath.Abs(skillDir); err == nil {
 		skillDir = abs
 	}
 	log.Printf("[config] 스킬 디렉터리: %s", skillDir)
-	srv := server.New(ctx, mgr, skillDir, *dataDir, config.BaseDir())
+	srv, err := server.New(ctx, mgr, skillDir, *dataDir, config.BaseDir())
+	if err != nil {
+		log.Printf("initialize server: %v", err)
+		return 1
+	}
+	defer func() {
+		closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := srv.Close(closeCtx); err != nil {
+			log.Printf("server shutdown: %v", err)
+			code = 1
+		}
+	}()
 	httpSrv := &http.Server{
 		Addr:              *addr,
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	listener, serveDone, err := startHTTP(httpSrv)
+	listener, serveDone, err := startHTTP(httpSrv, srv.ConfigureDesktopListener)
 	if err != nil {
 		log.Printf("listen: %v", err)
 		return 1
@@ -147,13 +159,14 @@ func run() int {
 		}
 	}
 
-	code := 0
+	code = 0
 	select {
 	case <-ctx.Done():
-	case <-server.RestartRequested():
-		code = selfupdate.ExitRestart
 	case err := <-serveDone:
 		log.Printf("HTTP server stopped unexpectedly: %v", err)
+		code = 1
+	case err := <-mgr.ProxyDone():
+		log.Printf("traffic proxy stopped unexpectedly: %v", err)
 		code = 1
 	}
 	shutdown(agent.AbortShutdown)

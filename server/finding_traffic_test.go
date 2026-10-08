@@ -38,8 +38,12 @@ func trafficEvidenceServer(t *testing.T) (*Server, *db.RecordedFinding, func(str
 	tid, _ := strconv.ParseInt(task.ID, 10, 64)
 	t.Cleanup(func() { m.pg.Exec(`DELETE FROM task_archives WHERE task_id=$1`, tid); m.pg.DeleteTask(tid) })
 	ctx, cancel := context.WithCancel(context.Background())
+	s, err := New(ctx, m, t.TempDir(), t.TempDir(), t.TempDir())
+	if err != nil {
+		t.Fatalf("initialize server: %v", err)
+	}
 	cancel()
-	s := New(ctx, m, t.TempDir(), t.TempDir(), t.TempDir())
+	t.Cleanup(func() { _ = s.Close(context.Background()) })
 	s.archiveWG.Wait()
 	// The archive test below replaces the cancelled service context. Wait for
 	// the side-question snapshot writer too before reusing this fixture.
@@ -77,69 +81,45 @@ func seedServerEvidenceFlow(t *testing.T, s *Server, id string, body []byte) {
 	}
 }
 
-func TestFindingTrafficToolUpgradePreservesCustomization(t *testing.T) {
+func TestBuiltinSeedPreservesUserConfiguration(t *testing.T) {
 	s, _, _ := trafficEvidenceServer(t)
-	pg := s.m.pg
-	worker, err := pg.GetAgentByKey("worker")
+	store := s.m.pg
+	worker, err := store.GetAgentByKey("worker")
 	if err != nil || worker == nil {
 		t.Fatal("missing worker", err)
 	}
-	oldPrompt, _ := pg.CurrentPrompt(worker.ID)
-	t.Cleanup(func() { pg.SavePrompt(worker.ID, oldPrompt, "restore test fixture", "test") })
-	if _, err := pg.SavePrompt(worker.ID, "USER CUSTOM PROMPT", "test", "test"); err != nil {
+	if _, err := store.SavePrompt(worker.ID, "USER CUSTOM PROMPT", "test", "test"); err != nil {
 		t.Fatal(err)
 	}
-	custom := json.RawMessage(`{"type":"object","properties":{"evidence":{"type":"string","description":"user evidence instructions"}},"required":["evidence"]}`)
-	for _, key := range []string{"report_finding", "update_finding_report", "get_finding_traffic"} {
-		old, err := pg.GetTool(key)
-		if err != nil || old == nil {
+	custom := json.RawMessage(`{"type":"object","properties":{"evidence":{"type":"string","description":"USER EVIDENCE"}},"required":["evidence"]}`)
+	keys := []string{"report_finding", "update_finding_report", "add_hint", "add_task_hint", "traffic_search", "traffic_get", "get_finding_traffic", "bind_finding_traffic"}
+	for _, key := range keys {
+		if err := store.UpdateTool(key, "USER DESCRIPTION", custom, json.RawMessage(`["worker"]`), false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := wireTools(store, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := seedPrompts(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.seedOrchestrationTools(); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range keys {
+		tool, err := store.GetTool(key)
+		if err != nil || tool == nil {
 			t.Fatal("missing tool", key, err)
 		}
-		t.Cleanup(func() {
-			bindings, _ := json.Marshal(old.Agents)
-			pg.UpdateTool(old.Key, old.Description, old.Schema, bindings, old.Enabled)
-		})
-		if err := pg.UpdateTool(key, "user description", custom, json.RawMessage(`["worker"]`), false); err != nil {
-			t.Fatal(err)
+		if tool.Enabled || tool.Description != "USER DESCRIPTION" || len(tool.Agents) != 1 || tool.Agents[0] != "worker" || string(tool.Schema) != string(custom) {
+			t.Fatalf("seed changed user configuration for %s: %+v", key, tool)
 		}
 	}
-	if err := pg.SetSetting("finding_traffic_tools_v1", "false"); err != nil {
-		t.Fatal(err)
-	}
-	s.seedFindingTrafficTools()
-	for key, property := range map[string]string{"report_finding": "traffic_refs", "update_finding_report": "evidence_version"} {
-		tool, err := pg.GetTool(key)
-		if err != nil || tool == nil {
-			t.Fatal(err)
-		}
-		var schema struct {
-			Properties map[string]json.RawMessage `json:"properties"`
-			Required   []string                   `json:"required"`
-		}
-		if err := json.Unmarshal(tool.Schema, &schema); err != nil {
-			t.Fatal(err)
-		}
-		if tool.Enabled || tool.Description != "user description" || len(tool.Agents) != 1 || tool.Agents[0] != "worker" || len(schema.Required) != 1 || schema.Required[0] != "evidence" || len(schema.Properties[property]) == 0 || !strings.Contains(string(schema.Properties["evidence"]), "user evidence instructions") {
-			t.Fatalf("custom configuration overwritten: %+v", tool)
-		}
-	}
-	reader, _ := pg.GetTool("get_finding_traffic")
-	if reader.Enabled || !contains(reader.Agents, "reporter") {
-		t.Fatal("reader should be bound without enabling it")
-	}
-	if err := pg.RemoveAgentFromTool("reporter", "get_finding_traffic"); err != nil {
-		t.Fatal(err)
-	}
-	s.seedFindingTrafficTools()
-	reader, _ = pg.GetTool("get_finding_traffic")
-	if contains(reader.Agents, "reporter") {
-		t.Fatal("restart overwrote user's unbinding")
-	}
-	if got, _ := pg.CurrentPrompt(worker.ID); got != "USER CUSTOM PROMPT" {
-		t.Fatal("custom prompt replaced")
+	if got, err := store.CurrentPrompt(worker.ID); err != nil || got != "USER CUSTOM PROMPT" {
+		t.Fatal("custom prompt replaced", got, err)
 	}
 }
-
 func TestFindingTrafficAPIAndExport(t *testing.T) {
 	s, f, req := trafficEvidenceServer(t)
 	body := bytes.Repeat([]byte{0, 255, 65, 66}, 5000)
@@ -246,7 +226,7 @@ func TestFindingTrafficAPIAndExport(t *testing.T) {
 	}
 }
 
-func TestFindingTrafficArchiveV3RoundTripAndRetry(t *testing.T) {
+func TestFindingTrafficArchiveRoundTripAndRetry(t *testing.T) {
 	s, f, _ := trafficEvidenceServer(t)
 	ctx := context.Background()
 	s.ctx = ctx
@@ -306,20 +286,17 @@ func TestFindingTrafficArchiveV3RoundTripAndRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Force a database error after validated body installation; then retry normally.
-	if _, err = s.m.pg.Exec(`CREATE FUNCTION fail_evidence_restore_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'restore fixture failure'; END $$`); err != nil {
+	if _, err = s.m.pg.Exec(`CREATE TRIGGER fail_evidence_restore_test BEFORE INSERT ON finding_traffic_bindings BEGIN SELECT RAISE(ABORT,'restore fixture failure'); END`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.m.pg.Exec(`CREATE TRIGGER fail_evidence_restore_test BEFORE INSERT ON finding_traffic_bindings FOR EACH ROW EXECUTE FUNCTION fail_evidence_restore_test()`); err != nil {
-		t.Fatal(err)
-	}
-	defer s.m.pg.Exec(`DROP FUNCTION IF EXISTS fail_evidence_restore_test() CASCADE`)
+	defer s.m.pg.Exec(`DROP TRIGGER IF EXISTS fail_evidence_restore_test`)
 	if err = s.runOneTaskArchiveJob(); err == nil {
 		t.Fatal("expected restore failure")
 	}
 	if got, _ := s.m.pg.GetFinding(f.FindingID); got != nil {
 		t.Fatal("partial restore")
 	}
-	if _, err = s.m.pg.Exec(`DROP FUNCTION fail_evidence_restore_test() CASCADE`); err != nil {
+	if _, err = s.m.pg.Exec(`DROP TRIGGER fail_evidence_restore_test`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.m.pg.QueueTaskArchiveRestore(job.ID); err != nil {

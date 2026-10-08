@@ -39,12 +39,17 @@ var BuildVersion = "dev"
 // Server exposes the ARTEX backend over a JSON HTTP API for the shadcn/ui
 // frontend.
 type Server struct {
-	m      *Manager
-	engine *Engine
-	ctx    context.Context
+	m            *Manager
+	engine       *Engine
+	ctx          context.Context
+	cancel       context.CancelCauseFunc
+	backgroundWG sync.WaitGroup
+	logDone      <-chan struct{}
 
-	skillDir string // root directory for skill subdirectories
-	jwtKey   []byte // HS256 signing key loaded from / generated into dataDir/jwt.key
+	skillDir       string // root directory for skill subdirectories
+	jwtKey         []byte // HS256 signing key loaded from / generated into dataDir/jwt.key
+	desktopSession []byte
+	desktopHost    string
 
 	// concMu serializes concurrency-cap decisions (admission + reconcile) so a
 	// scheduler tick and an HTTP settings change / task creation can't both count
@@ -140,18 +145,37 @@ type triggeredRun struct {
 	mergeable bool   // true for finding/goal event triggers (merge by taskID)
 }
 
-func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDir string) *Server {
+func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDir string) (result *Server, err error) {
+	if m == nil || m.pg == nil || m.pg.DB == nil {
+		return nil, errors.New("업무 저장소가 준비되지 않았습니다")
+	}
+	desktopSession, err := readDesktopSession()
+	if err != nil {
+		return nil, err
+	}
 	key, err := loadOrCreateJWTKey(keyDir, dataDir)
 	if err != nil {
-		log.Fatalf("[auth] JWT key: %v", err)
+		return nil, fmt.Errorf("인증 키 초기화: %w", err)
 	}
+	ctx, cancel := context.WithCancelCause(ctx)
 	s := &Server{m: m, engine: NewEngine(m), ctx: ctx, skillDir: skillDir, jwtKey: key, chatBusy: map[string]bool{},
-		chatCancel: map[string]context.CancelCauseFunc{}, triggerQ: map[string][]triggeredRun{},
+		desktopSession: desktopSession,
+		cancel:         cancel,
+		chatCancel:     map[string]context.CancelCauseFunc{}, triggerQ: map[string][]triggeredRun{},
 		triggerActive: map[string]int{}, triggerCfg: map[string]triggerBehavior{},
 		profChatAgents: map[int64]*agent.ChatAgent{},
 		provByProfile:  map[int64]*provEntry{}, llmHealth: newLLMHealthRegistry(m.pg),
 		taskAgents: map[string]*taskAgentBundle{}, archiveWake: make(chan struct{}, 1)}
-	s.initSideQuestions()
+	defer func() {
+		if err != nil {
+			closeCtx, closeCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer closeCancel()
+			err = errors.Join(err, s.Close(closeCtx))
+		}
+	}()
+	if err := s.initSideQuestions(); err != nil {
+		return nil, err
+	}
 	// 熔断阈值/冷却是失败路径上的热参数，启动时把全局重试策略推给 Registry 一次；
 	// 之后每次保存策略再推一次（saveLLMRetryPolicy）。
 	s.applyRetryPolicy()
@@ -219,66 +243,139 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 		}
 		wireAgentAugment(m.pg, s.skillDir, s.hostTools) // 可见 skills/MCP + 流量/编排 host 工具装配进 agent 工具集
 		domainReg := buildDomainReg(m.Assets())
-		wireTools(m.pg, domainReg) // 内置工具表：按 agent 过滤 + 覆盖描述/schema + 注入默认值
-		seedPrompts(m.pg)          // 内置 agent 默认提示词正文播种进 agent_prompts(仅空时)
-		s.seedOrchestrationTools() // P2 跨任务编排工具 seed 进 tools 表(可按 agent 绑定)
-		if err := s.seedFindingRetester(); err != nil {
-			log.Printf("[retester] seed: %v", err)
+		if err := wireTools(m.pg, domainReg); err != nil {
+			return nil, err
 		}
-		go s.evidenceStore().RunGC(s.ctx)
-		s.seedPythonInterpreter()     // 自定义脚本工具:开机检测 python 解释器入库(仅空时)
-		go newScheduler(s).Run(s.ctx) // P3 触发器调度(定时/finding/目标事件),仅自定义 agent
-		// 漏洞 IM 推送投递引擎。与 Scheduler 并列但独立：推送的实时性要求(3s)
-		// 与触发器的业务节奏不同，且两者失败互不牵连——推送卡住不该影响 agent 触发。
-		go newNotifier(s).Run(s.ctx)
-		// Fill the tool cache for any enabled MCP that has none yet (notably the
-		// seeded browser MCP on first run). Async so it never blocks startup.
-		go s.discoverEmptyMCPsOnStartup()
-		logSink.SetDB(ctx, m.pg) // restore last 100 log rows and enable async persistence
+		if err := seedPrompts(m.pg); err != nil {
+			return nil, err
+		}
+		if err := s.seedOrchestrationTools(); err != nil {
+			return nil, err
+		}
+		if err := s.seedFindingRetester(); err != nil {
+			return nil, fmt.Errorf("재검증 에이전트 초기화: %w", err)
+		}
+		if err := s.seedPythonInterpreter(); err != nil {
+			return nil, err
+		}
+		s.logDone, err = logSink.SetDB(s.ctx, m.pg)
+		if err != nil {
+			return nil, fmt.Errorf("로그 기록 복원: %w", err)
+		}
 	}
 	// precedence: persisted DB config > env.
-	if cfg, ok := s.loadLLMConfig(); ok {
+	cfg, ok, err := s.loadLLMConfig()
+	if err != nil {
+		return nil, fmt.Errorf("모델 설정 복원: %w", err)
+	}
+	if ok {
 		if err := s.applyLLM(cfg); err != nil {
-			log.Printf("[engine] saved LLM config init failed — engine idle: %v", err)
+			return nil, fmt.Errorf("저장된 모델 초기화: %w", err)
 		} else {
 			log.Printf("[engine] LLM configured from DB: %s / %s", cfg.Provider(), cfg.Model)
 		}
 	} else if cfg, ok := agent.FromEnv(); ok {
 		if err := s.applyLLM(cfg); err != nil {
-			log.Printf("[engine] env provider init failed — engine idle: %v", err)
+			return nil, fmt.Errorf("환경 변수 모델 초기화: %w", err)
 		} else {
 			log.Printf("[engine] LLM configured from env: %s / %s", cfg.Provider(), cfg.Model)
 		}
 	} else {
 		log.Printf("[engine] no LLM provider configured — engine idle until set via /api/llm or env")
 	}
-	s.restoreTaskRuntimes()
-	go s.reconcileConcurrency()
-	s.startTaskArchiveWorker()
-	s.wireInterceptReviewer() // LLM 兜底审批:未命中拦截规则的命令交给模型判定
-	return s
+	s.wireInterceptReviewer()
+	if err := s.restoreTaskRuntimes(); err != nil {
+		return nil, err
+	}
+	if err := s.startTaskArchiveWorker(); err != nil {
+		return nil, err
+	}
+	s.runBackground(func() { s.evidenceStore().RunGC(s.ctx) })
+	s.runBackground(func() { newScheduler(s).Run(s.ctx) })
+	s.runBackground(func() { newNotifier(s).Run(s.ctx) })
+	s.runBackground(s.discoverEmptyMCPsOnStartup)
+	s.runBackground(s.reconcileConcurrency)
+	return s, nil
+}
+
+func (s *Server) runBackground(fn func()) {
+	s.backgroundWG.Add(1)
+	go func() { defer s.backgroundWG.Done(); fn() }()
+}
+
+// Close cancels and drains owned background services before the caller closes
+// the Manager's stores. A bounded parent shutdown must not hang indefinitely.
+func (s *Server) Close(ctx context.Context) error {
+	if s.cancel != nil {
+		s.cancel(agent.AbortShutdown)
+	}
+	if s.engine != nil {
+		if err := s.engine.Close(ctx); err != nil {
+			return err
+		}
+	}
+	if err := s.drainSideQuestions(ctx); err != nil {
+		return err
+	}
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		s.chatMu.Lock()
+		active := len(s.chatBusy)
+		s.chatMu.Unlock()
+		s.queueMu.Lock()
+		for _, count := range s.triggerActive {
+			active += count
+		}
+		s.queueMu.Unlock()
+		if active == 0 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-tick.C:
+		}
+	}
+	done := make(chan struct{})
+	go func() {
+		s.backgroundWG.Wait()
+		s.archiveWG.Wait()
+		if s.side != nil {
+			<-s.side.done
+		}
+		if s.logDone != nil {
+			<-s.logDone
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // Restored deadline and worker loops must inherit the same context as new tasks,
 // including the side-question checkpoint publisher installed during startup.
-func (s *Server) restoreTaskRuntimes() {
+func (s *Server) restoreTaskRuntimes() error {
 	m := s.m
+	loaded, err := m.LoadExisting()
+	if err != nil {
+		return err
+	}
 	// reload tasks persisted on disk so the task list survives a restart, and
 	// restore persisted paused state (so a task paused before restart stays paused).
-	for _, t := range m.LoadExisting() {
-		lifecycle := t.lifecycleSnapshot()
+	for _, t := range loaded {
 		// clear stale 'running' intents from a prior crash/restart (no live worker
 		// owns them) so they re-claim instead of spinning forever in the UI.
-		if n, _ := t.Store.ResetRunningIntents(); n > 0 {
+		n, err := t.Store.ResetRunningIntents()
+		if err != nil {
+			return fmt.Errorf("작업 %s 실행 의도 복원: %w", t.ID, err)
+		}
+		if n > 0 {
 			log.Printf("[engine] task %s에 남아 있던 running 의도 %d개를 open으로 초기화했습니다", t.ID, n)
-		}
-		if lifecycle.Paused {
-			s.engine.Pause(t.ID, agent.AbortPausedOnReload)
-		}
-		// 任务级超时:为每个未终态、带 timeout 的任务起 deadline 协调器,独立于 planner/worker
-		// loop——非活跃任务重启后也能在到点后被收尾(deadline 已过则立即走收尾时序)。
-		if !isTerminalStatus(lifecycle.Status) {
-			s.engine.startDeadlineCoordinator(s.ctx, t)
 		}
 	}
 	// Restore every task that had already been admitted before shutdown. Starting
@@ -287,10 +384,17 @@ func (s *Server) restoreTaskRuntimes() {
 	// FIFO. Paused loops remain idle; queued tasks are admitted below as slots allow.
 	for _, t := range m.List() {
 		lifecycle := t.lifecycleSnapshot()
+		if lifecycle.Paused {
+			s.engine.Pause(t.ID, agent.AbortPausedOnReload)
+		}
+		if !isTerminalStatus(lifecycle.Status) {
+			s.engine.startDeadlineCoordinator(s.ctx, t)
+		}
 		if !lifecycle.Queued && !isTerminalStatus(lifecycle.Status) {
 			s.engine.Run(s.ctx, t)
 		}
 	}
+	return nil
 }
 
 // agentMaxTurns returns the configured max_turns for an agent key (0 = unlimited,
@@ -319,11 +423,14 @@ func (s *Server) agentRunSeconds(key string) int {
 	return a.RunSecs
 }
 
-// loadLLMConfig reads the active LLM profile from PG (llm_profiles).
-func (s *Server) loadLLMConfig() (agent.Config, bool) {
+// loadLLMConfig reads the active LLM profile from the business store.
+func (s *Server) loadLLMConfig() (agent.Config, bool, error) {
 	p, err := s.m.pg.ActiveProfile()
-	if err != nil || p == nil {
-		return agent.Config{}, false
+	if err != nil {
+		return agent.Config{}, false, err
+	}
+	if p == nil {
+		return agent.Config{}, false, nil
 	}
 	cfg := agent.ConfigFrom(p.Format, p.Model, p.BaseURL, p.APIKey, p.Proxy)
 	cfg.RatePerSecond, cfg.RatePerMinute = p.RatePerSecond, p.RatePerMinute
@@ -335,12 +442,12 @@ func (s *Server) loadLLMConfig() (agent.Config, bool) {
 	cfg.SessionHeaderKey = p.SessionHeaderKey
 	s.applyProfileRetry(&cfg, p)
 	if cfg.APIKey == "" {
-		return cfg, false
+		return cfg, false, nil
 	}
 	s.cfgMu.Lock()
 	s.llmProf = p.Name
 	s.cfgMu.Unlock()
-	return cfg, true
+	return cfg, true, nil
 }
 
 // saveLLMConfig persists the LLM config as the active "default" profile in PG.
@@ -388,7 +495,11 @@ func (s *Server) saveLLMConfig(cfg agent.Config) error {
 // saving or activating a profile takes effect without a restart. Best-effort:
 // logs on failure and leaves the running engine untouched.
 func (s *Server) reapplyActiveProfile() {
-	cfg, ok := s.loadLLMConfig()
+	cfg, ok, err := s.loadLLMConfig()
+	if err != nil {
+		log.Printf("[llm] 모델 설정 읽기 실패: %v", err)
+		return
+	}
 	if !ok {
 		return
 	}
@@ -658,17 +769,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/auth/change-password", s.authChangePassword)
 
 	mux.HandleFunc("GET /api/health", s.health)
+	mux.HandleFunc("GET /api/runtime/tools", s.runtimeTools)
 	mux.HandleFunc("GET /api/stats", s.stats)
 	mux.HandleFunc("GET /api/logs", s.getLogs)
 	mux.HandleFunc("GET /api/logs/history", s.getLogsHistory)
 	mux.HandleFunc("GET /api/logs/stream", s.streamLogs)
-
-	// 页面一键更新。走的是默认的 JWT 鉴权（auth.go 只放行 /api/auth/* 和
-	// /api/health），所以这几个改动程序自身的接口天然需要登录。
-	mux.HandleFunc("GET /api/update/check", s.updateCheck)
-	mux.HandleFunc("POST /api/update/apply", s.updateApply)
-	mux.HandleFunc("POST /api/update/rollback", s.updateRollback)
-	mux.HandleFunc("GET /api/update/stream", s.updateStream)
 
 	mux.HandleFunc("GET /api/tasks", s.listTasks)
 	mux.HandleFunc("POST /api/tasks", s.createTask)
@@ -939,7 +1044,7 @@ func (s *Server) Handler() http.Handler {
 	root := http.NewServeMux()
 	root.Handle("/api/", api)
 	root.Handle("/", s.webuiHandler())
-	return root
+	return s.requireDesktopSession(root)
 }
 
 // --- handlers ---
@@ -1350,7 +1455,7 @@ func (s *Server) setLLM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.invalidateProfileAgents()
-	if _, ok := s.loadLLMConfig(); !ok {
+	if _, ok, err := s.loadLLMConfig(); err != nil || !ok {
 		writeErr(w, 500, "saved provider is unavailable")
 		return
 	}
@@ -3343,6 +3448,10 @@ func notifyDigestIntervalMin(pg *db.DB) int {
 
 // pgDetectPython re-runs interpreter detection, stores + returns it.
 func (s *Server) pgDetectPython(w http.ResponseWriter, r *http.Request) {
+	if desktopToolsUnavailable() {
+		writeErr(w, http.StatusConflict, unmanagedDesktopToolsMessage)
+		return
+	}
 	p := detectPython()
 	if p == "" {
 		writeErr(w, 404, "Python을 찾지 못했습니다(PATH에 python3/python 모두 없음)")

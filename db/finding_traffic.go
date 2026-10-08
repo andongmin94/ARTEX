@@ -20,19 +20,15 @@ var (
 	ErrEvidenceNotFound = errors.New("트래픽 증거가 존재하지 않습니다")
 )
 
-// This lock covers the evidence filesystem as well as its SQL references. All
-// processes sharing the database use it, including readers, exports and GC.
-const findingEvidenceLockKey int64 = 7337741004
-
+// IMMEDIATE transactions serialize the evidence filesystem references across
+// processes sharing this database, including readers, exports and GC.
 func (d *DB) WithEvidenceTx(ctx context.Context, fn func(*sql.Tx) error) error {
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, findingEvidenceLockKey); err != nil {
-		return err
-	}
+
 	if err = fn(tx); err != nil {
 		return err
 	}
@@ -111,12 +107,8 @@ type PreparedTrafficEvidence struct {
 	Snapshot TrafficEvidenceSnapshot
 }
 
-// Normalize makes the snapshot's text columns safe for PostgreSQL. URL and the
-// head blocks come straight off the wire, so a target answering with a non-UTF-8
-// header (a GBK `Content-Disposition: filename=…`, a NUL byte) would otherwise
-// abort the INSERT and roll back the whole finding — losing a confirmed finding
-// over a malformed response header. Applied before hashing so the ID always
-// matches the bytes that actually land in the table.
+// Normalize makes snapshot text valid UTF-8 for display while retaining NULs.
+// Applied before hashing so the ID matches the text stored in the table.
 func (s TrafficEvidenceSnapshot) Normalize() TrafficEvidenceSnapshot {
 	s.SourceTrafficID = utf8Clean(s.SourceTrafficID)
 	s.URL = utf8Clean(s.URL)
@@ -143,7 +135,7 @@ func LockTaskEvidenceTx(tx *sql.Tx, taskID int64) error {
 		return nil
 	}
 	var deleted sql.NullTime
-	if err := tx.QueryRow(`SELECT deleted_at FROM tasks WHERE id=$1 FOR UPDATE`, taskID).Scan(&deleted); err != nil {
+	if err := tx.QueryRow(`SELECT deleted_at FROM tasks WHERE id=$1`, taskID).Scan(&deleted); err != nil {
 		return err
 	}
 	if deleted.Valid {
@@ -172,7 +164,7 @@ func LockFindingEvidenceTx(tx *sql.Tx, findingID int64, version *int64) error {
 		return err
 	}
 	var current int64
-	if err := tx.QueryRow(`SELECT evidence_version FROM findings WHERE id=$1 FOR UPDATE`, findingID).Scan(&current); err != nil {
+	if err := tx.QueryRow(`SELECT evidence_version FROM findings WHERE id=$1`, findingID).Scan(&current); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrFindingNotFound
 		}
@@ -248,7 +240,8 @@ func FindingTrafficTx(tx *sql.Tx, findingID int64) (*FindingTraffic, error) {
 		}
 		return nil, err
 	}
-	rows, err := tx.Query(`SELECT b.id,b.finding_id,b.snapshot_id,b.role,b.note,b.position,b.created_at,to_jsonb(s)
+	rows, err := tx.Query(`SELECT b.id,b.finding_id,b.snapshot_id,b.role,b.note,b.position,b.created_at,
+s.id,s.source_traffic_id,s.captured_at,s.url,s.method,s.status,s.content_type,s.req_head,s.resp_head,s.req_hash,s.resp_hash,s.req_len,s.resp_len,s.created_at
 FROM finding_traffic_bindings b JOIN traffic_evidence_snapshots s ON s.id=b.snapshot_id WHERE b.finding_id=$1 ORDER BY b.position,b.id`, findingID)
 	if err != nil {
 		return nil, err
@@ -256,11 +249,8 @@ FROM finding_traffic_bindings b JOIN traffic_evidence_snapshots s ON s.id=b.snap
 	defer rows.Close()
 	for rows.Next() {
 		var b FindingTrafficBinding
-		var raw []byte
-		if err := rows.Scan(&b.ID, &b.FindingID, &b.SnapshotID, &b.Role, &b.Note, &b.Position, &b.CreatedAt, &raw); err != nil {
-			return nil, err
-		}
-		if err := json.Unmarshal(raw, &b.Snapshot); err != nil {
+		if err := rows.Scan(&b.ID, &b.FindingID, &b.SnapshotID, &b.Role, &b.Note, &b.Position, &b.CreatedAt,
+			&b.Snapshot.ID, &b.Snapshot.SourceTrafficID, &b.Snapshot.CapturedAt, &b.Snapshot.URL, &b.Snapshot.Method, &b.Snapshot.Status, &b.Snapshot.ContentType, &b.Snapshot.ReqHead, &b.Snapshot.RespHead, &b.Snapshot.ReqHash, &b.Snapshot.RespHash, &b.Snapshot.ReqLen, &b.Snapshot.RespLen, &b.Snapshot.CreatedAt); err != nil {
 			return nil, err
 		}
 		out.Bindings = append(out.Bindings, b)
@@ -381,9 +371,11 @@ VALUES($1,'finding',$2,9,'confirmed',$3) RETURNING id`, in.ExplorationID, string
 	if assets == nil {
 		assets = []int64{}
 	}
-	raw, _ := json.Marshal(assets)
-	if err := tx.QueryRow(`INSERT INTO findings(task_id,node_id,vulnclass,name,severity,summary,evidence,worker,asset_ids)
-VALUES(NULLIF($1,0),$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`, in.TaskID, out.NodeID, in.VulnClass, in.Name, in.Severity, in.Summary, in.Evidence, in.Worker, string(raw)).Scan(&out.FindingID); err != nil {
+	if err := tx.QueryRow(`INSERT INTO findings(task_id,node_id,vulnclass,name,severity,summary,evidence,worker)
+VALUES(NULLIF($1,0),$2,$3,$4,$5,$6,$7,$8) RETURNING id`, in.TaskID, out.NodeID, in.VulnClass, in.Name, in.Severity, in.Summary, in.Evidence, in.Worker).Scan(&out.FindingID); err != nil {
+		return nil, err
+	}
+	if err := insertFindingAssetsTx(tx, out.FindingID, assets); err != nil {
 		return nil, err
 	}
 	// 在**同一事务**里登记一条推送事件：提交即保证「漏洞落库」与「推送任务存在」
@@ -465,7 +457,7 @@ func (d *DB) SetFindingReportVersionByNodeID(ctx context.Context, nodeID int64, 
 		if err := LockFindingEvidenceTx(tx, id, version); err != nil {
 			return err
 		}
-		res, err := tx.Exec(`UPDATE findings SET report=$2,report_evidence_version=COALESCE($3::bigint,CASE WHEN evidence_version=0 THEN 0 ELSE -1 END) WHERE id=$1`, id, report, version)
+		res, err := tx.Exec(`UPDATE findings SET report=$2,report_evidence_version=COALESCE($3,CASE WHEN evidence_version=0 THEN 0 ELSE -1 END) WHERE id=$1`, id, report, version)
 		if err != nil {
 			return err
 		}

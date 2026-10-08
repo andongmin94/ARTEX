@@ -112,13 +112,14 @@ func TestInterceptDetails(t *testing.T) {
 			t.Fatal("timeout action lost")
 		}
 	})
-	t.Run("archive compatibility", func(t *testing.T) {
-		for _, legacy := range []bool{true, false} {
+	t.Run("SQLite archive", func(t *testing.T) {
+		for _, legacy := range []bool{false} {
 			id := create(t, &InterceptAudit{InitialAction: "ask", ExecutionStatus: "not_started"})
-			var raw []byte
-			if err := d.QueryRow(`SELECT row_to_json(ip) FROM intercept_pending ip WHERE id=$1`, id).Scan(&raw); err != nil {
+			raw, _, err := queryArchiveRows(d, "intercept_pending", `SELECT * FROM intercept_pending WHERE id=$1`, id)
+			if err != nil {
 				t.Fatal(err)
 			}
+			raw = firstArchiveRow(raw)
 			var row map[string]any
 			if err := json.Unmarshal(raw, &row); err != nil {
 				t.Fatal(err)

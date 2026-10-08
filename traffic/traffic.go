@@ -135,12 +135,19 @@ const TrafficSearchDescription = "기록 프록시가 수집한 대상 트래픽
 
 // Traffic runs the recording proxy and owns the file tree + index.
 type Traffic struct {
-	dir   string
-	addr  string
-	db    *sql.DB
-	wmu   sync.Mutex // serializes record() vs DeleteHost (incl. blob GC)
-	seq   atomic.Int64
-	proxy *mproxy.Proxy
+	dir       string
+	addr      string
+	db        *sql.DB
+	wmu       sync.Mutex // serializes record() vs DeleteHost (incl. blob GC)
+	seq       atomic.Int64
+	proxy     *mproxy.Proxy
+	startMu   sync.Mutex
+	serveDone chan error
+	readyPath string
+	readySeen atomic.Bool
+	connsMu   sync.Mutex
+	conns     map[net.Conn]struct{}
+	closeErr  error
 	// fts reports whether the full-text index is available. False on a driver
 	// build without FTS5: recording and metadata search still work, body search
 	// degrades to unsupported rather than erroring.
@@ -221,6 +228,7 @@ func Open(dir, addr string) (*Traffic, error) {
 		return !tunnel
 	})
 	p.AddAddon(&sink{t: t})
+	p.AddAddon(&proxyLifecycleAddon{t: t})
 	t.proxy = p
 	return t, nil
 }
@@ -341,20 +349,42 @@ func (t *Traffic) CACertPath() string {
 	return filepath.Join(t.dir, "_ca", "mitmproxy-ca-cert.pem")
 }
 
-// Start runs the proxy (blocking); run in a goroutine.
-func (t *Traffic) Start() error { return t.proxy.Start() }
-
 // Close waits for background tree reclamation to finish before closing the
 // index, so shutdown never leaves a goroutine unlinking files out from under a
 // removed data directory. Index-space reclamation is signalled to stop first:
 // it holds a whole minutes-long budget, and finishing it is never worth delaying
 // shutdown for — the next deletion resumes it.
 func (t *Traffic) Close() error {
-	if t.closed != nil {
-		t.closeOnce.Do(func() { close(t.closed) })
-	}
-	t.reaping.Wait()
-	return t.db.Close()
+	t.closeOnce.Do(func() {
+		if t.closed != nil {
+			close(t.closed)
+		}
+		t.startMu.Lock()
+		if t.proxy != nil {
+			t.closeErr = t.proxy.Close()
+		}
+		done := t.serveDone
+		t.startMu.Unlock()
+		t.connsMu.Lock()
+		connections := make([]net.Conn, 0, len(t.conns))
+		for conn := range t.conns {
+			connections = append(connections, conn)
+		}
+		t.connsMu.Unlock()
+		for _, conn := range connections {
+			_ = conn.Close()
+		}
+		if done != nil {
+			<-done
+		}
+		t.reaping.Wait()
+		t.wmu.Lock()
+		defer t.wmu.Unlock()
+		if t.db != nil {
+			t.closeErr = errors.Join(t.closeErr, t.db.Close())
+		}
+	})
+	return t.closeErr
 }
 
 // stopping reports whether Close has been called. A nil channel (the zero value)
@@ -424,6 +454,9 @@ func (t *Traffic) record(f *mproxy.Flow) {
 	// can run under the same lock without racing a concurrent record.
 	t.wmu.Lock()
 	defer t.wmu.Unlock()
+	if t.stopping() {
+		return
+	}
 	host := f.Request.URL.Hostname()
 	method := f.Request.Method
 	tmpl := db.TemplatePath(f.Request.URL.EscapedPath())

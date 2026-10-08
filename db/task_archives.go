@@ -16,13 +16,12 @@ import (
 )
 
 const (
-	TaskArchiveFormatVersion       = 3
-	TaskArchiveLegacyFormatVersion = 1
-	TaskArchiveLLMRecordsPath      = "database/llm_records.ndjson"
+	TaskArchiveFormatVersion  = 4
+	TaskArchiveLLMRecordsPath = "database/llm_records.ndjson"
 )
 
 func IsTaskArchiveFormatSupported(version int) bool {
-	return version >= TaskArchiveLegacyFormatVersion && version <= TaskArchiveFormatVersion
+	return version == TaskArchiveFormatVersion
 }
 
 const (
@@ -48,7 +47,7 @@ var (
 	ErrTaskArchiveFormatMismatch = errors.New("task archive format is not supported")
 )
 
-// TaskArchive is the compact PostgreSQL record retained while a task is cold.
+// TaskArchive is the compact SQLite record retained while a task is cold.
 // Sensitive profile configuration and API keys are intentionally absent.
 type TaskArchive struct {
 	ID                      int64           `json:"id"`
@@ -112,7 +111,7 @@ type TaskArchivePage struct {
 }
 
 // TaskArchiveSnapshot is serialized into manifest.json inside the cold package.
-// Small tables remain JSON arrays in Tables. Large v2 tables are streamed to
+// Small tables remain JSON arrays in Tables. Large tables are streamed to
 // package files listed in StreamedTables so their size is not bounded by memory.
 type TaskArchiveSnapshot struct {
 	FormatVersion     int                        `json:"format_version"`
@@ -134,11 +133,11 @@ func scanTaskArchive(sc interface{ Scan(...any) error }) (*TaskArchive, error) {
 	var sources string
 	err := sc.Scan(
 		&item.ID, &item.TaskID, &item.State, &item.Phase, &item.Progress, &item.Error,
-		&item.Warnings, &item.FormatVersion, &item.ArchivePath, &item.SHA256,
+		jsonColumn(&item.Warnings), &item.FormatVersion, &item.ArchivePath, &item.SHA256,
 		&item.OriginalSize, &item.CompressedSize, &item.TaskName, &item.TaskDescription,
 		&item.TaskGoal, &item.OriginalStatus, &item.CategoryIDSnapshot,
 		&item.CategoryNameSnapshot, &sources, &item.RemainingTimeoutSeconds,
-		&item.DataCounts, &item.AggregateStats, &item.ArchivedAt, &item.RequestedAt,
+		jsonColumn(&item.DataCounts), jsonColumn(&item.AggregateStats), &item.ArchivedAt, &item.RequestedAt,
 		&item.CreatedAt, &item.UpdatedAt,
 	)
 	if err != nil {
@@ -163,7 +162,7 @@ const taskArchiveCols = `id, task_id, state, phase, progress, COALESCE(error,'')
 format_version, COALESCE(archive_path,''), COALESCE(sha256,''), original_size,
 compressed_size, COALESCE(task_name,''), COALESCE(task_description,''),
 COALESCE(task_goal,''), COALESCE(original_status,''), category_id_snapshot,
-COALESCE(category_name_snapshot,''), array_to_json(source_task_ids)::text,
+COALESCE(category_name_snapshot,''), COALESCE((SELECT json_group_array(source_task_id) FROM (SELECT source_task_id FROM task_archive_sources WHERE archive_id=task_archives.id ORDER BY position)),'[]'),
 remaining_timeout_seconds, data_counts, aggregate_stats, archived_at,
 requested_at, created_at, updated_at`
 
@@ -192,7 +191,7 @@ func (d *DB) ListTaskArchives(search, state string, page, size int) (TaskArchive
 	}
 	search = strings.TrimSpace(search)
 	state = strings.TrimSpace(state)
-	where := `WHERE ($1='' OR task_id::text ILIKE '%'||$1||'%' OR task_name ILIKE '%'||$1||'%' OR task_description ILIKE '%'||$1||'%')
+	where := `WHERE ($1='' OR CAST(task_id AS TEXT) LIKE '%'||$1||'%' OR task_name LIKE '%'||$1||'%' OR task_description LIKE '%'||$1||'%')
 AND ($2='' OR state=$2)`
 	var out TaskArchivePage
 	out.Page, out.Size = page, size
@@ -230,7 +229,7 @@ func (d *DB) QueueTaskArchive(taskID int64) (*TaskArchive, error) {
 	err = tx.QueryRow(`SELECT COALESCE(t.name,''), t.description, t.goal, t.status,
  t.category_id, COALESCE(c.name,''), t.paused, t.queued, t.deadline_at
 FROM tasks t LEFT JOIN task_categories c ON c.id=t.category_id
-WHERE t.id=$1 AND t.deleted_at IS NULL FOR UPDATE OF t`, taskID).Scan(
+WHERE t.id=$1 AND t.deleted_at IS NULL`, taskID).Scan(
 		&name, &description, &goal, &status, &categoryID, &categoryName, &paused, &queued, &deadline,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -271,6 +270,10 @@ LIMIT 1`, taskID).Scan(&dependent)
 		}
 		sources = append(sources, id)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
@@ -287,17 +290,17 @@ LIMIT 1`, taskID).Scan(&dependent)
 	_, err = tx.Exec(`INSERT INTO task_archives(
  task_id,state,phase,progress,error,warnings,format_version,task_name,
  task_description,task_goal,original_status,category_id_snapshot,
- category_name_snapshot,source_task_ids,remaining_timeout_seconds,requested_at)
-VALUES ($1,$2,'queued',0,'','[]',$3,$4,$5,$6,$7,$8,$9,$10,$11,now())
+ category_name_snapshot,remaining_timeout_seconds,requested_at)
+VALUES ($1,$2,'queued',0,'','[]',$3,$4,$5,$6,$7,$8,$9,$10,strftime('%Y-%m-%d %H:%M:%f','now'))
 	ON CONFLICT (task_id) DO UPDATE SET
 	 state=CASE WHEN task_archives.state IN ('archive_failed') THEN EXCLUDED.state ELSE task_archives.state END,
 	 phase=CASE WHEN task_archives.state IN ('archive_failed') THEN 'queued' ELSE task_archives.phase END,
 	 progress=CASE WHEN task_archives.state IN ('archive_failed') THEN 0 ELSE task_archives.progress END,
 	 error=CASE WHEN task_archives.state IN ('archive_failed') THEN '' ELSE task_archives.error END,
 	 format_version=CASE WHEN task_archives.state IN ('archive_failed') THEN EXCLUDED.format_version ELSE task_archives.format_version END,
-	 requested_at=CASE WHEN task_archives.state IN ('archive_failed') THEN now() ELSE task_archives.requested_at END`,
+	 requested_at=CASE WHEN task_archives.state IN ('archive_failed') THEN strftime('%Y-%m-%d %H:%M:%f','now') ELSE task_archives.requested_at END`,
 		taskID, ArchiveQueued, TaskArchiveFormatVersion, name, description, goal, status,
-		categoryID, categoryName, sources, remaining)
+		categoryID, categoryName, remaining)
 	if err != nil {
 		return nil, err
 	}
@@ -308,12 +311,24 @@ VALUES ($1,$2,'queued',0,'','[]',$3,$4,$5,$6,$7,$8,$9,$10,$11,now())
 	if item.State != ArchiveQueued && item.State != ArchiveFailed {
 		return nil, fmt.Errorf("%w: current state %s", ErrTaskArchiveState, item.State)
 	}
-	return item, tx.Commit()
+	if _, err := tx.Exec(`DELETE FROM task_archive_sources WHERE archive_id=$1`, item.ID); err != nil {
+		return nil, err
+	}
+	for position, sourceID := range sources {
+		if _, err := tx.Exec(`INSERT INTO task_archive_sources(archive_id,source_task_id,position) VALUES($1,$2,$3)`, item.ID, sourceID, position); err != nil {
+			return nil, err
+		}
+	}
+	item.SourceTaskIDs = sources
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return item, nil
 }
 
 func (d *DB) QueueTaskArchiveRestore(id int64) (*TaskArchive, error) {
 	item, err := scanTaskArchive(d.QueryRow(`UPDATE task_archives
-SET state=$2, phase='queued', progress=0, error='', requested_at=now()
+SET state=$2, phase='queued', progress=0, error='', requested_at=strftime('%Y-%m-%d %H:%M:%f','now')
 WHERE id=$1 AND state IN ('ready','restore_failed') RETURNING `+taskArchiveCols, id, RestoreQueued))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrTaskArchiveState
@@ -328,7 +343,7 @@ func (d *DB) QueueTaskArchiveDelete(id int64) (*TaskArchive, error) {
 	}
 	defer tx.Rollback() //nolint:errcheck
 	var taskID int64
-	if err := tx.QueryRow(`SELECT task_id FROM task_archives WHERE id=$1 AND state IN ('ready','delete_failed') FOR UPDATE`, id).Scan(&taskID); err != nil {
+	if err := tx.QueryRow(`SELECT task_id FROM task_archives WHERE id=$1 AND state IN ('ready','delete_failed')`, id).Scan(&taskID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrTaskArchiveState
 		}
@@ -336,7 +351,7 @@ func (d *DB) QueueTaskArchiveDelete(id int64) (*TaskArchive, error) {
 	}
 	var dependent int64
 	err = tx.QueryRow(`SELECT task_id FROM task_archives
-WHERE id<>$1 AND $2=ANY(source_task_ids) AND state NOT IN ('delete_queued','deleting') LIMIT 1`, id, taskID).Scan(&dependent)
+WHERE id<>$1 AND EXISTS(SELECT 1 FROM task_archive_sources WHERE archive_id=task_archives.id AND source_task_id=$2) AND state NOT IN ('delete_queued','deleting') LIMIT 1`, id, taskID).Scan(&dependent)
 	if err == nil {
 		return nil, fmt.Errorf("%w: task %d", ErrTaskArchiveDeleteBlocked, dependent)
 	}
@@ -344,12 +359,15 @@ WHERE id<>$1 AND $2=ANY(source_task_ids) AND state NOT IN ('delete_queued','dele
 		return nil, err
 	}
 	item, err := scanTaskArchive(tx.QueryRow(`UPDATE task_archives
-SET state=$2, phase='queued', progress=0, error='', requested_at=now()
+SET state=$2, phase='queued', progress=0, error='', requested_at=strftime('%Y-%m-%d %H:%M:%f','now')
 WHERE id=$1 RETURNING `+taskArchiveCols, id, DeleteQueued))
 	if err != nil {
 		return nil, err
 	}
-	return item, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return item, nil
 }
 
 // RecoverTaskArchiveJobs keeps restore/delete resumable after an unclean shutdown.
@@ -378,7 +396,7 @@ func (d *DB) ClaimTaskArchiveJob(ctx context.Context) (*TaskArchive, error) {
 	var queuedState string
 	err = tx.QueryRowContext(ctx, `SELECT id,state FROM task_archives
 WHERE state IN ('archive_queued','restore_queued','delete_queued')
-ORDER BY requested_at,id FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&id, &queuedState)
+ORDER BY requested_at,id LIMIT 1`).Scan(&id, &queuedState)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -391,7 +409,10 @@ SET state=$2,phase='starting',progress=1,error='' WHERE id=$1 RETURNING `+taskAr
 	if err != nil {
 		return nil, err
 	}
-	return item, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return item, nil
 }
 
 func (d *DB) UpdateTaskArchiveProgress(id int64, phase string, progress int) error {
@@ -409,7 +430,7 @@ func (d *DB) AppendTaskArchiveWarning(id int64, warning string) error {
 	if strings.TrimSpace(warning) == "" {
 		return nil
 	}
-	_, err := d.Exec(`UPDATE task_archives SET warnings=warnings || jsonb_build_array($2::text) WHERE id=$1`, id, warning)
+	_, err := d.Exec(`UPDATE task_archives SET warnings=json_insert(warnings,'$[#]',$2) WHERE id=$1`, id, warning)
 	return err
 }
 
@@ -438,30 +459,28 @@ func (d *DB) FailTaskArchiveJob(id int64, activeState string, cause error) error
 
 func queryArchiveRows(q interface {
 	Query(query string, args ...any) (*sql.Rows, error)
-}, inner string, args ...any) (json.RawMessage, int64, error) {
-	// Do not aggregate the result in PostgreSQL. A jsonb array has a hard limit
-	// of 256 MiB for its elements, which large LLM request/response histories can
-	// exceed even though every individual record is valid. Reading row JSON in
-	// order also avoids building a second copy of the full table in PostgreSQL.
-	rows, err := q.Query(`SELECT row_to_json(row_data)::text FROM (`+inner+`) row_data`, args...)
+}, table, inner string, args ...any) (json.RawMessage, int64, error) {
+	// Encode rows in Go without a database JSON aggregate or a second full copy.
+	rows, err := q.Query(inner, args...)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer rows.Close()
-	return encodeArchiveRows(rows)
+	return encodeArchiveRows(rows, table)
 }
 
 func encodeArchiveRows(rows interface {
 	Next() bool
+	Columns() ([]string, error)
 	Scan(dest ...any) error
 	Err() error
-}) (json.RawMessage, int64, error) {
+}, table string) (json.RawMessage, int64, error) {
 	var output bytes.Buffer
 	output.WriteByte('[')
 	var count int64
 	for rows.Next() {
-		var raw []byte
-		if err := rows.Scan(&raw); err != nil {
+		raw, err := scanArchiveRow(rows, table)
+		if err != nil {
 			return nil, 0, err
 		}
 		if count > 0 {
@@ -479,13 +498,14 @@ func encodeArchiveRows(rows interface {
 
 func writeArchiveRows(rows interface {
 	Next() bool
+	Columns() ([]string, error)
 	Scan(dest ...any) error
 	Err() error
-}, writer io.Writer) (int64, error) {
+}, writer io.Writer, table string) (int64, error) {
 	var count int64
 	for rows.Next() {
-		var raw []byte
-		if err := rows.Scan(&raw); err != nil {
+		raw, err := scanArchiveRow(rows, table)
+		if err != nil {
 			return 0, err
 		}
 		if written, err := writer.Write(raw); err != nil {
@@ -508,36 +528,24 @@ func writeArchiveRows(rows interface {
 
 func streamArchiveRows(q interface {
 	Query(query string, args ...any) (*sql.Rows, error)
-}, writer io.Writer, inner string, args ...any) (int64, error) {
-	rows, err := q.Query(`SELECT row_to_json(row_data)::text FROM (`+inner+`) row_data`, args...)
+}, writer io.Writer, table, inner string, args ...any) (int64, error) {
+	rows, err := q.Query(inner, args...)
 	if err != nil {
 		return 0, err
 	}
 	defer rows.Close()
-	return writeArchiveRows(rows, writer)
-}
-
-func rawRowCount(raw json.RawMessage) int64 {
-	var rows []json.RawMessage
-	if json.Unmarshal(raw, &rows) != nil {
-		return 0
-	}
-	return int64(len(rows))
+	return writeArchiveRows(rows, writer, table)
 }
 
 func archiveAssetIDsQuery() string {
-	return `SELECT id FROM assets WHERE $1=ANY(task_ids)
-UNION SELECT link.asset_id FROM task_asset_links link WHERE link.task_id=$1
+	return `SELECT link.asset_id AS id FROM task_asset_links link WHERE link.task_id=$1
 UNION SELECT anchor.asset_id FROM exploration_anchors anchor
       JOIN exploration_nodes node ON node.id=anchor.node_id WHERE node.exploration_id=$2
-UNION SELECT value::bigint FROM findings finding
-      CROSS JOIN LATERAL jsonb_array_elements_text(
-        CASE WHEN jsonb_typeof(finding.asset_ids)='array' THEN finding.asset_ids ELSE '[]'::jsonb END
-      ) value WHERE finding.task_id=$1 AND value ~ '^[0-9]+$'`
+UNION SELECT relation.asset_id FROM finding_assets relation JOIN findings finding ON finding.id=relation.finding_id WHERE finding.task_id=$1`
 }
 
-// SnapshotTaskArchive reads one repeatable PostgreSQL snapshot. Task-owned Agent
-// writes are already quiescent at the server barrier; repeatable-read also keeps
+// SnapshotTaskArchive reads one SQLite IMMEDIATE snapshot. Task-owned Agent
+// writes are already quiescent at the server barrier; the transaction also keeps
 // the asset and accounting views mutually consistent during serialization.
 func (d *DB) SnapshotTaskArchive(taskID int64) (*TaskArchiveSnapshot, error) {
 	return d.snapshotTaskArchive(taskID, nil)
@@ -545,7 +553,7 @@ func (d *DB) SnapshotTaskArchive(taskID int64) (*TaskArchiveSnapshot, error) {
 
 // SnapshotTaskArchiveWithLLMRecords streams the heavyweight record history to
 // llmRecords while all other task-owned data is read from the same repeatable
-// PostgreSQL snapshot.
+// SQLite snapshot.
 func (d *DB) SnapshotTaskArchiveWithLLMRecords(taskID int64, llmRecords io.Writer) (*TaskArchiveSnapshot, error) {
 	if llmRecords == nil {
 		return nil, errors.New("nil LLM record archive writer")
@@ -554,14 +562,11 @@ func (d *DB) SnapshotTaskArchiveWithLLMRecords(taskID int64, llmRecords io.Write
 }
 
 func (d *DB) snapshotTaskArchive(taskID int64, llmRecords io.Writer) (*TaskArchiveSnapshot, error) {
-	tx, err := d.BeginTx(context.Background(), &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	tx, err := d.BeginTx(context.Background(), nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback() //nolint:errcheck
-	if err := coordinateWithSchemaMigration(tx); err != nil {
-		return nil, err
-	}
 	var expID int64
 	if err := tx.QueryRow(`SELECT exploration_id FROM tasks WHERE id=$1 AND deleted_at IS NULL`, taskID).Scan(&expID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -587,6 +592,7 @@ func (d *DB) snapshotTaskArchive(taskID int64, llmRecords io.Writer) (*TaskArchi
 		{"task_llm_profiles", `SELECT * FROM task_llm_profiles WHERE task_id=$1 ORDER BY position`, []any{taskID}},
 		{"task_scope", `SELECT * FROM task_scope WHERE task_id=$1 ORDER BY id`, []any{taskID}},
 		{"findings", `SELECT * FROM findings WHERE task_id=$1 ORDER BY id`, []any{taskID}},
+		{"finding_assets", `SELECT r.* FROM finding_assets r JOIN findings f ON f.id=r.finding_id WHERE f.task_id=$1 ORDER BY finding_id,position`, []any{taskID}},
 		{"finding_traffic_bindings", `SELECT b.* FROM finding_traffic_bindings b JOIN findings f ON f.id=b.finding_id WHERE f.task_id=$1 ORDER BY b.finding_id,b.position,b.id`, []any{taskID}},
 		{"traffic_evidence_snapshots", `SELECT s.* FROM traffic_evidence_snapshots s WHERE EXISTS(SELECT 1 FROM finding_traffic_bindings b JOIN findings f ON f.id=b.finding_id WHERE b.snapshot_id=s.id AND f.task_id=$1) ORDER BY s.id`, []any{taskID}},
 		{"llm_records", `SELECT * FROM llm_records WHERE COALESCE(task_id,'')=$1 ORDER BY id`, []any{strconv.FormatInt(taskID, 10)}},
@@ -597,12 +603,16 @@ func (d *DB) snapshotTaskArchive(taskID int64, llmRecords io.Writer) (*TaskArchi
 		{"side_question_sessions", `SELECT * FROM side_question_sessions WHERE task_id=$1 ORDER BY session_key`, []any{taskID}},
 		{"side_question_requests", `SELECT r.* FROM side_question_requests r JOIN side_question_sessions s ON s.session_key=r.session_key WHERE s.task_id=$1 ORDER BY r.ordinal`, []any{taskID}},
 		{"assets", `SELECT asset.* FROM assets asset WHERE asset.id IN (` + archiveAssetIDsQuery() + `) ORDER BY asset.id`, []any{taskID, expID}},
+		{"asset_bound_domains", `SELECT r.* FROM asset_bound_domains r WHERE r.asset_id IN (` + archiveAssetIDsQuery() + `) ORDER BY asset_id,position`, []any{taskID, expID}},
+		{"asset_technologies", `SELECT r.* FROM asset_technologies r WHERE r.asset_id IN (` + archiveAssetIDsQuery() + `) ORDER BY asset_id,position`, []any{taskID, expID}},
+		{"asset_records", `SELECT r.* FROM asset_records r WHERE r.asset_id IN (` + archiveAssetIDsQuery() + `) ORDER BY asset_id,position`, []any{taskID, expID}},
+		{"asset_open_ports", `SELECT r.* FROM asset_open_ports r WHERE r.asset_id IN (` + archiveAssetIDsQuery() + `) ORDER BY asset_id,position`, []any{taskID, expID}},
 	}
 	counts := make(map[string]int64, len(queries))
 	streamedTables := map[string]string{}
 	for _, query := range queries {
 		if query.name == "llm_records" && llmRecords != nil {
-			count, err := streamArchiveRows(tx, llmRecords, query.query, query.args...)
+			count, err := streamArchiveRows(tx, llmRecords, query.name, query.query, query.args...)
 			if err != nil {
 				return nil, fmt.Errorf("snapshot %s: %w", query.name, err)
 			}
@@ -611,7 +621,7 @@ func (d *DB) snapshotTaskArchive(taskID int64, llmRecords io.Writer) (*TaskArchi
 			streamedTables[query.name] = TaskArchiveLLMRecordsPath
 			continue
 		}
-		raw, count, err := queryArchiveRows(tx, query.query, query.args...)
+		raw, count, err := queryArchiveRows(tx, query.name, query.query, query.args...)
 		if err != nil {
 			return nil, fmt.Errorf("snapshot %s: %w", query.name, err)
 		}
@@ -637,6 +647,10 @@ func (d *DB) snapshotTaskArchive(taskID int64, llmRecords io.Writer) (*TaskArchi
 		}
 		sources = append(sources, id)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
@@ -650,12 +664,15 @@ func (d *DB) snapshotTaskArchive(taskID int64, llmRecords io.Writer) (*TaskArchi
 		ExclusiveAssetIDs: exclusiveAssetIDs, Tables: tables, StreamedTables: streamedTables,
 		DataCounts: counts, AggregateStats: stats,
 	}
-	return snapshot, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return snapshot, nil
 }
 
 func archiveAssetMetadata(tx *sql.Tx, taskID, expID int64, assetRows json.RawMessage) ([]int64, []int64, []string, []string, error) {
-	var rows []map[string]any
-	if err := json.Unmarshal(assetRows, &rows); err != nil {
+	rows, err := decodeArchiveRows(assetRows)
+	if err != nil {
 		return nil, nil, nil, nil, err
 	}
 	allHosts := map[string]struct{}{}
@@ -682,11 +699,15 @@ func archiveAssetMetadata(tx *sql.Tx, taskID, expID int64, assetRows json.RawMes
 	rowsID, err := tx.Query(`WITH candidate AS (`+archiveAssetIDsQuery()+`)
 SELECT asset.id FROM assets asset JOIN candidate ON candidate.id=asset.id
 WHERE asset.company_id IS NULL
-AND NOT EXISTS (SELECT 1 FROM tasks task WHERE task.id<>$1 AND task.deleted_at IS NULL AND task.id=ANY(asset.task_ids))
+AND NOT EXISTS (SELECT 1 FROM task_asset_links link JOIN tasks task ON task.id=link.task_id WHERE link.asset_id=asset.id AND task.id<>$1 AND task.deleted_at IS NULL)
 AND NOT EXISTS (
  SELECT 1 FROM exploration_anchors anchor JOIN exploration_nodes node ON node.id=anchor.node_id
  JOIN tasks task ON task.exploration_id=node.exploration_id
  WHERE anchor.asset_id=asset.id AND task.id<>$1 AND task.deleted_at IS NULL
+) AND NOT EXISTS (
+ SELECT 1 FROM finding_assets relation JOIN findings finding ON finding.id=relation.finding_id
+ JOIN tasks task ON task.id=finding.task_id
+ WHERE relation.asset_id=asset.id AND task.id<>$1 AND task.deleted_at IS NULL
 ) ORDER BY asset.id`, taskID, expID)
 	if err != nil {
 		return nil, nil, nil, nil, err
@@ -699,6 +720,10 @@ AND NOT EXISTS (
 			return nil, nil, nil, nil, err
 		}
 		exclusiveIDs = append(exclusiveIDs, id)
+	}
+	if err := rowsID.Err(); err != nil {
+		rowsID.Close()
+		return nil, nil, nil, nil, err
 	}
 	if err := rowsID.Close(); err != nil {
 		return nil, nil, nil, nil, err
@@ -722,52 +747,89 @@ FROM llm_usage WHERE COALESCE(task_id,'')=$1 OR exploration_id=$2`, strconv.Form
 	}
 	stats["tokens"] = map[string]int64{"calls": calls, "input_tokens": input, "output_tokens": output, "cache_read_tokens": cacheRead, "cache_write_tokens": cacheWrite}
 	for _, item := range []struct {
-		name  string
-		query string
-		args  []any
+		name, query string
+		args        []any
+		object      bool
 	}{
-		{"token_profiles", `SELECT COALESCE(jsonb_agg(to_jsonb(x)),'[]'::jsonb) FROM (
-SELECT COALESCE(profile_name,'') profile_name,count(*) calls,1 tasks,
-       COALESCE(sum(input_tokens),0) input_tokens,COALESCE(sum(output_tokens),0) output_tokens,
-       COALESCE(sum(cache_read),0) cache_read_tokens,COALESCE(sum(cache_write),0) cache_write_tokens
-FROM llm_usage WHERE COALESCE(task_id,'')=$1 OR exploration_id=$2
-GROUP BY profile_name ORDER BY sum(input_tokens)+sum(output_tokens) DESC) x`, []any{strconv.FormatInt(taskID, 10), expID}},
-		{"token_daily", `SELECT COALESCE(jsonb_agg(to_jsonb(x)),'[]'::jsonb) FROM (
-SELECT COALESCE(profile_name,'') profile_name,to_char(ts AT TIME ZONE 'UTC','YYYY-MM-DD') date,
-       COALESCE(sum(input_tokens),0) input_tokens,COALESCE(sum(output_tokens),0) output_tokens,
-       COALESCE(sum(cache_read),0) cache_read_tokens
-FROM llm_usage WHERE COALESCE(task_id,'')=$1 OR exploration_id=$2
-GROUP BY profile_name,date ORDER BY date) x`, []any{strconv.FormatInt(taskID, 10), expID}},
-		{"skills", `SELECT COALESCE(jsonb_object_agg(name,n),'{}'::jsonb) FROM (SELECT skill name,count(*) n FROM skill_usage WHERE (task_id=$1 OR exploration_id=$2) AND found GROUP BY skill) x`, []any{taskID, expID}},
-		{"skill_stats", `SELECT COALESCE(jsonb_agg(to_jsonb(x)),'[]'::jsonb) FROM (
-SELECT skill,count(*) calls,1 tasks,
-       COALESCE(array_agg(DISTINCT agent_key) FILTER (WHERE agent_key IS NOT NULL),ARRAY[]::text[]) agents,
-       max(ts) last_used
-FROM skill_usage WHERE (task_id=$1 OR exploration_id=$2) AND found GROUP BY skill) x`, []any{taskID, expID}},
-		{"missing_skill_stats", `SELECT COALESCE(jsonb_agg(to_jsonb(x)),'[]'::jsonb) FROM (
-SELECT skill,count(*) calls,0 tasks,
-       COALESCE(array_agg(DISTINCT agent_key) FILTER (WHERE agent_key IS NOT NULL),ARRAY[]::text[]) agents,
-       max(ts) last_used
-FROM skill_usage WHERE (task_id=$1 OR exploration_id=$2) AND NOT found GROUP BY skill) x`, []any{taskID, expID}},
-		{"tools", `SELECT COALESCE(jsonb_object_agg(name,n),'{}'::jsonb) FROM (SELECT tool_key name,count(*) n FROM tool_usage WHERE task_id=$1 OR exploration_id=$2 GROUP BY tool_key) x`, []any{taskID, expID}},
-		{"findings", `SELECT COALESCE(jsonb_object_agg(name,n),'{}'::jsonb) FROM (SELECT COALESCE(NULLIF(severity,''),'unknown') name,count(*) n FROM findings WHERE task_id=$1 GROUP BY severity) x`, []any{taskID}},
-		{"finding_stats", `SELECT jsonb_build_object(
- 'total',count(*),'pending',count(*) FILTER (WHERE status='pending'),
- 'critical',count(*) FILTER (WHERE severity='critical'),'high',count(*) FILTER (WHERE severity='high'),
- 'medium',count(*) FILTER (WHERE severity='medium'),'low',count(*) FILTER (WHERE severity='low'),
- 'vulnclasses',COALESCE(jsonb_agg(DISTINCT vulnclass) FILTER (WHERE vulnclass<>''),'[]'::jsonb))
-FROM findings WHERE task_id=$1`, []any{taskID}},
+		{"token_profiles", `SELECT COALESCE(profile_name,'') profile_name,count(*) calls,1 tasks,
+ COALESCE(sum(input_tokens),0) input_tokens,COALESCE(sum(output_tokens),0) output_tokens,
+ COALESCE(sum(cache_read),0) cache_read_tokens,COALESCE(sum(cache_write),0) cache_write_tokens
+ FROM llm_usage WHERE COALESCE(task_id,'')=$1 OR exploration_id=$2 GROUP BY profile_name ORDER BY sum(input_tokens)+sum(output_tokens) DESC`, []any{strconv.FormatInt(taskID, 10), expID}, false},
+		{"token_daily", `SELECT COALESCE(profile_name,'') profile_name,strftime('%Y-%m-%d',ts) date,
+ COALESCE(sum(input_tokens),0) input_tokens,COALESCE(sum(output_tokens),0) output_tokens,COALESCE(sum(cache_read),0) cache_read_tokens
+ FROM llm_usage WHERE COALESCE(task_id,'')=$1 OR exploration_id=$2 GROUP BY profile_name,date ORDER BY date`, []any{strconv.FormatInt(taskID, 10), expID}, false},
+		{"skills", `SELECT skill name,count(*) n FROM skill_usage WHERE (task_id=$1 OR exploration_id=$2) AND found GROUP BY skill`, []any{taskID, expID}, true},
+		{"tools", `SELECT tool_key name,count(*) n FROM tool_usage WHERE task_id=$1 OR exploration_id=$2 GROUP BY tool_key`, []any{taskID, expID}, true},
+		{"findings", `SELECT COALESCE(NULLIF(severity,''),'unknown') name,count(*) n FROM findings WHERE task_id=$1 GROUP BY severity`, []any{taskID}, true},
 	} {
-		var raw []byte
-		if err := tx.QueryRow(item.query, item.args...).Scan(&raw); err != nil {
+		raw, _, err := queryArchiveRows(tx, "", item.query, item.args...)
+		if err != nil {
 			return nil, err
 		}
-		var value any
-		if err := json.Unmarshal(raw, &value); err != nil {
+		values, err := decodeArchiveRows(raw)
+		if err != nil {
 			return nil, err
 		}
-		stats[item.name] = value
+		if item.object {
+			result := map[string]int64{}
+			for _, row := range values {
+				name, _ := row["name"].(string)
+				count, _ := jsonInt64(row["n"])
+				result[name] = count
+			}
+			stats[item.name] = result
+		} else {
+			stats[item.name] = values
+		}
 	}
+	for _, item := range []struct {
+		name  string
+		found bool
+	}{{"skill_stats", true}, {"missing_skill_stats", false}} {
+		rows, err := tx.Query(`SELECT skill,count(*),strftime('%Y-%m-%dT%H:%M:%fZ',max(ts)),json_group_array(DISTINCT agent_key) FILTER(WHERE agent_key IS NOT NULL) FROM skill_usage WHERE (task_id=$1 OR exploration_id=$2) AND found=$3 GROUP BY skill`, taskID, expID, item.found)
+		if err != nil {
+			return nil, err
+		}
+		values := []map[string]any{}
+		for rows.Next() {
+			var skill string
+			var calls int64
+			var last string
+			var agents string
+			if err := rows.Scan(&skill, &calls, &last, &agents); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			var agentList []string
+			if err := json.Unmarshal([]byte(agents), &agentList); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			tasks := 0
+			if item.found {
+				tasks = 1
+			}
+			values = append(values, map[string]any{"skill": skill, "calls": calls, "tasks": tasks, "agents": agentList, "last_used": last})
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+		stats[item.name] = values
+	}
+	var raw string
+	if err := tx.QueryRow(`SELECT json_object('total',count(*),'pending',count(*) FILTER(WHERE status='pending'),'critical',count(*) FILTER(WHERE severity='critical'),'high',count(*) FILTER(WHERE severity='high'),'medium',count(*) FILTER(WHERE severity='medium'),'low',count(*) FILTER(WHERE severity='low'),'vulnclasses',json_group_array(DISTINCT vulnclass) FILTER(WHERE vulnclass<>'')) FROM findings WHERE task_id=$1`, taskID).Scan(&raw); err != nil {
+		return nil, err
+	}
+	var findingStats map[string]any
+	if err := json.Unmarshal([]byte(raw), &findingStats); err != nil {
+		return nil, err
+	}
+	stats["finding_stats"] = findingStats
+
 	return stats, nil
 }
 

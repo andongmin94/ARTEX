@@ -6,21 +6,13 @@ import (
 	"testing"
 )
 
-func TestFindingEvidenceLockNamespace(t *testing.T) {
-	for _, reserved := range []int64{7337741001, 7337741002, 7337741003} {
-		if findingEvidenceLockKey == reserved {
-			t.Fatal("evidence lock collides with migration/test/company lock")
-		}
-	}
-}
-
-func TestFindingTrafficLegacyArchiveDefaults(t *testing.T) {
+func TestFindingTrafficSQLiteArchiveDefaults(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer d.Close()
-	for _, version := range []int{1, 2} {
+	for _, version := range []int{TaskArchiveFormatVersion} {
 		t.Run(fmt.Sprint(version), func(t *testing.T) {
 			task, err := d.CreateTask("legacy archive evidence defaults", "fixture", nil, 0, 0)
 			if err != nil {
@@ -49,8 +41,8 @@ func TestFindingTrafficLegacyArchiveDefaults(t *testing.T) {
 				t.Fatal(err)
 			}
 			snapshot.FormatVersion = version
-			delete(snapshot.Tables, "finding_traffic_bindings")
-			delete(snapshot.Tables, "traffic_evidence_snapshots")
+			snapshot.Tables["finding_traffic_bindings"] = json.RawMessage("[]")
+			snapshot.Tables["traffic_evidence_snapshots"] = json.RawMessage("[]")
 			var rows []map[string]any
 			if err = json.Unmarshal(snapshot.Tables["findings"], &rows); err != nil {
 				t.Fatal(err)

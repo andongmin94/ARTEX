@@ -13,10 +13,15 @@ import (
 
 // startHTTP binds synchronously so an occupied/invalid port is a startup error,
 // not a log.Fatal in a goroutine that bypasses the manager's cleanup.
-func startHTTP(srv *http.Server) (net.Listener, <-chan error, error) {
+func startHTTP(srv *http.Server, validate func(net.Addr) error) (net.Listener, <-chan error, error) {
 	listener, err := net.Listen("tcp", srv.Addr)
 	if err != nil {
 		return nil, nil, err
+	}
+	if validate != nil {
+		if err := validate(listener.Addr()); err != nil {
+			return nil, nil, errors.Join(err, listener.Close())
+		}
 	}
 	done := make(chan error, 1)
 	go func() {

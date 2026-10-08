@@ -211,6 +211,9 @@ func (d *DB) DeleteProfile(id int64) error {
 // writer before the first read; concurrent activation/binding cannot interleave.
 // Foreign keys clear agent/conversation references and remove chain memberships.
 func (d *DB) DeleteProfileContext(ctx context.Context, id int64) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	tx, err := d.BeginTx(ctx, nil)

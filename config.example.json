@@ -1,20 +1,3 @@
 {
-  "_comment": "config.json으로 복사하세요(다른 경로는 ARTEX_CONFIG). database와 skill_dir만 설정하며 LLM 등 나머지는 환경 변수 또는 웹 화면에서 설정합니다.",
-  "_comment_database": "PostgreSQL 연결. ARTEX_PG_DSN이 이 파일보다 우선합니다. 개별 필드를 입력하거나 database.dsn에 전체 연결 문자열을 입력하세요.",
-  "database": {
-    "host": "127.0.0.1",
-    "port": 5433,
-    "user": "artex",
-    "password": "",
-    "dbname": "artex",
-    "sslmode": "disable"
-  },
-  "_comment_database_dsn": "database.dsn이 비어 있지 않으면 개별 연결 필드는 사용하지 않습니다.",
-  "_example_database_dsn": {
-    "database": {
-      "dsn": "postgres://user:pass@db.example.com:5432/artex?sslmode=require"
-    }
-  },
-  "_comment_skill_dir": "스킬 루트 디렉터리. ARTEX_SKILL_DIR > 이 필드 > 실행 파일 옆 skills/ 순서입니다. 비워두면 기본 경로를 사용합니다.",
-  "skill_dir": ""
+  "skill_dir": "skills"
 }

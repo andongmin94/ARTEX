@@ -1,6 +1,8 @@
-# ARTEX 한국어판
+# ARTEX 데스크톱
 
-LLM 기반 자율 침투 테스트 시스템입니다. Go 백엔드, Next.js 웹 화면, PostgreSQL을 사용하며, 원본 [Autumn-27/ARTEX](https://github.com/Autumn-27/ARTEX)를 한국어로 현지화한 포크입니다.
+기존 한국어 ARTEX를 Electron + Go + SQLite 로컬 앱으로 전환한 프로젝트입니다. Go가 업무 데이터·트래픽·증거를 저장하고 Electron이 창과 백엔드 수명 주기를 관리합니다. 원본 [Autumn-27/ARTEX](https://github.com/Autumn-27/ARTEX)의 기능과 한국어 화면을 재사용합니다.
+
+UI는 [andongmin94/neobrutal-ui](https://github.com/andongmin94/neobrutal-ui)의 Mono 토큰·컨트롤 동작을 적용합니다. 현재는 개발 검증 중이며 정식 릴리스가 아닙니다. 설치·서명·자동 업데이트와 도구 런타임 준비 상태는 [개발 계획](docs/development-plan.md)에 실제 검증 범위대로 기록합니다.
 
 작업 생성 → 에이전트 탐색 → 취약점과 증거 검토 → 수정 → 재검증 흐름을 제공합니다. 화면을 한국어로 바꾸었으며 기본 에이전트 지침, 오류·상태 메시지, 알림, 보고서도 한국어로 제공합니다. API 필드, 도구 이름, 명령 옵션 및 상태 코드는 변경하지 않습니다.
 
@@ -24,7 +26,7 @@ LLM 기반 자율 침투 테스트 시스템입니다. Go 백엔드, Next.js 웹
 
 ## 먼저 준비할 것
 
-실제 실행에는 PostgreSQL과 LLM 설정이 필요합니다. 화면만 확인하는 데모는 둘 다 필요하지 않습니다.
+앱 실행에 별도 DB 서버가 필요하지 않습니다. 실제 에이전트 작업에는 LLM 설정과 해당 작업에 필요한 도구 준비가 필요합니다. 기본 테스트는 임시 SQLite와 로컬 HTTP/모델 fixture를 사용합니다.
 
 외부 LLM을 연결하면 대상 응답, 명령 출력, 첨부 파일 및 증거 일부가 모델 제공자에게 전송될 수 있습니다. 승인된 모델을 사용하고 운영 자격증명과 실제 개인정보를 테스트 데이터에 넣지 마세요. 프록시와 관리자 콘솔은 외부에 공개하지 마세요.
 
@@ -49,68 +51,32 @@ $env:NEXT_PUBLIC_MOCK = "1"
 npm run dev
 ```
 
-### Docker로 실행하기
+### Electron 빌드와 실행
 
-Docker 및 Docker Compose가 필요합니다. **이 포크는 로컬 소스에서 한국어 이미지를 빌드합니다.** 원본 `autumn27/artex` 이미지를 실행하면 한국어 변경이 반영되지 않습니다.
+Node.js 22 이상과 `go.mod`에 명시된 Go 1.26.3이 필요합니다.
 
-```bash
-cp .env.example .env
-# .env에서 POSTGRES_PASSWORD를 설정하세요.
-docker compose up -d --build
-```
-
-기본 접속 주소는 `http://localhost:8787`입니다. 최초 `/setup` 화면에서 관리자 비밀번호를 정한 다음 시스템의 **LLM** 메뉴에서 모델과 API Key를 설정하세요.
-
-```bash
-# 상태 확인
-docker compose ps
-# 실행 로그
-docker compose logs -f artex
-# 중지 — 데이터는 유지
-docker compose down
-```
-
-PostgreSQL은 `pgdata` 볼륨, 실행 데이터는 `./data`, 스킬은 `./skills`에 보관합니다. `docker compose down -v`는 DB 볼륨을 삭제하므로 데이터가 필요하면 사용하지 마세요.
-
-### 소스에서 직접 빌드하기
-
-Node.js 22 이상, `go.mod`에 명시된 Go 버전, PostgreSQL이 필요합니다.
-
-```bash
-cp config.example.json config.json
-# config.json의 database를 실제 테스트 DB에 맞게 설정하세요.
+```powershell
 cd web
 npm ci
-npm run build:static
-cd ..
-mkdir -p server/webui/dist
-cp -R web/out/. server/webui/dist/
-CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
-./start.sh
+cd ../desktop
+npm ci
+npm run build
+npm start
 ```
 
-Windows는 빌드 결과를 `artex.exe`로 만들고 `start.bat`으로 실행합니다. 실행 스크립트는 프로그램의 업데이트·재시작 절차를 처리합니다. 직접 실행 파일을 시작하면 원클릭 업데이트 후 자동 재시작되지 않습니다.
+Go가 PATH에 없으면 빌드 전에 `ARTEX_GO`에 실제 Go 실행 파일의 절대 경로를 지정합니다.
+Windows 실행 폴더는 `desktop`에서 `npm run package`로 생성합니다. 출력된 `dist/ARTEX-win32-x64/ARTEX.exe`를 실행합니다. 기존 출력 폴더를 덮어쓰지 않습니다. 현재 생성물은 서명되지 않은 실행 패키지이며 설치 프로그램이나 정식 릴리스가 아닙니다.
+
+앱의 최초 설정 화면에서 관리자 비밀번호를 정한 뒤 **시스템 → LLM**에서 모델을 설정하세요.
+데이터는 Electron `userData` 아래의 `config.json`, `jwt.key`, `skills/`, `data/artex.sqlite` 및 기존 트래픽·증거·작업 폴더에 저장됩니다. `--artex-home=절대경로`는 명시적으로 다른 데이터 홈을 사용할 때 지정합니다.
+기존 사용자 DB·설정·증거를 자동 삭제하거나 PG 데이터를 가져오지 않습니다.
 
 ## 기본 설정
 
-### PostgreSQL
+### SQLite
 
-`config.json` 예시입니다. 환경 변수 `ARTEX_PG_DSN`을 지정하면 DB 연결 설정을 재정의할 수 있습니다.
-
-```json
-{
-  "database": {
-    "host": "127.0.0.1",
-    "port": 5432,
-    "user": "artex",
-    "password": "테스트용 비밀번호",
-    "dbname": "artex",
-    "sslmode": "disable"
-  }
-}
-```
-
-원격 DB는 배포 환경에 맞는 TLS 설정을 사용하세요. 위 `sslmode=disable` 예시는 격리된 로컬 테스트용입니다.
+Go만 로컬 DB 연결을 소유합니다. DB 선택 옵션이나 PG 병행 지원은 제공하지 않습니다.
+배열은 검색 가능한 관계 테이블로 저장하고 IP/CIDR는 Go에서 정규화합니다. 작업 보관 패키지는 SQLite 형식4를 사용하며 이전 PG 형식 자동 변환은 제공하지 않습니다.
 
 ### LLM
 
@@ -118,13 +84,11 @@ Windows는 빌드 결과를 `artex.exe`로 만들고 `start.bat`으로 실행합
 
 모델 형식, Base URL, API Key를 입력하고 연결 테스트를 실행한 뒤 해당 프로필을 활성화하세요. 입력·출력 상한, 컨텍스트 윈도우, 재시도, 장애 조치는 서로 다른 설정입니다. 화면의 한국어 도움말을 확인하세요.
 
-### 실행 주소
+### 실행 주소와 종료
 
-```bash
-./start.sh -addr 127.0.0.1:8787 -proxy 127.0.0.1:8788
-```
-
-`-addr`는 웹 화면과 API, `-proxy`는 트래픽 기록 프록시입니다. Docker Compose의 기본 포트 공개도 로컬 호스트로 제한합니다.
+Electron은 Go를 loopback 동적 포트에서 시작하고 실제 ready의 PID·주소를 확인합니다. 매 실행마다 생성한 앱 세션 키와 기존 로그인/JWT를 함께 사용합니다.
+렌더러의 Node 접근을 끄고 context isolation·sandbox·CSP·제한된 IPC와 탐색 정책을 적용합니다. 앱 종료나 부모 stdin EOF는 Go의 정상 종료를 요청합니다.
+렌더러 격리가 외부 명령의 OS·네트워크 격리를 보장하지는 않습니다. 준비되지 않은 외부 도구 상태는 별도 표시하고 실행을 차단합니다.
 
 ## 첫 작업 흐름
 
@@ -151,7 +115,7 @@ HTTP 증거는 정상 대조군, 취약점 입증, 추가 검증, 보조 증거�
 
 **목표 분해 에이전트**가 최종 목표와 실행 제약을 등록합니다. **계획 에이전트**가 상황을 읽고 의도를 배정하며, **실행 에이전트**는 배정된 의도 하나를 수행하여 사실·자산·취약점을 저장합니다. **주 에이전트**는 사용자의 지시와 질문을 연결합니다. 보고서·재검증 에이전트는 각각 보고서 작성과 수정 확인을 담당합니다.
 
-MCP는 로컬 `stdio`, 원격 Streamable HTTP, 기존 SSE 전송을 지원합니다. 서버를 등록한 뒤 에이전트별 접근 권한을 지정하세요. SSE 서버는 일반적으로 `/sse` 주소를 사용하며 인증 헤더는 서버 요구 사항에 맞춥니다.
+원격 MCP는 Streamable HTTP와 기존 SSE 전송을 사용합니다. 서버를 등록한 뒤 에이전트별 접근 권한을 지정하세요. SSE 서버는 일반적으로 `/sse` 주소를 사용하며 인증 헤더는 서버 요구 사항에 맞춥니다. 로컬 `stdio` MCP와 명령·스크립트 도구는 현재 Electron에서 앱 전용 런타임 미준비로 실행이 차단됩니다.
 
 스킬은 `SKILL.md`와 관련 스크립트·참조 파일로 구성합니다. 스킬을 불러올 때 연결된 MCP 도구를 공개할 수 있습니다. 가져오는 외부 스킬의 설명·본문과 외부 MCP의 도구 설명은 해당 공급자가 작성한 언어로 표시될 수 있습니다.
 
@@ -167,35 +131,9 @@ Worker의 완료, 취약점 발견, 사용자 목표·힌트 변경 등이 계�
 
 ## 업데이트와 백업
 
-한국어판은 이 포크의 소스 또는 이 포크에서 배포한 패키지로 업데이트하세요. 원본 이미지나 원본 배포 바이너리로 교체하면 중국어 UI로 돌아갑니다.
+이 포크의 소스에서 UI와 Go를 함께 다시 빌드하세요. Go 자체 업데이트와 Docker/PG 시작 경로는 제거했습니다. 앱 업데이트 배포와 서명은 Electron 제품 단계에서 별도 검증합니다.
 
-```bash
-git pull --ff-only
-docker compose up -d --build
-```
-
-소스 직접 실행은 프런트엔드와 Go를 다시 빌드한 뒤 재시작합니다. 원클릭 업데이트는 정식 버전의 배포 패키지가 있어야 동작하며 개발 버전에는 비활성화됩니다. 체크섬과 실행 점검에 실패하면 기존 버전을 유지하고, 교체한 새 버전의 반복 시작 실패 시 이전 실행 파일로 복원합니다. **DB 구조는 되돌리지 않습니다.**
-
-업데이트 전 PostgreSQL과 `data/`, `skills/`, 설정 파일을 백업하세요. DB 스키마는 프로그램 시작 시 갱신되므로 실행 파일 백업만으로는 충분하지 않습니다. 작업 실행 중 업데이트하면 실행이 중단됩니다.
-
-## HTTPS 역방향 프록시
-
-프런트엔드와 API/SSE는 같은 백엔드 포트를 사용합니다. 운영 정적 화면의 SSE는 기본적으로 같은 출처를 사용하므로 일반적인 역방향 프록시에서는 `NEXT_PUBLIC_SSE_BASE`가 필요하지 않습니다.
-
-```nginx
-location / {
-    proxy_pass http://127.0.0.1:8787;
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_buffering off;
-    proxy_cache off;
-    proxy_read_timeout 3600s;
-    proxy_http_version 1.1;
-    proxy_set_header Connection "";
-}
-```
-
-SSE는 오래 유지되는 연결이므로 버퍼링을 꺼야 합니다. HTTPS 인증서와 접근 통제는 배포 환경에 맞게 구성하세요. SSE를 다른 출처로 분리하는 경우에만 빌드 시 `NEXT_PUBLIC_SSE_BASE`를 지정합니다. 컨테이너 실행 시 바꾸어도 이미 빌드한 정적 파일에는 반영되지 않습니다.
+현재 수동 백업은 앱 전체를 종료한 뒤 데이터 홈 전체를 함께 보존하는 절차입니다. 실행 중 DB 파일 하나만 복사하지 마세요. 자동 일관 백업과 손상 복구의 검증 상태는 개발 계획을 확인하세요.
 
 ## 개발 및 검증
 
@@ -209,12 +147,19 @@ npx tsc --noEmit
 npm run build:static
 cd ..
 
-# PostgreSQL 테스트 DB를 설정한 상태에서 실행
-go test -p 1 -count=1 ./...
+# 실제 modernc와 독립된 SQLite 임시 파일로 실행
+go test -count=1 -timeout 180s ./...
 go build ./cmd/artex
+
+# 실제 Electron + Go 검사
+cd desktop
+npm run build
+npm run test:electron
 ```
 
-프런트엔드만 개발할 때는 `cd web && npm run dev`, 전체 개발 환경은 `./dev.sh`를 사용합니다. 실제 대상 테스트나 외부 LLM 호출은 기본 테스트 검증에 포함하지 않습니다.
+프런트엔드만 개발할 때는 `cd web && npm run dev`를 사용합니다. 실제 대상 테스트나 외부 LLM 호출은 기본 검사에 포함하지 않습니다.
+Playwright의 Electron 지원은 experimental API입니다. 설치·서명·OS 네이티브 IME·Windows 디스플레이 배율은 DOM/Electron 자동화와 구분합니다.
+Python SQL/제어 검사는 실제 Go 드라이버·전체 앱 검사의 대체가 아닙니다. race 검사는 해당 OS의 C 컴파일러가 준비된 환경에서 실행합니다. GitHub Actions는 사용자 명시 요청 없이 실행하지 않습니다.
 
 ## 원본 사용 안내 및 면책
 

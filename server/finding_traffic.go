@@ -7,13 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"path/filepath"
 	"strconv"
 	"unicode/utf8"
 
-	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/evidence"
 	actool "github.com/Autumn-27/norma/tool"
@@ -21,62 +19,6 @@ import (
 
 func (s *Server) evidenceStore() *evidence.Store {
 	return evidence.New(s.m.pg, s.m.traffic, filepath.Join(s.m.dir, "evidence"))
-}
-
-// Add only new optional properties; preserve edited descriptions, existing
-// properties, agent bindings and disabled flags. The one-time flag also keeps
-// subsequent user unbinding of the evidence reader intact.
-func (s *Server) seedFindingTrafficTools() {
-	const flag = "finding_traffic_tools_v1"
-	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
-		return
-	}
-	for _, key := range []string{"report_finding", "update_finding_report"} {
-		var schema any
-		if key == "update_finding_report" {
-			schema = s.toolUpdateFindingReport().InputSchema()
-		} else {
-			for _, seed := range agent.BuiltinToolSeeds() {
-				if seed.Key == key {
-					schema = seed.Schema
-					break
-				}
-			}
-		}
-		raw, err := json.Marshal(schema)
-		if err != nil {
-			log.Printf("[evidence] tool schema: %v", err)
-			return
-		}
-		var obj map[string]json.RawMessage
-		if err = json.Unmarshal(raw, &obj); err != nil {
-			return
-		}
-		// BuiltinToolSeeds stores Schema as RawMessage; both forms marshal as JSON.
-		var properties map[string]json.RawMessage
-		if err = json.Unmarshal(obj["properties"], &properties); err != nil {
-			return
-		}
-		name := "traffic_refs"
-		if key == "update_finding_report" {
-			name = "evidence_version"
-		}
-		if len(properties[name]) == 0 {
-			return
-		}
-		_, err = s.m.pg.Exec(`UPDATE tools SET schema=jsonb_set(schema,ARRAY['properties',$2::text],$3::jsonb,true),updated_at=now()
-WHERE key=$1 AND system AND NOT(COALESCE(schema->'properties','{}'::jsonb) ? $2)`, key, name, string(properties[name]))
-		if err != nil {
-			log.Printf("[evidence] upgrade tool %s: %v", key, err)
-			return
-		}
-	}
-	if reporter, _ := s.m.pg.GetAgentByKey("reporter"); reporter != nil {
-		if err := s.m.pg.AddAgentToToolBinding("reporter", []string{"get_finding_traffic"}); err != nil {
-			return
-		}
-	}
-	_ = s.m.pg.SetSetting(flag, "true")
 }
 
 func (s *Server) registerFindingTraffic(mux *http.ServeMux) {

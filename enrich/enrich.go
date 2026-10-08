@@ -7,6 +7,7 @@
 package enrich
 
 import (
+	"context"
 	"crypto/tls"
 	"html"
 	"io"
@@ -44,10 +45,13 @@ type Engine struct {
 	resolv *dnsx.DNSX
 	client *http.Client
 
-	jobs   chan job
-	cool   sync.Map // dedup/cooldown: "kind:id" -> time.Time (last run)
-	once   sync.Once
-	closed chan struct{}
+	jobs    chan job
+	cool    sync.Map // dedup/cooldown: "kind:id" -> time.Time (last run)
+	once    sync.Once
+	closed  chan struct{}
+	ctx     context.Context
+	cancel  context.CancelFunc
+	workers sync.WaitGroup
 }
 
 const (
@@ -74,14 +78,18 @@ func New(as *db.AssetStore, proxy func() string, workers int) *Engine {
 		log.Printf("[enrich] dnsx 초기화 실패, DNS 조회 비활성화: %v", err)
 		resolv = nil
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	e := &Engine{
 		as:     as,
 		resolv: resolv,
 		client: buildClient(proxy),
 		jobs:   make(chan job, queueSize),
 		closed: make(chan struct{}),
+		ctx:    ctx,
+		cancel: cancel,
 	}
 	for i := 0; i < workers; i++ {
+		e.workers.Add(1)
 		go e.worker()
 	}
 	return e
@@ -139,11 +147,16 @@ func (e *Engine) Close() {
 	if e == nil {
 		return
 	}
-	e.once.Do(func() { close(e.closed) })
+	e.once.Do(func() { e.cancel(); close(e.closed) })
+	e.workers.Wait()
 }
 
 func (e *Engine) worker() {
+	defer e.workers.Done()
 	for {
+		if e.ctx.Err() != nil {
+			return
+		}
 		select {
 		case <-e.closed:
 			return
@@ -182,7 +195,7 @@ func (e *Engine) doDNS(id int64, host string) {
 		return
 	}
 	data, err := e.resolv.QueryMultiple(host)
-	if err != nil || data == nil {
+	if err != nil || data == nil || e.ctx.Err() != nil {
 		return
 	}
 	ips := uniq(append(append([]string{}, data.A...), data.AAAA...))
@@ -226,7 +239,7 @@ func (e *Engine) doHTTP(id int64, rawURL string) {
 	if host == "" {
 		return
 	}
-	req, err := http.NewRequest("GET", rawURL, nil)
+	req, err := http.NewRequestWithContext(e.ctx, "GET", rawURL, nil)
 	if err != nil {
 		return
 	}
@@ -237,6 +250,9 @@ func (e *Engine) doHTTP(id int64, rawURL string) {
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // cap 1 MiB
+	if e.ctx.Err() != nil {
+		return
+	}
 	statusCode := resp.StatusCode
 	bodyLen := int64(len(body))
 	title := extractTitle(body)

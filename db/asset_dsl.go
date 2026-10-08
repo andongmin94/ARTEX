@@ -222,7 +222,7 @@ func (p *dslParser) parseAtom() (*astNode, error) {
 //
 // Syntax:
 //
-//	field=value      fuzzy match (ILIKE '%value%')
+//	field=value      fuzzy match, ignoring letter case
 //	field==value     exact match
 //	field!=value     exclude fuzzy
 //	port>8080        numeric comparison
@@ -303,22 +303,22 @@ func (b *whereBuilder) buildLeaf(e Expr) (string, error) {
 		p := b.next("%" + e.Value + "%")
 		var parts []string
 		for _, col := range fullTextCols {
-			parts = append(parts, col+" ILIKE "+p)
+			parts = append(parts, "artex_lower("+col+") LIKE artex_lower("+p+")")
 		}
 		parts = append(parts,
-			"EXISTS (SELECT 1 FROM unnest(technologies) t(v) WHERE v ILIKE "+p+")",
-			"EXISTS (SELECT 1 FROM unnest(bound_domains) t(v) WHERE v ILIKE "+p+")",
+			"EXISTS (SELECT 1 FROM asset_technologies t WHERE t.asset_id=assets.id AND artex_lower(t.technology) LIKE artex_lower("+p+"))",
+			"EXISTS (SELECT 1 FROM asset_bound_domains t WHERE t.asset_id=assets.id AND artex_lower(t.domain) LIKE artex_lower("+p+"))",
 		)
 		return "(" + strings.Join(parts, " OR ") + ")", nil
 	}
 
-	// task_id: $N = ANY(task_ids)
+	// Task membership is a relation-table existence check.
 	if f == "task_id" {
 		n, err := strconv.ParseInt(e.Value, 10, 64)
 		if err != nil {
 			return "", fmt.Errorf("task_id에는 정수가 필요합니다: %s", e.Value)
 		}
-		return b.next(n) + " = ANY(task_ids)", nil
+		return "EXISTS (SELECT 1 FROM task_asset_links link WHERE link.asset_id=assets.id AND link.task_id=" + b.next(n) + ")", nil
 	}
 
 	// company_id: exact integer
@@ -346,30 +346,32 @@ func (b *whereBuilder) buildLeaf(e Expr) (string, error) {
 		return fmt.Sprintf("%s %s %s", col, op, b.next(n)), nil
 	}
 
-	// array fields
-	if col, ok := knownArrayFields[f]; ok {
-		switch e.Op {
-		case "==":
-			return b.next(e.Value) + " = ANY(" + col + ")", nil
-		case "!=":
-			return "NOT (" + b.next(e.Value) + " = ANY(" + col + "))", nil
-		case "=":
-			p := b.next("%" + e.Value + "%")
-			return "EXISTS (SELECT 1 FROM unnest(" + col + ") t(v) WHERE v ILIKE " + p + ")", nil
-		default:
+	// Searchable arrays are relation rows, never duplicate JSON/array columns.
+	if _, ok := knownArrayFields[f]; ok {
+		p := b.next(e.Value)
+		predicate := "t.technology=" + p
+		if e.Op == "=" {
+			b.args[len(b.args)-1] = "%" + e.Value + "%"
+			predicate = "artex_lower(t.technology) LIKE artex_lower(" + p + ")"
+		} else if e.Op != "==" && e.Op != "!=" {
 			return "", fmt.Errorf("배열 필드 %s는 연산자 %s를 지원하지 않습니다", f, e.Op)
 		}
+		clause := "EXISTS (SELECT 1 FROM asset_technologies t WHERE t.asset_id=assets.id AND " + predicate + ")"
+		if e.Op == "!=" {
+			clause = "NOT " + clause
+		}
+		return clause, nil
 	}
 
 	// string fields
 	if col, ok := knownStringFields[f]; ok {
 		switch e.Op {
 		case "=":
-			return col + " ILIKE " + b.next("%"+e.Value+"%"), nil
+			return "artex_lower(" + col + ") LIKE artex_lower(" + b.next("%"+e.Value+"%") + ")", nil
 		case "==":
 			return col + " = " + b.next(e.Value), nil
 		case "!=":
-			return col + " NOT ILIKE " + b.next("%"+e.Value+"%"), nil
+			return "artex_lower(" + col + ") NOT LIKE artex_lower(" + b.next("%"+e.Value+"%") + ")", nil
 		default:
 			return "", fmt.Errorf("문자열 필드 %s는 연산자 %s를 지원하지 않습니다", f, e.Op)
 		}
@@ -495,7 +497,7 @@ func (s *AssetStore) CountDSL(dsl, typ string, taskID int64) (int, error) {
 	}
 	if taskID > 0 {
 		args = append(args, taskID)
-		where += fmt.Sprintf(" AND $%d = ANY(task_ids)", len(args))
+		where += fmt.Sprintf(" AND EXISTS (SELECT 1 FROM task_asset_links link WHERE link.asset_id=assets.id AND link.task_id=$%d)", len(args))
 	}
 	var n int
 	err = s.db.QueryRow("SELECT count(*) FROM assets WHERE "+where, args...).Scan(&n)
@@ -527,7 +529,7 @@ func (s *AssetStore) QueryDSL(dsl, typ string, taskID int64, limit, offset int) 
 	}
 	if taskID > 0 {
 		args = append(args, taskID)
-		where += fmt.Sprintf(" AND $%d = ANY(task_ids)", len(args))
+		where += fmt.Sprintf(" AND EXISTS (SELECT 1 FROM task_asset_links link WHERE link.asset_id=assets.id AND link.task_id=$%d)", len(args))
 	}
 	args = append(args, limit, offset)
 	q := assetSelectCols + " WHERE " + where +

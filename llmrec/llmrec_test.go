@@ -3,7 +3,7 @@ package llmrec
 import (
 	"context"
 	"iter"
-	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Autumn-27/artex/db"
@@ -83,11 +83,7 @@ func (meteredStreamProvider) Stream(context.Context, llm.CompletionRequest) iter
 }
 
 func TestSideUsageRecordedOnceOnConsumerCancellation(t *testing.T) {
-	dsn := os.Getenv("ARTEX_PG_DSN")
-	if dsn == "" {
-		t.Skip("requires isolated ARTEX_PG_DSN")
-	}
-	pg, err := db.Open(dsn)
+	pg, err := db.Open(filepath.Join(t.TempDir(), "artex.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}

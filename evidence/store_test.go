@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -20,11 +21,7 @@ import (
 
 func evidenceFixture(t *testing.T) (*Store, db.RecordFindingInput, string) {
 	t.Helper()
-	dsn := os.Getenv("ARTEX_PG_DSN")
-	if dsn == "" {
-		t.Skip("ARTEX_PG_DSN is required for evidence integration tests")
-	}
-	pg, err := db.Open(dsn)
+	pg, err := db.Open(filepath.Join(t.TempDir(), "business.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +305,7 @@ func TestEvidenceGCGraceAndActiveRestore(t *testing.T) {
 	}
 	entered, release, finished := make(chan struct{}), make(chan struct{}), make(chan error, 1)
 	go func() {
-		finished <- s.WithInstalledSnapshots(ctx, []db.TrafficEvidenceSnapshot{snap}, archive, func() error { close(entered); <-release; return nil })
+		finished <- s.WithInstalledSnapshots(ctx, []db.TrafficEvidenceSnapshot{snap}, archive, func(*sql.Tx) error { close(entered); <-release; return nil })
 	}()
 	<-entered
 	short, cancel := context.WithTimeout(ctx, 100*time.Millisecond)

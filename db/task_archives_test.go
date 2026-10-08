@@ -24,16 +24,21 @@ func (r *archiveJSONTestRows) Next() bool {
 }
 
 func (r *archiveJSONTestRows) Scan(dest ...any) error {
-	if len(dest) != 1 || r.next == 0 || r.next > len(r.values) {
+	if len(dest) != 2 || r.next == 0 || r.next > len(r.values) {
 		return fmt.Errorf("invalid archive test row scan")
 	}
-	target, ok := dest[0].(*[]byte)
-	if !ok {
-		return fmt.Errorf("archive test row destination is %T", dest[0])
+	decoder := json.NewDecoder(bytes.NewReader(r.values[r.next-1]))
+	decoder.UseNumber()
+	var row map[string]any
+	if err := decoder.Decode(&row); err != nil {
+		return err
 	}
-	*target = append((*target)[:0], r.values[r.next-1]...)
+	*(dest[0].(*any)) = row["id"]
+	*(dest[1].(*any)) = row["body"]
 	return nil
 }
+
+func (*archiveJSONTestRows) Columns() ([]string, error) { return []string{"id", "body"}, nil }
 
 func (r *archiveJSONTestRows) Err() error { return nil }
 
@@ -49,7 +54,7 @@ func TestQueryArchiveRowsStreamsJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, count, err := encodeArchiveRows(&archiveJSONTestRows{values: values})
+	raw, count, err := encodeArchiveRows(&archiveJSONTestRows{values: values}, "llm_records")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +82,7 @@ func TestWriteArchiveRowsProducesJSONSequence(t *testing.T) {
 		json.RawMessage(`{"id":2,"body":"second\\nline"}`),
 	}
 	var output bytes.Buffer
-	count, err := writeArchiveRows(&archiveJSONTestRows{values: values}, &output)
+	count, err := writeArchiveRows(&archiveJSONTestRows{values: values}, &output, "llm_records")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,18 +104,18 @@ func TestWriteArchiveRowsProducesJSONSequence(t *testing.T) {
 }
 
 func TestTaskArchiveFormatCompatibility(t *testing.T) {
-	for _, version := range []int{TaskArchiveLegacyFormatVersion, TaskArchiveFormatVersion} {
+	for _, version := range []int{TaskArchiveFormatVersion} {
 		if !IsTaskArchiveFormatSupported(version) {
 			t.Fatalf("archive format %d should be supported", version)
 		}
 	}
-	for _, version := range []int{0, TaskArchiveFormatVersion + 1} {
+	for _, version := range []int{0, 1, 2, 3, TaskArchiveFormatVersion + 1} {
 		if IsTaskArchiveFormatSupported(version) {
 			t.Fatalf("archive format %d should be rejected", version)
 		}
 	}
 	invalidSnapshots := []*TaskArchiveSnapshot{
-		{FormatVersion: TaskArchiveLegacyFormatVersion, StreamedTables: map[string]string{"llm_records": TaskArchiveLLMRecordsPath}},
+		{FormatVersion: 3, StreamedTables: map[string]string{"llm_records": TaskArchiveLLMRecordsPath}},
 		{FormatVersion: TaskArchiveFormatVersion, StreamedTables: map[string]string{"unknown": "database/unknown.ndjson"}},
 	}
 	for _, snapshot := range invalidSnapshots {
@@ -123,7 +128,7 @@ func TestTaskArchiveFormatCompatibility(t *testing.T) {
 func TestTaskArchiveDatabaseRoundTrip(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) — skipping", err)
+		t.Fatal(err)
 	}
 	defer d.Close()
 	task, err := d.CreateTaskWithOptions("archive database roundtrip", "restore exact graph", TaskCreateOptions{Name: "cold task"})
@@ -210,7 +215,7 @@ VALUES($1,$2,0,'quota_exhausted','balance exhausted',$3,$4,$3)`, task.ID, llmPro
 	if snapshot.StreamedTables["llm_records"] != TaskArchiveLLMRecordsPath || snapshot.DataCounts["llm_records"] != 1 {
 		t.Fatalf("unexpected streamed LLM metadata: paths=%v counts=%v", snapshot.StreamedTables, snapshot.DataCounts)
 	}
-	if rawRowCount(snapshot.Tables["llm_records"]) != 0 {
+	if llmRows, err := decodeArchiveRows(snapshot.Tables["llm_records"]); err != nil || len(llmRows) != 0 {
 		t.Fatal("streamed LLM records were also retained in manifest memory")
 	}
 	if snapshot.DataCounts["assets"] != 1 || snapshot.DataCounts["exploration_nodes"] < 2 {
@@ -282,7 +287,7 @@ VALUES($1,$2,0,'quota_exhausted','balance exhausted',$3,$4,$3)`, task.ID, llmPro
 	if err := d.QueryRow(`SELECT count(*) FROM exploration_nodes WHERE exploration_id=$1`, task.ExplorationID).Scan(&nodes); err != nil {
 		t.Fatal(err)
 	}
-	if err := d.QueryRow(`SELECT count(*) FROM assets WHERE id=$1 AND $2=ANY(task_ids)`, assetID, task.ID).Scan(&assets); err != nil {
+	if err := d.QueryRow(`SELECT count(*) FROM assets WHERE id=$1 AND EXISTS(SELECT 1 FROM task_asset_links link WHERE link.asset_id=assets.id AND link.task_id=$2)`, assetID, task.ID).Scan(&assets); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.QueryRow(`SELECT count(*) FROM llm_usage WHERE task_id=$1`, fmt.Sprint(task.ID)).Scan(&usage); err != nil {
@@ -329,7 +334,7 @@ VALUES($1,$2,0,'quota_exhausted','balance exhausted',$3,$4,$3)`, task.ID, llmPro
 func TestTaskArchiveBlockersIgnoreQueuedDependents(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) — skipping", err)
+		t.Fatal(err)
 	}
 	defer d.Close()
 	source, err := d.CreateTaskWithOptions("archive blocker source", "source", TaskCreateOptions{})
@@ -374,7 +379,7 @@ func TestTaskArchiveBlockersIgnoreQueuedDependents(t *testing.T) {
 func TestRecoverInterruptedArchiveRequiresManualRetry(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) — skipping", err)
+		t.Fatal(err)
 	}
 	defer d.Close()
 	task, err := d.CreateTaskWithOptions("interrupted archive", "must not restart automatically", TaskCreateOptions{})

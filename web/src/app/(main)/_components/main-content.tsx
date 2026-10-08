@@ -14,7 +14,6 @@ import { AccountSwitcher } from "./sidebar/account-switcher";
 import { LayoutControls } from "./sidebar/layout-controls";
 import { SearchDialog } from "./sidebar/search-dialog";
 import { ThemeSwitcher } from "./sidebar/theme-switcher";
-import { UpdateBadge } from "./update-badge";
 
 // 任务详情页保持原样：它自带头部/Tabs 与内边距，这里不再叠加全局头部和 padding。
 function isFullBleed(pathname: string) {
@@ -51,8 +50,8 @@ export function MainContent({ children }: { children: ReactNode }) {
     <>
       <header
         className={cn(
-          "flex h-12 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12",
-          "[html[data-navbar-style=sticky]_&]:sticky [html[data-navbar-style=sticky]_&]:top-0 [html[data-navbar-style=sticky]_&]:z-50 [html[data-navbar-style=sticky]_&]:overflow-hidden [html[data-navbar-style=sticky]_&]:rounded-t-[inherit] [html[data-navbar-style=sticky]_&]:bg-background/50 [html[data-navbar-style=sticky]_&]:backdrop-blur-md",
+          "flex h-12 shrink-0 items-center gap-2 border-b-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12",
+          "[html[data-navbar-style=sticky]_&]:sticky [html[data-navbar-style=sticky]_&]:top-0 [html[data-navbar-style=sticky]_&]:z-50 [html[data-navbar-style=sticky]_&]:overflow-hidden [html[data-navbar-style=sticky]_&]:rounded-t-[inherit] [html[data-navbar-style=sticky]_&]:bg-background [html[data-navbar-style=sticky]_&]:backdrop-blur-md",
         )}
       >
         <div className="flex w-full items-center justify-between px-4 lg:px-6">
@@ -68,7 +67,6 @@ export function MainContent({ children }: { children: ReactNode }) {
             {version && (
               <span className="font-medium text-muted-foreground text-xs tabular-nums">버전 · {version}</span>
             )}
-            <UpdateBadge />
             <LayoutControls />
             <ThemeSwitcher />
             <AccountSwitcher users={[currentUser]} />

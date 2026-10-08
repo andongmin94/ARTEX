@@ -82,17 +82,27 @@ func (g *Guard) preToolUse(ctx context.Context, ev hook.Event) hook.Result {
 // Both rules and the fallback judge receive the complete tool input.
 func (g *Guard) applyIntercept(ctx context.Context, ev hook.Event) hook.Result {
 	if g.interceptor == nil {
-		return hook.Result{}
+		return g.block(ev.ToolName, systemBlockMessage("차단 정책 저장소가 준비되지 않았습니다"), "")
 	}
-	if !g.interceptor.IsToolEnabled(ev.ToolName) {
+	enabled, err := g.interceptor.IsToolEnabled(ev.ToolName)
+	if err != nil {
+		return g.block(ev.ToolName, systemBlockMessage("차단 정책을 읽지 못해 실행을 거부했습니다"), "")
+	}
+	if !enabled {
 		return hook.Result{}
 	}
 	ctx = intercept.WithCall(ctx, ev.ToolName, ev.Input)
-	dec, matched := g.interceptor.Match(ev.ToolName, ev.Input)
+	dec, matched, err := g.interceptor.Match(ev.ToolName, ev.Input)
+	if err != nil {
+		return g.block(ev.ToolName, systemBlockMessage("차단 규칙을 읽지 못해 실행을 거부했습니다"), "")
+	}
 	if !matched {
-		// No rule matched. Ask the LLM fallback judge (if enabled); when it is off
-		// or unwired, keep current behavior and allow.
-		d, judged := g.interceptor.Judge(ctx, ev.ToolName, ev.Input)
+		// No rule matched. Ask the configured LLM judge; an enabled judge must be
+		// ready before any tool call can pass this boundary.
+		d, judged, err := g.interceptor.Judge(ctx, ev.ToolName, ev.Input)
+		if err != nil {
+			return g.block(ev.ToolName, systemBlockMessage("모델 승인 정책을 읽지 못해 실행을 거부했습니다"), "")
+		}
 		if !judged {
 			return hook.Result{}
 		}

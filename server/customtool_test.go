@@ -6,7 +6,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -75,8 +78,27 @@ func TestEnsureSchema(t *testing.T) {
 }
 
 func TestShellQuote(t *testing.T) {
-	if got := shellQuote("a'b"); got != `'a'\''b'` {
+	want := `'a'\''b'`
+	if runtime.GOOS == "windows" {
+		want = `'a''b'`
+	}
+	if got := shellQuote("a'b"); got != want {
 		t.Fatalf("shellQuote(a'b) = %q", got)
+	}
+}
+
+func TestShellQuotePreservesPowerShellLiteral(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows PowerShell 검사")
+	}
+	value := "a'b; $(Write-Output unexpected) `text 한글"
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "Write-Output "+shellQuote(value))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("PowerShell literal fixture: %v %s", err, out)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(string(out)), "a'b; $(Write-Output unexpected) `text") {
+		t.Fatalf("PowerShell interpreted escaped data as code: %q", out)
 	}
 }
 
@@ -84,9 +106,9 @@ func TestShellQuote(t *testing.T) {
 // stdin JSON and the mirrored env var, then print — verifying the whole script
 // param-passing path. Skips if no python3.
 func TestExecPython(t *testing.T) {
-	interp, err := exec.LookPath("python3")
-	if err != nil {
-		t.Skip("python3 unavailable")
+	interp := testPythonInterpreter(t)
+	if interp == "" {
+		t.Skip("실행 가능한 Python 3 인터프리터가 없습니다")
 	}
 	code := `import json,sys,os
 a = json.load(sys.stdin)
@@ -157,12 +179,33 @@ func TestRunHTTPTool(t *testing.T) {
 }
 
 func TestDetectPython(t *testing.T) {
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 unavailable")
+	if override := os.Getenv("ARTEX_TEST_PYTHON"); override != "" {
+		_ = testPythonInterpreter(t)
+		t.Setenv("PATH", filepath.Dir(override))
 	}
-	if p := detectPython(); p == "" {
-		t.Fatal("detectPython returned empty despite python3 on PATH")
+	p := detectPython()
+	if p == "" {
+		t.Skip("실행 가능한 Python 3 인터프리터가 없습니다")
 	}
+	out, err := exec.Command(p, "--version").CombinedOutput()
+	if err != nil || !strings.HasPrefix(strings.TrimSpace(string(out)), "Python 3.") {
+		t.Fatalf("detected executable is not usable Python 3: %q %v", out, err)
+	}
+}
+
+func testPythonInterpreter(t *testing.T) string {
+	t.Helper()
+	if override := os.Getenv("ARTEX_TEST_PYTHON"); override != "" {
+		if !filepath.IsAbs(override) {
+			t.Fatal("ARTEX_TEST_PYTHON must be an absolute fixture interpreter path")
+		}
+		out, err := exec.Command(override, "--version").CombinedOutput()
+		if err != nil || !strings.HasPrefix(strings.TrimSpace(string(out)), "Python 3.") {
+			t.Fatalf("invalid Python test runtime: %q %v", out, err)
+		}
+		return override
+	}
+	return detectPython()
 }
 
 // The http tool must truncate an oversized response through norma's Capture, the

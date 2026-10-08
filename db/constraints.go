@@ -60,12 +60,16 @@ func (s *ExplorationStore) UpdateConstraint(id int64, kind, text string) error {
 		return fmt.Errorf("kind는 allow 또는 deny여야 합니다")
 	}
 	res, err := s.db.Exec(`
-UPDATE task_constraints SET kind=$1, text=$2, updated_at=now()
+UPDATE task_constraints SET kind=$1, text=$2, updated_at=strftime('%Y-%m-%d %H:%M:%f','now')
 WHERE id=$3 AND exploration_id=$4`, kind, text, id, s.expID)
 	if err != nil {
 		return err
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
 		return fmt.Errorf("제약이 존재하지 않습니다")
 	}
 	return nil
@@ -78,7 +82,11 @@ func (s *ExplorationStore) DeleteConstraint(id int64) error {
 	if err != nil {
 		return err
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
 		return fmt.Errorf("제약이 존재하지 않습니다")
 	}
 	return nil

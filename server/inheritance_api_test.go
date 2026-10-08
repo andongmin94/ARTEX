@@ -14,9 +14,9 @@ import (
 func TestInheritedActivityDetailAndRelationDeletion(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) - skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 
 	source, err := m.CreateTaskWithOptions("detail source", "source goal", db.TaskCreateOptions{})
 	if err != nil {
@@ -52,7 +52,13 @@ func TestInheritedActivityDetailAndRelationDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s := New(context.Background(), m, t.TempDir(), t.TempDir(), t.TempDir())
+	s, err := New(context.Background(), m, t.TempDir(), t.TempDir(), t.TempDir())
+
+	if err != nil {
+		t.Fatalf("initialize server: %v", err)
+	}
+
+	t.Cleanup(func() { _ = s.Close(context.Background()) })
 	token, err := signJWT(s.jwtKey)
 	if err != nil {
 		t.Fatal(err)

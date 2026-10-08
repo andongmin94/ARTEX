@@ -227,8 +227,9 @@ func TestSideArchiveRowsWithoutNewFields(t *testing.T) {
 	defer tx.Rollback()
 	rows := map[string]json.RawMessage{}
 	for _, table := range []string{"side_question_sessions", "side_question_requests"} {
-		var raw []byte
-		if err = tx.QueryRow(`SELECT json_agg(t) FROM `+table+` t WHERE session_key=$1`, s.Parent.Key()).Scan(&raw); err != nil {
+		raw, _, readErr := queryArchiveRows(tx, table, `SELECT * FROM `+table+` WHERE session_key=$1`, s.Parent.Key())
+		if readErr != nil {
+			err = readErr
 			t.Fatal(err)
 		}
 		var items []map[string]json.RawMessage
@@ -317,8 +318,8 @@ func TestSideClearLateWritersAndDeletedParent(t *testing.T) {
 	}
 }
 
-func TestSideTaskArchiveVersions(t *testing.T) {
-	for _, version := range []int{1, 2, 3} {
+func TestSideTaskSQLiteArchiveRoundTrip(t *testing.T) {
+	for _, version := range []int{TaskArchiveFormatVersion} {
 		t.Run(fmt.Sprint(version), func(t *testing.T) {
 			d, err := Open(testDSN(t))
 			if err != nil {
@@ -377,7 +378,7 @@ func TestSideTaskArchiveVersions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if archive.FormatVersion != 3 || archive.DataCounts["side_question_sessions"] != 2 || archive.DataCounts["side_question_requests"] != 2 {
+			if archive.FormatVersion != TaskArchiveFormatVersion || archive.DataCounts["side_question_sessions"] != 2 || archive.DataCounts["side_question_requests"] != 2 {
 				t.Fatalf("missing side archive: %+v", archive.DataCounts)
 			}
 			if err = d.CompleteTaskArchive(job.ID, archive, "/tmp/side-fixture.tar.zst", "fixture", 1, 1); err != nil {
@@ -396,12 +397,6 @@ func TestSideTaskArchiveVersions(t *testing.T) {
 				t.Fatal(err)
 			}
 			archive.FormatVersion = version
-			if version < 3 {
-				delete(archive.Tables, "side_question_sessions")
-				delete(archive.Tables, "side_question_requests")
-				delete(archive.DataCounts, "side_question_sessions")
-				delete(archive.DataCounts, "side_question_requests")
-			}
 			if _, err = d.RestoreTaskArchive(job.ID, archive, 0); err != nil {
 				t.Fatal(err)
 			}
@@ -410,29 +405,23 @@ func TestSideTaskArchiveVersions(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if version < 3 {
-					if got != nil {
-						t.Fatal("legacy archive fabricated snapshot")
-					}
-				} else {
-					if got == nil || got.Request.Messages[0].Text() != "archived main context" {
-						t.Fatalf("restored snapshot: %+v", got)
-					}
-					history, err := d.SideHistory(t.Context(), s.Parent.Key(), 0, 20)
-					if err != nil || len(history) != 1 || history[0].Answer != "archive answer" {
-						t.Fatalf("restored history %+v %v", history, err)
-					}
-					if history[0].Context != contextInfo {
-						t.Fatalf("restored context metadata: %+v", history[0].Context)
-					}
-					next, _, err := d.StartSideRequest(t.Context(), *got, "after-restore", "continue")
-					if err != nil {
-						t.Fatal(err)
-					}
-					memory, err := d.SideMemory(t.Context(), *next)
-					if err != nil || memory != memories[s.Parent.Key()] {
-						t.Fatalf("restored summary cache: %+v %v", memory, err)
-					}
+				if got == nil || got.Request.Messages[0].Text() != "archived main context" {
+					t.Fatalf("restored snapshot: %+v", got)
+				}
+				history, err := d.SideHistory(t.Context(), s.Parent.Key(), 0, 20)
+				if err != nil || len(history) != 1 || history[0].Answer != "archive answer" {
+					t.Fatalf("restored history %+v %v", history, err)
+				}
+				if history[0].Context != contextInfo {
+					t.Fatalf("restored context metadata: %+v", history[0].Context)
+				}
+				next, _, err := d.StartSideRequest(t.Context(), *got, "after-restore", "continue")
+				if err != nil {
+					t.Fatal(err)
+				}
+				memory, err := d.SideMemory(t.Context(), *next)
+				if err != nil || memory != memories[s.Parent.Key()] {
+					t.Fatalf("restored summary cache: %+v %v", memory, err)
 				}
 			}
 		})

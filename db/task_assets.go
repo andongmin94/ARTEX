@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -102,7 +103,8 @@ func (s *AssetStore) SetTaskAssetSource(taskID, assetID int64, source, summary s
 INSERT INTO task_asset_links(task_id, asset_id, source, source_summary, source_node_id)
 SELECT task.id, asset.id, $3, $4, $5
 FROM tasks task
-JOIN assets asset ON asset.id=$2 AND task.id=ANY(asset.task_ids)
+JOIN assets asset ON asset.id=$2
+JOIN task_asset_links link ON link.asset_id=asset.id AND link.task_id=task.id
 WHERE task.id=$1 AND task.deleted_at IS NULL
 ON CONFLICT (task_id, asset_id) DO UPDATE
 SET source=EXCLUDED.source,
@@ -158,9 +160,6 @@ func (s *AssetStore) RegisterTaskAssetScopes(taskID int64, inputs []ScopeInput) 
 		return mutation, err
 	}
 	defer tx.Rollback() //nolint:errcheck
-	if err := lockCompanyScopeMutation(tx); err != nil {
-		return mutation, err
-	}
 	var taskExists bool
 	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM tasks WHERE id=$1 AND deleted_at IS NULL)`, taskID).Scan(&taskExists); err != nil {
 		return mutation, err
@@ -182,7 +181,7 @@ func (s *AssetStore) RegisterTaskAssetScopes(taskID int64, inputs []ScopeInput) 
 			taskScope.Kind = "root_domain"
 			taskScope.Domain = rule.Domain
 			var alreadyLinked bool
-			err := tx.QueryRow(`SELECT id, $2=ANY(task_ids) FROM assets WHERE type='root_domain' AND domain=$1`, rule.Domain, taskID).
+			err := tx.QueryRow(`SELECT id, EXISTS(SELECT 1 FROM task_asset_links link WHERE link.asset_id=assets.id AND link.task_id=$2) FROM assets WHERE type='root_domain' AND domain=$1`, rule.Domain, taskID).
 				Scan(&assetID, &alreadyLinked)
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return mutation, err
@@ -205,7 +204,7 @@ func (s *AssetStore) RegisterTaskAssetScopes(taskID int64, inputs []ScopeInput) 
 			}
 			ipValue := ip.String()
 			var alreadyLinked bool
-			err := tx.QueryRow(`SELECT id, $2=ANY(task_ids) FROM assets WHERE type='ip' AND ip=$1`, ipValue, taskID).
+			err := tx.QueryRow(`SELECT id, EXISTS(SELECT 1 FROM task_asset_links link WHERE link.asset_id=assets.id AND link.task_id=$2) FROM assets WHERE type='ip' AND ip=$1`, ipValue, taskID).
 				Scan(&assetID, &alreadyLinked)
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return mutation, err
@@ -245,7 +244,7 @@ func (s *AssetStore) RegisterTaskAssetScopes(taskID int64, inputs []ScopeInput) 
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return mutation, err
+		return TaskAssetScopeMutation{}, err
 	}
 	return mutation, nil
 }
@@ -279,36 +278,28 @@ func (s *AssetStore) AttachAssetsToTask(taskID int64, assetIDs []int64, sourceSu
 	if !taskExists {
 		return mutation, ErrTaskAssetTaskNotFound
 	}
+	encoded, err := json.Marshal(assetIDs)
+	if err != nil {
+		return mutation, err
+	}
 	var found, existing int
-	if err := tx.QueryRow(`
-SELECT count(*), count(*) FILTER (WHERE $1=ANY(task_ids))
-FROM assets WHERE id=ANY($2::bigint[])`, taskID, assetIDs).Scan(&found, &existing); err != nil {
+	if err := tx.QueryRow(`SELECT count(*),count(*) FILTER(WHERE EXISTS(SELECT 1 FROM task_asset_links link WHERE link.asset_id=assets.id AND link.task_id=?1)) FROM assets WHERE id IN (SELECT value FROM json_each(?2))`, taskID, string(encoded)).Scan(&found, &existing); err != nil {
 		return mutation, err
 	}
 	if found != len(assetIDs) {
 		return mutation, ErrTaskAssetAssetNotFound
 	}
-	// Order matters: this UPDATE fires trg_assets_task_links, which creates the
-	// link rows with the generic source='system'. The INSERT below must stay
-	// after it so the operator-authored 'manual' provenance wins; swapping the
-	// two statements silently degrades every manual attach back to 'system'.
-	if _, err := tx.Exec(`
-UPDATE assets
-SET task_ids=CASE WHEN $1=ANY(task_ids) THEN task_ids ELSE array_append(task_ids,$1) END
-WHERE id=ANY($2::bigint[])`, taskID, assetIDs); err != nil {
+	if _, err := tx.Exec(`INSERT INTO task_asset_links(task_id,asset_id,source,source_summary)
+SELECT ?1,id,'manual',?3 FROM assets WHERE id IN (SELECT value FROM json_each(?2))
+ON CONFLICT(task_id,asset_id) DO UPDATE SET source='manual',source_summary=excluded.source_summary,source_node_id=NULL`, taskID, string(encoded), sourceSummary); err != nil {
 		return mutation, err
 	}
-	if _, err := tx.Exec(`
-INSERT INTO task_asset_links(task_id, asset_id, source, source_summary)
-SELECT $1, id, 'manual', $3 FROM assets WHERE id=ANY($2::bigint[])
-ON CONFLICT (task_id, asset_id) DO UPDATE
-SET source='manual', source_summary=EXCLUDED.source_summary, source_node_id=NULL`,
-		taskID, assetIDs, sourceSummary); err != nil {
-		return mutation, err
+	if err := tx.Commit(); err != nil {
+		return TaskAssetMutation{}, err
 	}
 	mutation.Existing = existing
 	mutation.Attached = len(assetIDs) - existing
-	return mutation, tx.Commit()
+	return mutation, nil
 }
 
 // DetachAssetFromTask removes only the task association. The global asset and
@@ -319,9 +310,7 @@ func (s *AssetStore) DetachAssetFromTask(taskID, assetID int64) (bool, error) {
 	}
 	var detachedID int64
 	err := s.db.QueryRow(`
-UPDATE assets SET task_ids=array_remove(task_ids,$1)
-WHERE id=$2 AND $1=ANY(task_ids)
-RETURNING id`, taskID, assetID).Scan(&detachedID)
+DELETE FROM task_asset_links WHERE task_id=$1 AND asset_id=$2 RETURNING asset_id`, taskID, assetID).Scan(&detachedID)
 	if err == sql.ErrNoRows {
 		return false, nil
 	}
@@ -341,10 +330,14 @@ func (s *AssetStore) hydrateTaskAssetSources(taskID int64, assets []*Asset) erro
 		ids = append(ids, asset.ID)
 		byID[asset.ID] = asset
 	}
+	encoded, err := json.Marshal(ids)
+	if err != nil {
+		return err
+	}
 	rows, err := s.db.Query(`
 SELECT asset_id, source, source_summary, source_node_id
 FROM task_asset_links
-WHERE task_id=$1 AND asset_id=ANY($2::bigint[])`, taskID, ids)
+WHERE task_id=$1 AND asset_id IN (SELECT value FROM json_each($2))`, taskID, string(encoded))
 	if err != nil {
 		return err
 	}
@@ -389,9 +382,9 @@ SELECT intent.id, asset.id, asset.type,
          WHEN 'subdomain' THEN COALESCE(asset.domain,'')
          WHEN 'ip' THEN COALESCE(asset.ip,'')
          WHEN 'app' THEN COALESCE(asset.app_name,'')
-		 WHEN 'service' THEN COALESCE(NULLIF(asset.url,''), NULLIF(concat_ws(':', COALESCE(NULLIF(asset.domain,''), NULLIF(asset.ip,'')), asset.port::text),''), NULLIF(asset.service_name,''), '#' || asset.id::text)
-         WHEN 'endpoint' THEN COALESCE(NULLIF(asset.url,''), '#' || asset.id::text)
-         ELSE '#' || asset.id::text
+		 WHEN 'service' THEN COALESCE(NULLIF(asset.url,''), NULLIF(COALESCE(NULLIF(asset.domain,''),NULLIF(asset.ip,'')) || CASE WHEN asset.port IS NULL THEN '' ELSE ':' || CAST(asset.port AS TEXT) END,''), NULLIF(asset.service_name,''), '#' || CAST(asset.id AS TEXT))
+         WHEN 'endpoint' THEN COALESCE(NULLIF(asset.url,''), '#' || CAST(asset.id AS TEXT))
+         ELSE '#' || CAST(asset.id AS TEXT)
        END,
        COALESCE(link.source,'anchor'),
        COALESCE(NULLIF(link.source_summary,''), '블랙보드에서 의도가 이 자산에 연결됨'),

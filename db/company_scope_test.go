@@ -231,7 +231,7 @@ func TestParseStructuredCompanyScope(t *testing.T) {
 func TestCompanyICPAttribution(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) — skipping", err)
+		t.Fatal(err)
 	}
 	// 关连接必须走 t.Cleanup 且**注册在清理之前**：t.Cleanup 是后进先出，
 	// 先注册关闭 → 关闭最后执行，下面的数据清理才连得上库。
@@ -247,6 +247,11 @@ func TestCompanyICPAttribution(t *testing.T) {
 	if err := d.QueryRow(`SELECT COALESCE(MAX(id),0)+1 FROM companies`).Scan(&suffix); err != nil {
 		t.Fatal(err)
 	}
+	task, err := d.CreateTask("ICP fixture", "fixture", nil, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	suffix = task.ID
 	cs := d.Companies()
 	as := d.Assets()
 	companyID, _, err := cs.UpsertCompany(fmt.Sprintf("ICP Scope Co %d", suffix), "")
@@ -255,7 +260,7 @@ func TestCompanyICPAttribution(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		// 不吞错误：清理失败会污染后续用例，必须让它在本次运行里显形。
-		if _, err := d.Exec(`DELETE FROM assets WHERE task_ids @> ARRAY[$1]::bigint[]`, suffix); err != nil {
+		if _, err := d.Exec(`DELETE FROM assets WHERE id IN (SELECT asset_id FROM task_asset_links WHERE task_id=$1)`, suffix); err != nil {
 			t.Errorf("清理测试资产失败: %v", err)
 		}
 		if _, err := d.Exec(`DELETE FROM companies WHERE id=$1`, companyID); err != nil {
@@ -316,7 +321,7 @@ func TestCompanyICPAttribution(t *testing.T) {
 func TestCompanyScopeAttribution(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) — skipping", err)
+		t.Fatal(err)
 	}
 	as := d.Assets()
 	cs := d.Companies()

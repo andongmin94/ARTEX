@@ -1,7 +1,6 @@
 package db
 
 import (
-	"bytes"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -16,52 +15,9 @@ import (
 // it to distinguish an expected control race (HTTP 409) from a storage failure.
 var ErrIntentStateConflict = errors.New("intent state changed concurrently")
 
-// utf8Clean makes a string safe for a PostgreSQL text column. It (1) replaces
-// invalid UTF-8 byte sequences with U+FFFD and (2) strips NUL (0x00) bytes.
-// Tool output (nmap/curl/… stdout) can carry raw/truncated bytes that PostgreSQL's
-// UTF8 encoding rejects ("invalid byte sequence for encoding UTF8"); without this
-// the INSERT fails and the activity record is silently lost. NUL is *valid* UTF-8
-// (U+0000) so ToValidUTF8 leaves it in place, yet PostgreSQL text still rejects it
-// (SQLSTATE 22021) — so it must be removed separately. JSONB columns need the
-// separate jsonbClean below: json.Marshal encodes a NUL as the escape backslash-u-0000,
-// which the text-type json accepts but jsonb rejects (SQLSTATE 22P05).
-func utf8Clean(s string) string {
-	if strings.IndexByte(s, 0) >= 0 {
-		s = strings.ReplaceAll(s, "\x00", "")
-	}
-	return strings.ToValidUTF8(s, "�")
-}
-
-// jsonbClean makes marshaled JSON safe for a PostgreSQL jsonb column. json.Marshal
-// faithfully encodes a NUL byte (U+0000) as the 6-byte escape sequence \u0000; the
-// json type stores it, but jsonb rejects it with "unsupported Unicode escape
-// sequence" (SQLSTATE 22P05). Captured HTTP/tool bytes can carry NULs, so drop the
-// escape — this also covers NULs nested inside json.RawMessage fields, which are
-// copied verbatim into the output. Only a *real* escape is stripped: a \u0000 is
-// genuine when preceded by an even number of backslashes, so an escaped-backslash
-// run such as \\u0000 (the literal text u0000) is left intact.
-func jsonbClean(b []byte) []byte {
-	if !bytes.Contains(b, []byte("\\u0000")) {
-		return b
-	}
-	out := make([]byte, 0, len(b))
-	bs := 0 // consecutive backslashes already emitted before position i
-	for i := 0; i < len(b); i++ {
-		if b[i] == '\\' && bs%2 == 0 && i+5 < len(b) &&
-			b[i+1] == 'u' && b[i+2] == '0' && b[i+3] == '0' && b[i+4] == '0' && b[i+5] == '0' {
-			i += 5 // skip the whole \u0000
-			bs = 0
-			continue
-		}
-		if b[i] == '\\' {
-			bs++
-		} else {
-			bs = 0
-		}
-		out = append(out, b[i])
-	}
-	return out
-}
+// utf8Clean replaces truncated tool-output bytes for readable text. SQLite
+// supports embedded NULs; captured content is preserved rather than stripped.
+func utf8Clean(s string) string { return strings.ToValidUTF8(s, "�") }
 
 // Node is a typed reasoning node (= old task_nodes). kind ∈ goal|intent|finding|hint.
 type Node struct {
@@ -144,13 +100,13 @@ func (d *DB) TokenDailyAll(days int) ([]DailyTokenBucket, error) {
 		days = 30
 	}
 	rows, err := d.Query(`
-		SELECT TO_CHAR(DATE_TRUNC('day', created_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
+		SELECT strftime('%Y-%m-%d',created_at) AS day,
 		       COALESCE(SUM(input_tokens), 0),
 		       COALESCE(SUM(output_tokens), 0),
 		       COALESCE(SUM(cache_read_tokens), 0)
 		FROM activity
 		WHERE kind = 'result'
-		  AND created_at >= NOW() - ($1 * INTERVAL '1 day')
+		  AND created_at >= strftime('%Y-%m-%d %H:%M:%f','now',printf('-%d days',$1))
 		GROUP BY day
 		ORDER BY day`, days)
 	if err != nil {
@@ -195,7 +151,10 @@ func (s *ExplorationStore) Root() (description, goal string, err error) {
 
 // AddNode writes a typed reasoning node with optional anchors to asset ids.
 func (s *ExplorationStore) AddNode(kind string, payload map[string]any, priority int, state, origin string, anchors []int64) (int64, error) {
-	raw, _ := json.Marshal(payload)
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return 0, err
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
@@ -213,7 +172,10 @@ VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
 			return 0, err
 		}
 	}
-	return id, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return id, nil
 }
 
 // AddIntent is a convenience: an open intent.
@@ -278,12 +240,19 @@ func (s *ExplorationStore) UpdateGoalPayload(id int64, text, vulnclass string) e
 	if vulnclass != "" {
 		payload["vulnclass"] = vulnclass
 	}
-	raw, _ := json.Marshal(payload)
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
 	res, err := s.db.Exec(`UPDATE exploration_nodes SET payload=$1 WHERE id=$2 AND exploration_id=$3 AND kind='goal'`, string(raw), id, s.expID)
 	if err != nil {
 		return err
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
 		return fmt.Errorf("목표가 존재하지 않습니다")
 	}
 	return nil
@@ -298,7 +267,11 @@ func (s *ExplorationStore) DeleteGoal(id int64) error {
 	if err != nil {
 		return err
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
 		return fmt.Errorf("목표가 존재하지 않습니다")
 	}
 	return nil
@@ -315,8 +288,8 @@ WHERE exploration_id=$1 AND kind='intent' AND state='running'`, s.expID)
 	if err != nil {
 		return 0, err
 	}
-	n, _ := res.RowsAffected()
-	return n, nil
+	n, err := res.RowsAffected()
+	return n, err
 }
 
 // ReopenIntent flips ONE not-successfully-finished intent (blocked/exhausted/stopped)
@@ -331,8 +304,8 @@ WHERE id=$1 AND exploration_id=$2 AND kind='intent'
 	if err != nil {
 		return false, err
 	}
-	n, _ := res.RowsAffected()
-	return n > 0, nil
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 // ReopenBlockedIntents flips EVERY 'blocked' intent in this exploration back to 'open'
@@ -344,15 +317,15 @@ WHERE exploration_id=$1 AND kind='intent' AND state='blocked'`, s.expID)
 	if err != nil {
 		return 0, err
 	}
-	n, _ := res.RowsAffected()
-	return n, nil
+	n, err := res.RowsAffected()
+	return n, err
 }
 
 func (s *ExplorationStore) SetIntentState(id int64, state string) error {
 	// terminal states stamp completed_at; reopening (back to open/running) clears it.
 	terminal := state == "done" || state == "blocked" || state == "exhausted" || state == "stopped"
 	_, err := s.db.Exec(`UPDATE exploration_nodes
-SET state=$1, blocked_reason=NULL, content_version=content_version+1, completed_at = CASE WHEN $4 THEN now() ELSE NULL END
+SET state=$1, blocked_reason=NULL, content_version=content_version+1, completed_at = CASE WHEN $4 THEN strftime('%Y-%m-%d %H:%M:%f','now') ELSE NULL END
 WHERE id=$2 AND exploration_id=$3 AND kind='intent'`, state, id, s.expID, terminal)
 	return err
 }
@@ -363,7 +336,7 @@ WHERE id=$2 AND exploration_id=$3 AND kind='intent'`, state, id, s.expID, termin
 func (s *ExplorationStore) CompareAndSetIntentState(id int64, expected, state string) (bool, error) {
 	terminal := state == "done" || state == "blocked" || state == "exhausted" || state == "stopped"
 	res, err := s.db.Exec(`UPDATE exploration_nodes
-SET state=$1, blocked_reason=NULL, content_version=content_version+1, completed_at = CASE WHEN $5 THEN now() ELSE NULL END
+SET state=$1, blocked_reason=NULL, content_version=content_version+1, completed_at = CASE WHEN $5 THEN strftime('%Y-%m-%d %H:%M:%f','now') ELSE NULL END
 WHERE id=$2 AND exploration_id=$3 AND kind='intent' AND state=$4`, state, id, s.expID, expected, terminal)
 	if err != nil {
 		return false, err
@@ -396,7 +369,7 @@ func (s *ExplorationStore) SoftDeleteIntent(id int64, reason string) (string, er
 	var state string
 	var rawPayload []byte
 	if err := tx.QueryRow(`SELECT state, payload FROM exploration_nodes
-		WHERE id=$1 AND exploration_id=$2 AND kind='intent' FOR UPDATE`, id, s.expID).Scan(&state, &rawPayload); err != nil {
+		WHERE id=$1 AND exploration_id=$2 AND kind='intent'`, id, s.expID).Scan(&state, &rawPayload); err != nil {
 		if err == sql.ErrNoRows {
 			return "", fmt.Errorf("intent not found")
 		}
@@ -407,7 +380,7 @@ func (s *ExplorationStore) SoftDeleteIntent(id int64, reason string) (string, er
 	}
 	if _, err := tx.Exec(`UPDATE exploration_nodes
 		SET state='deleted', delete_reason=$3, blocked_reason=NULL,
-		    content_version=content_version+1, completed_at=now()
+		    content_version=content_version+1, completed_at=strftime('%Y-%m-%d %H:%M:%f','now')
 		WHERE id=$1 AND exploration_id=$2`, id, s.expID, reason); err != nil {
 		return "", err
 	}
@@ -422,7 +395,10 @@ func (s *ExplorationStore) SoftDeleteIntent(id int64, reason string) (string, er
 			summary = sm
 		}
 	}
-	return summary, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return "", err
+	}
+	return summary, nil
 }
 
 // CancelIntent 物理删除一个意图,以及"仅由该意图支撑"的全部独占子孙节点——从该意图沿
@@ -442,7 +418,7 @@ func (s *ExplorationStore) CancelIntent(id int64) (IntentCleanup, error) {
 	// 锁定意图行确认存在(幂等:已删则 not found)。状态不校验——真删除对任何状态成立,
 	// running 的 worker 由调用方先停。
 	if err := tx.QueryRow(`SELECT 1 FROM exploration_nodes
-		WHERE id=$1 AND exploration_id=$2 AND kind='intent' FOR UPDATE`, id, s.expID).Scan(new(int)); err != nil {
+		WHERE id=$1 AND exploration_id=$2 AND kind='intent'`, id, s.expID).Scan(new(int)); err != nil {
 		if err == sql.ErrNoRows {
 			return out, fmt.Errorf("intent not found")
 		}
@@ -548,9 +524,11 @@ func (s *ExplorationStore) CancelIntent(id int64) (IntentCleanup, error) {
 		if err != nil {
 			return out, err
 		}
-		if n, _ := res.RowsAffected(); n > 0 {
-			out.Activities += n
+		n, err := res.RowsAffected()
+		if err != nil {
+			return IntentCleanup{}, err
 		}
+		out.Activities += n
 		for _, bucket := range tokenBuckets {
 			metadata, _ := json.Marshal(map[string]any{
 				"cancelled_intent_id": iid,
@@ -561,7 +539,7 @@ func (s *ExplorationStore) CancelIntent(id int64) (IntentCleanup, error) {
 				exploration_id, worker, kind, summary, metadata,
 				input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, created_at)
 				VALUES ($1,'token-ledger','result',$2,$3,$4,$5,$6,$7,$8)`,
-				s.expID, fmt.Sprintf("의도 #%d의 토큰 집계를 취소했습니다", iid), metadata,
+				s.expID, fmt.Sprintf("의도 #%d의 토큰 집계를 취소했습니다", iid), string(metadata),
 				bucket.Usage.InputTokens, bucket.Usage.OutputTokens,
 				bucket.Usage.CacheReadTokens, bucket.Usage.CacheWriteTokens, bucket.Day); err != nil {
 				return out, err
@@ -586,14 +564,19 @@ func (s *ExplorationStore) CancelIntent(id int64) (IntentCleanup, error) {
 		if err != nil {
 			return out, err
 		}
-		if n, _ := res.RowsAffected(); n > 0 {
-			removed += n
+		n, err := res.RowsAffected()
+		if err != nil {
+			return IntentCleanup{}, err
 		}
+		removed += n
 	}
 	if removed != int64(len(ids)) {
 		return out, fmt.Errorf("intent cleanup changed concurrently")
 	}
-	return out, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return IntentCleanup{}, err
+	}
+	return out, nil
 }
 
 type tokenUsageBucket struct {
@@ -763,14 +746,14 @@ ORDER BY id DESC LIMIT $4`, s.expID, kind, before, limit+1)
 }
 
 // listByKindPageFiltered is ListByKindPage with an optional summary keyword
-// filter (payload->>'summary' ILIKE %q%). Fetches one extra row so the caller can
+// filter over the JSON summary, ignoring letter case. Fetches one extra row so the caller can
 // probe hasMore. Empty q = no filter. Newest-first by id.
 func (s *ExplorationStore) listByKindPageFiltered(kind string, before int64, limit int, q string) ([]*Node, error) {
 	where := `exploration_id=$1 AND kind=$2 AND ($3 <= 0 OR id < $3)`
 	args := []any{s.expID, kind, before}
 	if q != "" {
 		args = append(args, "%"+q+"%")
-		where += fmt.Sprintf(` AND payload->>'summary' ILIKE $%d`, len(args))
+		where += fmt.Sprintf(` AND artex_lower(json_extract(payload,'$.summary')) LIKE artex_lower($%d)`, len(args))
 	}
 	args = append(args, limit+1)
 	rows, err := s.db.Query(`SELECT `+nodeCols+` FROM exploration_nodes
@@ -789,7 +772,7 @@ func (s *ExplorationStore) countByKindFiltered(kind, q string) (int, error) {
 	args := []any{s.expID, kind}
 	if q != "" {
 		args = append(args, "%"+q+"%")
-		where += fmt.Sprintf(` AND payload->>'summary' ILIKE $%d`, len(args))
+		where += fmt.Sprintf(` AND artex_lower(json_extract(payload,'$.summary')) LIKE artex_lower($%d)`, len(args))
 	}
 	var n int
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM exploration_nodes WHERE `+where, args...).Scan(&n)
@@ -851,7 +834,7 @@ type NodeFilter struct {
 // NodesPage returns one 1-based page of this exploration's nodes plus the total
 // matching count. The 播报板 reads the graph as a time series, so it pages in SQL
 // rather than pulling the whole graph like Nodes does. Ordering is by id, which
-// is BIGSERIAL and therefore creation order — stable when several nodes share a
+// is AUTOINCREMENT and therefore creation order — stable when several nodes share a
 // created_at second.
 func (s *ExplorationStore) NodesPage(f NodeFilter, page, size int) ([]*Node, int, error) {
 	if page < 1 {
@@ -883,7 +866,7 @@ func (s *ExplorationStore) NodesPage(f NodeFilter, page, size int) ([]*Node, int
 	if q := strings.TrimSpace(f.Query); q != "" {
 		args = append(args, "%"+q+"%")
 		mark := "$" + fmt.Sprint(len(args))
-		ors := []string{"payload::text ILIKE " + mark, "COALESCE(origin,'') ILIKE " + mark}
+		ors := []string{"artex_lower(payload) LIKE artex_lower(" + mark + ")", "artex_lower(COALESCE(origin,'')) LIKE artex_lower(" + mark + ")"}
 		// 纯数字(或 UI 里带 # 前缀的形式,如「#41」)当作节点 id 精确匹配,方便直接定位某个节点。
 		if idStr := strings.TrimPrefix(q, "#"); idStr != "" {
 			if id, err := strconv.ParseInt(idStr, 10, 64); err == nil {
@@ -1033,7 +1016,7 @@ func (s *ExplorationStore) FindingLineage(nodeID int64) ([]*Node, []Edge, error)
 	// anc = the node + everything that can reach it via edges (walk src<-dst).
 	nodeRows, err := s.db.Query(`
 WITH RECURSIVE anc(id) AS (
-    SELECT $2::bigint
+    SELECT $2
   UNION
     SELECT e.src_id
     FROM exploration_edges e
@@ -1057,7 +1040,7 @@ ORDER BY id`, s.expID, nodeID)
 	// edges among the ancestor set only (the lineage's internal relations).
 	edgeRows, err := s.db.Query(`
 WITH RECURSIVE anc(id) AS (
-    SELECT $2::bigint
+    SELECT $2
   UNION
     SELECT e.src_id
     FROM exploration_edges e
@@ -1176,8 +1159,8 @@ WHERE id=$2 AND exploration_id=$3 AND kind='intent' AND state='open'`, owner, id
 	if err != nil {
 		return false, err
 	}
-	n, _ := res.RowsAffected()
-	return n == 1, nil
+	n, err := res.RowsAffected()
+	return n == 1, err
 }
 
 // Stats returns node counts grouped by kind (for dashboard).
@@ -1212,7 +1195,7 @@ func (s *ExplorationStore) AppendActivity(a Activity) (int64, error) {
 INSERT INTO activity(exploration_id, node_id, worker, kind, tool, tool_use_id, is_error, summary, detail, metadata, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, main_seg)
 VALUES ($1,$2,NULLIF($3,''),NULLIF($4,''),NULLIF($5,''),NULLIF($6,''),$7,NULLIF($8,''),NULLIF($9,''),$10,$11,$12,$13,$14,$15)
 RETURNING id`, s.expID, a.NodeID, utf8Clean(a.Worker), utf8Clean(a.Kind), utf8Clean(a.Tool), utf8Clean(a.ToolUseID), a.IsError, utf8Clean(a.Summary), utf8Clean(a.Detail),
-		metadata, a.InputTokens, a.OutputTokens, a.CacheReadTokens, a.CacheWriteTokens, a.MainSeg).Scan(&id)
+		string(metadata), a.InputTokens, a.OutputTokens, a.CacheReadTokens, a.CacheWriteTokens, a.MainSeg).Scan(&id)
 	return id, err
 }
 
@@ -1274,7 +1257,7 @@ func (d *DB) TokenTotalsAll() (map[int64]TokenUsage, error) {
 // Persisted (unlike Engine.LastActivity's in-memory map), so it survives restarts
 // and gives终态任务 a stable "ran until" time for computing run duration.
 func (d *DB) LastActivityAll() (map[int64]int64, error) {
-	rows, err := d.Query(`SELECT exploration_id, EXTRACT(EPOCH FROM MAX(created_at))::bigint FROM activity GROUP BY exploration_id`)
+	rows, err := d.Query(`SELECT exploration_id, CAST(strftime('%s',MAX(created_at)) AS INTEGER) FROM activity GROUP BY exploration_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -1307,59 +1290,24 @@ type TaskListMetrics struct {
 }
 
 // TaskListMetricsAll returns list aggregates for every live task in one query.
-// The lateral lookups use the per-exploration indexes instead of grouping the
+// The correlated lookups use the per-exploration indexes instead of grouping the
 // complete activity history on every poll.
 func (d *DB) TaskListMetricsAll() (map[int64]TaskListMetrics, error) {
 	rows, err := d.Query(`
-		SELECT task.exploration_id,
-		       COALESCE(token_metrics.input_tokens,0),
-		       COALESCE(token_metrics.output_tokens,0),
-		       COALESCE(token_metrics.cache_read_tokens,0),
-		       COALESCE(token_metrics.cache_write_tokens,0),
-		       COALESCE(latest_activity.created_at,0),
-		       COALESCE(goal_metrics.total,0),
-		       COALESCE(goal_metrics.met,0),
-		       COALESCE(intent_metrics.running,0),
-		       COALESCE(finding_metrics.critical,0),
-		       COALESCE(finding_metrics.high,0),
-		       COALESCE(finding_metrics.medium,0),
-		       COALESCE(finding_metrics.low,0)
-		FROM tasks task
-		LEFT JOIN LATERAL (
-			SELECT SUM(input_tokens) AS input_tokens,
-			       SUM(output_tokens) AS output_tokens,
-			       SUM(cache_read_tokens) AS cache_read_tokens,
-			       SUM(cache_write_tokens) AS cache_write_tokens
-			FROM activity
-			WHERE exploration_id=task.exploration_id AND kind='result'
-		) token_metrics ON true
-		LEFT JOIN LATERAL (
-			SELECT EXTRACT(EPOCH FROM created_at)::bigint AS created_at
-			FROM activity
-			WHERE exploration_id=task.exploration_id
-			ORDER BY created_at DESC
-			LIMIT 1
-		) latest_activity ON true
-		LEFT JOIN LATERAL (
-			SELECT COUNT(*) AS total,
-			       COUNT(*) FILTER (WHERE state='met') AS met
-			FROM exploration_nodes
-			WHERE exploration_id=task.exploration_id AND kind='goal'
-		) goal_metrics ON true
-		LEFT JOIN LATERAL (
-			SELECT COUNT(*) AS running
-			FROM exploration_nodes
-			WHERE exploration_id=task.exploration_id AND kind='intent' AND state='running'
-		) intent_metrics ON true
-		LEFT JOIN LATERAL (
-			SELECT COUNT(*) FILTER (WHERE severity='critical') AS critical,
-			       COUNT(*) FILTER (WHERE severity='high')     AS high,
-			       COUNT(*) FILTER (WHERE severity='medium')   AS medium,
-			       COUNT(*) FILTER (WHERE severity='low')      AS low
-			FROM findings
-			WHERE task_id=task.id
-		) finding_metrics ON true
-		WHERE task.deleted_at IS NULL`)
+SELECT task.exploration_id,
+ COALESCE((SELECT SUM(input_tokens) FROM activity WHERE exploration_id=task.exploration_id AND kind='result'),0),
+ COALESCE((SELECT SUM(output_tokens) FROM activity WHERE exploration_id=task.exploration_id AND kind='result'),0),
+ COALESCE((SELECT SUM(cache_read_tokens) FROM activity WHERE exploration_id=task.exploration_id AND kind='result'),0),
+ COALESCE((SELECT SUM(cache_write_tokens) FROM activity WHERE exploration_id=task.exploration_id AND kind='result'),0),
+ COALESCE((SELECT CAST(strftime('%s',MAX(created_at)) AS INTEGER) FROM activity WHERE exploration_id=task.exploration_id),0),
+ (SELECT count(*) FROM exploration_nodes WHERE exploration_id=task.exploration_id AND kind='goal'),
+ (SELECT count(*) FROM exploration_nodes WHERE exploration_id=task.exploration_id AND kind='goal' AND state='met'),
+ (SELECT count(*) FROM exploration_nodes WHERE exploration_id=task.exploration_id AND kind='intent' AND state='running'),
+ (SELECT count(*) FROM findings WHERE task_id=task.id AND severity='critical'),
+ (SELECT count(*) FROM findings WHERE task_id=task.id AND severity='high'),
+ (SELECT count(*) FROM findings WHERE task_id=task.id AND severity='medium'),
+ (SELECT count(*) FROM findings WHERE task_id=task.id AND severity='low')
+FROM tasks task WHERE task.deleted_at IS NULL`)
 	if err != nil {
 		return nil, err
 	}
@@ -1445,9 +1393,9 @@ func (s *ExplorationStore) TokenStatsByWorker() ([]TokenUsage, error) {
 func (s *ExplorationStore) TokenStatsBySession() ([]SessionTokenUsage, error) {
 	rows, err := s.db.Query(`SELECT
 		CASE
-			WHEN COALESCE(a.worker,'')='mainagent' THEN 'main:' || COALESCE(a.main_seg,0)::text
+			WHEN COALESCE(a.worker,'')='mainagent' THEN 'main:' || CAST(COALESCE(a.main_seg,0) AS TEXT)
 			WHEN COALESCE(a.worker,'')='planner' THEN 'plan'
-			WHEN n.id IS NOT NULL THEN 'intent:' || n.id::text
+			WHEN n.id IS NOT NULL THEN 'intent:' || CAST(n.id AS TEXT)
 			ELSE ''
 		END AS session_key,
 		COALESCE(SUM(a.input_tokens),0), COALESCE(SUM(a.output_tokens),0),
@@ -1498,7 +1446,7 @@ FROM activity WHERE exploration_id=$1 AND id>$2 ORDER BY id LIMIT $3`, s.expID, 
 	cursor := sinceID
 	for rows.Next() {
 		var a Activity
-		if err := rows.Scan(&a.ID, &a.NodeID, &a.Worker, &a.Kind, &a.Tool, &a.ToolUseID, &a.IsError, &a.Summary, &a.Metadata, &a.CreatedAt,
+		if err := rows.Scan(&a.ID, &a.NodeID, &a.Worker, &a.Kind, &a.Tool, &a.ToolUseID, &a.IsError, &a.Summary, jsonColumn(&a.Metadata), &a.CreatedAt,
 			&a.InputTokens, &a.OutputTokens, &a.CacheReadTokens, &a.CacheWriteTokens, &a.MainSeg); err != nil {
 			return nil, sinceID, err
 		}
@@ -1611,7 +1559,7 @@ ORDER BY id DESC LIMIT $%d`, cond, beforeArg, beforeArg, limitArg)
 	desc := []Activity{}
 	for rows.Next() {
 		var a Activity
-		if err := rows.Scan(&a.ID, &a.NodeID, &a.Worker, &a.Kind, &a.Tool, &a.ToolUseID, &a.IsError, &a.Summary, &a.Metadata, &a.CreatedAt,
+		if err := rows.Scan(&a.ID, &a.NodeID, &a.Worker, &a.Kind, &a.Tool, &a.ToolUseID, &a.IsError, &a.Summary, jsonColumn(&a.Metadata), &a.CreatedAt,
 			&a.InputTokens, &a.OutputTokens, &a.CacheReadTokens, &a.CacheWriteTokens, &a.MainSeg); err != nil {
 			return nil, false, err
 		}
@@ -1819,11 +1767,11 @@ func (s *ExplorationStore) ActivityTraceSearch(nodeID *int64, q string, limit in
 	if nodeID != nil {
 		rows, err = s.db.Query(`SELECT `+traceCols+`
 FROM activity WHERE exploration_id=$1 AND node_id=$2 AND kind NOT IN ('thinking','usage')
-AND (summary ILIKE $3 OR detail ILIKE $3) ORDER BY id LIMIT $4`, s.expID, *nodeID, like, limit)
+AND (artex_lower(summary) LIKE artex_lower($3) OR artex_lower(detail) LIKE artex_lower($3)) ORDER BY id LIMIT $4`, s.expID, *nodeID, like, limit)
 	} else {
 		rows, err = s.db.Query(`SELECT `+traceCols+`
 FROM activity WHERE exploration_id=$1 AND node_id IS NOT NULL AND kind NOT IN ('thinking','usage')
-AND (summary ILIKE $2 OR detail ILIKE $2) ORDER BY id LIMIT $3`, s.expID, like, limit)
+AND (artex_lower(summary) LIKE artex_lower($2) OR artex_lower(detail) LIKE artex_lower($2)) ORDER BY id LIMIT $3`, s.expID, like, limit)
 	}
 	if err != nil {
 		return nil, err
@@ -1845,7 +1793,7 @@ func (s *ExplorationStore) ActivityTraceSearchForTerminalIntent(nodeID int64, q 
 	WHERE a.exploration_id=$1 AND a.node_id=$2 AND n.kind='intent'
 	  AND n.state IN ('done','blocked','exhausted','stopped')
 	  AND a.kind NOT IN ('thinking','usage')
-	  AND (a.summary ILIKE $3 OR a.detail ILIKE $3)
+	  AND (artex_lower(a.summary) LIKE artex_lower($3) OR artex_lower(a.detail) LIKE artex_lower($3))
 	ORDER BY a.id LIMIT $4`, s.expID, nodeID, like, limit)
 	if err != nil {
 		return nil, err
@@ -1867,7 +1815,7 @@ func (s *ExplorationStore) ActivityTraceSearchTerminalIntents(q string, limit in
 	WHERE a.exploration_id=$1 AND n.kind='intent'
 	  AND n.state IN ('done','blocked','exhausted','stopped')
 	  AND a.kind NOT IN ('thinking','usage')
-	  AND (a.summary ILIKE $2 OR a.detail ILIKE $2)
+	  AND (artex_lower(a.summary) LIKE artex_lower($2) OR artex_lower(a.detail) LIKE artex_lower($2))
 	ORDER BY a.id LIMIT $3`, s.expID, like, limit)
 	if err != nil {
 		return nil, err
@@ -1938,7 +1886,7 @@ func (s *ExplorationStore) ActivityTraceSearchExcluding(excludeNodeID int64, q s
 	rows, err := s.db.Query(`SELECT `+traceCols+`
 FROM activity WHERE exploration_id=$1 AND node_id IS NOT NULL AND node_id <> $2
 AND kind NOT IN ('thinking','usage')
-AND (summary ILIKE $3 OR detail ILIKE $3) ORDER BY id LIMIT $4`, s.expID, excludeNodeID, like, limit)
+AND (artex_lower(summary) LIKE artex_lower($3) OR artex_lower(detail) LIKE artex_lower($3)) ORDER BY id LIMIT $4`, s.expID, excludeNodeID, like, limit)
 	if err != nil {
 		return nil, err
 	}

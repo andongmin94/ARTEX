@@ -45,9 +45,9 @@ func restoreConcurrencySetting(t *testing.T, m *Manager) func() {
 func TestAdmitAlreadyRunningTaskDoesNotQueueAfterLimitDecrease(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) - skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 
 	oldEnabled, oldLimit := m.ConcurrencyLimit()
 	if oldLimit < 1 {
@@ -87,9 +87,9 @@ func TestAdmitAlreadyRunningTaskDoesNotQueueAfterLimitDecrease(t *testing.T) {
 func TestAdmissionDoesNotOverwriteConcurrentTerminalStatus(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) - skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	defer restoreConcurrencySetting(t, m)()
 	if err := m.SetConcurrency(false, defaultConcurrencyLimit); err != nil {
 		t.Fatal(err)
@@ -124,9 +124,9 @@ func TestAdmissionDoesNotOverwriteConcurrentTerminalStatus(t *testing.T) {
 func TestAdmitKeepsQueuedBootstrapMode(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) - skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 
 	oldEnabled, oldLimit := m.ConcurrencyLimit()
 	if oldLimit < 1 {
@@ -167,9 +167,9 @@ func TestAdmitKeepsQueuedBootstrapMode(t *testing.T) {
 func TestTerminalTaskQueuedByAdmissionKeepsExecutionBarrier(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) - skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	defer restoreConcurrencySetting(t, m)()
 	if err := m.SetConcurrency(true, 1); err != nil {
 		t.Fatal(err)
@@ -215,9 +215,9 @@ func TestTerminalTaskQueuedByAdmissionKeepsExecutionBarrier(t *testing.T) {
 func TestTimedOutTaskRevivalResetsClockAndSettlingAcrossFIFO(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) - skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	defer restoreConcurrencySetting(t, m)()
 	if err := m.SetConcurrency(true, 1); err != nil {
 		t.Fatal(err)
@@ -278,8 +278,8 @@ func TestTimedOutTaskRevivalResetsClockAndSettlingAcrossFIFO(t *testing.T) {
 		t.Fatalf("persisted timeout revival clock/config mismatch: %+v", stored)
 	}
 
-	// Release the only slot and promote the revived task. The test server uses a
-	// cancelled root context so no real Agent call races these state assertions.
+	// Release the only slot and promote the revived task. The cancelled fixture
+	// context prevents model calls while these state assertions run.
 	s.engine.Pause(holder.ID, agent.AbortPausedByUser)
 	if err := m.ApplyTaskPause(holder.ID); err != nil {
 		t.Fatal(err)
@@ -293,6 +293,12 @@ func TestTimedOutTaskRevivalResetsClockAndSettlingAcrossFIFO(t *testing.T) {
 	if execCtx := s.engine.execContextFor(context.Background(), task.ID); execCtx.Err() != nil {
 		t.Fatalf("revived task did not receive a live execution context: %v", context.Cause(execCtx))
 	}
+	if _, ok := s.engine.coordStarted.Load(task.ID); ok {
+		t.Fatal("cancelled service context must not start a new deadline coordinator")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer func() { cancel(); _ = s.engine.Close(context.Background()) }()
+	s.engine.startDeadlineCoordinator(ctx, task)
 	if _, ok := s.engine.coordStarted.Load(task.ID); !ok {
 		t.Fatal("revived timeout task did not start a fresh deadline coordinator")
 	}
@@ -301,9 +307,9 @@ func TestTimedOutTaskRevivalResetsClockAndSettlingAcrossFIFO(t *testing.T) {
 func TestQueuedTaskCanPauseAndResumeAtFIFOTail(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) - skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	defer restoreConcurrencySetting(t, m)()
 	if err := m.SetConcurrency(true, 1); err != nil {
 		t.Fatal(err)
@@ -351,9 +357,9 @@ func TestQueuedTaskCanPauseAndResumeAtFIFOTail(t *testing.T) {
 func TestReadyFIFOIsAdmittedBeforeNewTask(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) - skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	defer restoreConcurrencySetting(t, m)()
 	if err := m.SetConcurrency(true, 2); err != nil {
 		t.Fatal(err)
@@ -398,9 +404,9 @@ func TestReadyFIFOIsAdmittedBeforeNewTask(t *testing.T) {
 func TestUnavailableTaskReleasesSlotForReadyQueue(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) - skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	defer restoreConcurrencySetting(t, m)()
 	if err := m.SetConcurrency(true, 1); err != nil {
 		t.Fatal(err)
@@ -437,9 +443,9 @@ func TestUnavailableTaskReleasesSlotForReadyQueue(t *testing.T) {
 func TestUnavailableTaskWaitsForActiveLLMCallBeforeParking(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) - skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	defer restoreConcurrencySetting(t, m)()
 	if err := m.SetConcurrency(true, 1); err != nil {
 		t.Fatal(err)
@@ -491,9 +497,9 @@ func TestUnavailableTaskWaitsForActiveLLMCallBeforeParking(t *testing.T) {
 func TestRerunAdmissionFailureRestoresIntentState(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) - skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	task, err := m.CreateTask("failed rerun admission", "restore intent", nil, 0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -513,7 +519,7 @@ func TestRerunAdmissionFailureRestoresIntentState(t *testing.T) {
 	if err := m.SetTaskStatus(task.ID, "done"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.pg.Exec(`UPDATE tasks SET deleted_at=now() WHERE id=$1`, taskID); err != nil {
+	if _, err := m.pg.Exec(`UPDATE tasks SET deleted_at=CURRENT_TIMESTAMP WHERE id=$1`, taskID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -535,9 +541,9 @@ func TestRerunAdmissionFailureRestoresIntentState(t *testing.T) {
 func TestTaskLLMResolutionRejectsInvalidExplicitProfile(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) - skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 
 	profileID, err := m.pg.SaveProfile(&db.LLMProfile{
 		Name:   fmt.Sprintf("invalid-resolution-%d", time.Now().UnixNano()),
@@ -576,9 +582,9 @@ func TestTaskLLMResolutionRejectsInvalidExplicitProfile(t *testing.T) {
 func TestTaskLLMResolutionPrefersAgentBindingOverTaskChain(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) - skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 
 	stamp := time.Now().UnixNano()
 	boundID, err := m.pg.SaveProfile(&db.LLMProfile{
@@ -643,9 +649,9 @@ func TestTaskLLMResolutionPrefersAgentBindingOverTaskChain(t *testing.T) {
 func TestTaskLLMResolutionReportsDatabaseFailure(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) - skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	task, err := m.CreateTask("resolution storage failure", "return server error", nil, 0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -688,9 +694,9 @@ func TestTokenStatsWithoutTaskReturnsStableShape(t *testing.T) {
 func TestBatchControlLimitCountsDeduplicatedIDs(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) - skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	s := newAdmissionTestServer(m, nil)
 
 	request := func(handler http.HandlerFunc, path string, pathValues map[string]string, payload any) *httptest.ResponseRecorder {
@@ -762,9 +768,9 @@ func TestBatchControlLimitCountsDeduplicatedIDs(t *testing.T) {
 func TestPauseTaskToolPersistsAndDequeuesTask(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) - skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	task, err := m.CreateTask("orchestrated pause", "persist queued pause", nil, 0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -798,9 +804,9 @@ func TestPauseTaskToolPersistsAndDequeuesTask(t *testing.T) {
 func TestPauseTaskToolUsesOrchestratorCancellationCause(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) - skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { _ = m.Close() })
 	task, err := m.CreateTask("orchestrated pause cause", "keep audit reason", nil, 0, 0)
 	if err != nil {
 		t.Fatal(err)

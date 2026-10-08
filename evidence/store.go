@@ -104,15 +104,10 @@ func (s *Store) writeBody(r io.Reader, expectedLength int64, expectedHash string
 	if err = os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return "", err
 	}
-	if err = os.Rename(f.Name(), path); err != nil {
+	if err = installBodyFile(f.Name(), path); err != nil {
 		return "", err
 	}
-	d, err := os.Open(filepath.Dir(path))
-	if err != nil {
-		return "", err
-	}
-	defer d.Close()
-	return hash, d.Sync()
+	return hash, nil
 }
 
 // StageFindingsExport freezes bindings/report versions and makes private body
@@ -308,13 +303,13 @@ func (s *Store) copySnapshots(snapshots []db.TrafficEvidenceSnapshot, dest strin
 }
 
 func (s *Store) InstallSnapshots(ctx context.Context, snapshots []db.TrafficEvidenceSnapshot, source string) error {
-	return s.WithInstalledSnapshots(ctx, snapshots, source, func() error { return nil })
+	return s.WithInstalledSnapshots(ctx, snapshots, source, func(*sql.Tx) error { return nil })
 }
 
 // WithInstalledSnapshots pins installed bodies until the metadata restore finishes.
-// The callback must not acquire another evidence advisory lock.
-func (s *Store) WithInstalledSnapshots(ctx context.Context, snapshots []db.TrafficEvidenceSnapshot, source string, restore func() error) error {
-	return s.DB.WithEvidenceTx(ctx, func(*sql.Tx) error {
+// The callback uses the supplied transaction for every database write.
+func (s *Store) WithInstalledSnapshots(ctx context.Context, snapshots []db.TrafficEvidenceSnapshot, source string, restore func(*sql.Tx) error) error {
+	return s.DB.WithEvidenceTx(ctx, func(tx *sql.Tx) error {
 		for _, v := range snapshots {
 			if v.ID != db.TrafficSnapshotID(v) {
 				return errors.New("보관 증거 스냅샷의 메타데이터 해시가 일치하지 않습니다")
@@ -340,17 +335,17 @@ func (s *Store) WithInstalledSnapshots(ctx context.Context, snapshots []db.Traff
 				}
 			}
 		}
-		return restore()
+		return restore(tx)
 	})
 }
 
 func (s *Store) Collect(ctx context.Context, now time.Time) error {
 	return s.DB.WithEvidenceTx(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.Exec(`UPDATE traffic_evidence_snapshots s SET unreferenced_at=$1
+		if _, err := tx.Exec(`UPDATE traffic_evidence_snapshots AS s SET unreferenced_at=$1
 WHERE unreferenced_at IS NULL AND NOT EXISTS(SELECT 1 FROM finding_traffic_bindings b WHERE b.snapshot_id=s.id)`, now); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(`DELETE FROM traffic_evidence_snapshots s WHERE unreferenced_at<$1
+		if _, err := tx.Exec(`DELETE FROM traffic_evidence_snapshots AS s WHERE unreferenced_at<$1
 AND NOT EXISTS(SELECT 1 FROM finding_traffic_bindings b WHERE b.snapshot_id=s.id)`, now.Add(-24*time.Hour)); err != nil {
 			return err
 		}

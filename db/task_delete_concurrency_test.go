@@ -1,19 +1,16 @@
 package db
 
 import (
-	"database/sql"
 	"fmt"
 	"testing"
 	"time"
-
-	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 func TestDeleteTaskTrafficHostsUseOneLockedTransaction(t *testing.T) {
 	dsn := testDSN(t)
 	d, err := Open(dsn)
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) - skipping", err)
+		t.Fatal(err)
 	}
 	defer d.Close()
 
@@ -26,19 +23,17 @@ func TestDeleteTaskTrafficHostsUseOneLockedTransaction(t *testing.T) {
 			_, _ = d.Exec(`DELETE FROM assets WHERE id=$1 OR url=$2`, rootAssetID, serviceURL)
 		})
 
-		writer, _ := openTaskDeleteTestDB(t, dsn)
+		writer := openTaskDeleteTestDB(t, dsn)
+		deleter := openTaskDeleteTestDB(t, dsn)
 		writerTx, err := writer.Begin()
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer writerTx.Rollback()
-		if _, err := writerTx.Exec(`
-INSERT INTO assets(type, url, service_type, domain, task_ids)
-VALUES ('service', $1, 'http', $2, ARRAY[$3]::bigint[])`, serviceURL, host, second.ID); err != nil {
+		if _, err := (&AssetStore{db: writer, company: writer.Companies(), tx: writerTx}).UpsertHTTPService(UpsertHTTPServiceReq{URL: serviceURL, TaskID: second.ID}); err != nil {
 			t.Fatal(err)
 		}
 
-		deleter, deleterPID := openTaskDeleteTestDB(t, dsn)
 		var preparedHosts []string
 		deleteDone := make(chan error, 1)
 		go func() {
@@ -49,7 +44,7 @@ VALUES ('service', $1, 'http', $2, ARRAY[$3]::bigint[])`, serviceURL, host, seco
 			deleteDone <- deleteErr
 		}()
 
-		if err := waitForTaskDeleteBlock(d, deleterPID, deleteDone); err != nil {
+		if err := waitForTaskDeleteBlock(deleteDone); err != nil {
 			t.Fatal(err)
 		}
 		if err := writerTx.Commit(); err != nil {
@@ -62,7 +57,7 @@ VALUES ('service', $1, 'http', $2, ARRAY[$3]::bigint[])`, serviceURL, host, seco
 			t.Fatalf("newly shared host %q was selected for traffic deletion: %v", host, preparedHosts)
 		}
 		var remaining int
-		if err := d.QueryRow(`SELECT count(*) FROM assets WHERE url=$1 AND $2=ANY(task_ids)`, serviceURL, second.ID).Scan(&remaining); err != nil {
+		if err := d.QueryRow(`SELECT count(*) FROM assets a WHERE url=$1 AND EXISTS(SELECT 1 FROM task_asset_links link WHERE link.asset_id=a.id AND link.task_id=$2)`, serviceURL, second.ID).Scan(&remaining); err != nil {
 			t.Fatal(err)
 		}
 		if remaining != 1 {
@@ -79,7 +74,8 @@ VALUES ('service', $1, 'http', $2, ARRAY[$3]::bigint[])`, serviceURL, host, seco
 			_, _ = d.Exec(`DELETE FROM assets WHERE id=$1 OR url=$2`, rootAssetID, serviceURL)
 		})
 
-		deleter, _ := openTaskDeleteTestDB(t, dsn)
+		deleter := openTaskDeleteTestDB(t, dsn)
+		writer := openTaskDeleteTestDB(t, dsn)
 		prepared := make(chan TaskDeletePreparation, 1)
 		releasePrepare := make(chan struct{})
 		deleteDone := make(chan error, 1)
@@ -107,15 +103,12 @@ VALUES ('service', $1, 'http', $2, ARRAY[$3]::bigint[])`, serviceURL, host, seco
 			t.Fatalf("exclusive host %q missing from preparation: %v", host, plan.TrafficHosts)
 		}
 
-		writer, writerPID := openTaskDeleteTestDB(t, dsn)
 		writerDone := make(chan error, 1)
 		go func() {
-			_, writeErr := writer.Exec(`
-INSERT INTO assets(type, url, service_type, domain, task_ids)
-VALUES ('service', $1, 'http', $2, ARRAY[$3]::bigint[])`, serviceURL, host, second.ID)
+			_, writeErr := writer.Assets().UpsertHTTPService(UpsertHTTPServiceReq{URL: serviceURL, TaskID: second.ID})
 			writerDone <- writeErr
 		}()
-		if err := waitForTaskDeleteBlock(d, writerPID, writerDone); err != nil {
+		if err := waitForTaskDeleteBlock(writerDone); err != nil {
 			close(releasePrepare)
 			t.Fatal(err)
 		}
@@ -152,43 +145,25 @@ func createTaskDeleteRaceFixture(t *testing.T, d *DB) (first, second *Task, host
 	return first, second, host, rootAssetID
 }
 
-func openTaskDeleteTestDB(t *testing.T, dsn string) (*DB, int) {
+func openTaskDeleteTestDB(t *testing.T, filename string) *DB {
 	t.Helper()
-	sqlDB, err := sql.Open("pgx", dsn)
+	d, err := Open(filename)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sqlDB.SetMaxOpenConns(1)
-	sqlDB.SetMaxIdleConns(1)
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	if _, err := sqlDB.Exec(`SET statement_timeout='10s'`); err != nil {
-		t.Fatal(err)
-	}
-	var pid int
-	if err := sqlDB.QueryRow(`SELECT pg_backend_pid()`).Scan(&pid); err != nil {
-		t.Fatal(err)
-	}
-	return &DB{sqlDB}, pid
+	t.Cleanup(func() { _ = d.Close() })
+	return d
 }
 
-func waitForTaskDeleteBlock(observer *DB, pid int, done <-chan error) error {
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		select {
-		case err := <-done:
-			return fmt.Errorf("operation returned before reaching the task deletion lock: %v", err)
-		default:
-		}
-		var blockers int
-		if err := observer.QueryRow(`SELECT cardinality(pg_blocking_pids($1))`, pid).Scan(&blockers); err != nil {
-			return err
-		}
-		if blockers > 0 {
-			return nil
-		}
-		time.Sleep(10 * time.Millisecond)
+// The held IMMEDIATE transaction must prevent another writer from finishing.
+// The subsequent committed result also proves the waiting writer reads fresh data.
+func waitForTaskDeleteBlock(done <-chan error) error {
+	select {
+	case err := <-done:
+		return fmt.Errorf("operation escaped the held SQLite writer transaction: %v", err)
+	case <-time.After(100 * time.Millisecond):
+		return nil
 	}
-	return fmt.Errorf("backend %d did not block within 5s", pid)
 }
 
 func waitForTaskDeleteResult(done <-chan error) error {

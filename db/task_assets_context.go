@@ -30,10 +30,10 @@ target AS (
        (ts.kind='company'     AND a.company_id = ts.company_id)
     OR (ts.kind='root_domain' AND a.root_domain = ts.domain)
     OR (ts.kind='subdomain'   AND a.domain = ts.domain)
-    OR (ts.kind IN ('ip','cidr') AND ts.net >>= try_inet(a.ip))
+    OR (ts.kind IN ('ip','cidr') AND ts.net_family=COALESCE(a.ip_family,artex_ip_family(a.ip)) AND COALESCE(a.ip_address,artex_ip_address(a.ip)) BETWEEN ts.net_first AND ts.net_last)
     OR (ts.kind='icp' AND (
-         lower(regexp_replace(COALESCE(a.icp,''), '[[:space:]]+', '', 'g')) = ts.value
-         OR lower(regexp_replace(COALESCE(a.app_icp,''), '[[:space:]]+', '', 'g')) = ts.value
+         artex_icp_key(a.icp) = ts.value
+         OR artex_icp_key(a.app_icp) = ts.value
        ))
   )
   JOIN context_tasks ctx ON ctx.task_id=ts.task_id
@@ -79,10 +79,10 @@ target AS (
        (ts.kind='company'     AND a.company_id = ts.company_id)
     OR (ts.kind='root_domain' AND a.root_domain = ts.domain)
     OR (ts.kind='subdomain'   AND a.domain = ts.domain)
-    OR (ts.kind IN ('ip','cidr') AND (ts.net >>= try_inet(a.ip) OR ts.net >>= try_inet(a.domain)))
+    OR (ts.kind IN ('ip','cidr') AND ((ts.net_family=COALESCE(a.ip_family,artex_ip_family(a.ip)) AND COALESCE(a.ip_address,artex_ip_address(a.ip)) BETWEEN ts.net_first AND ts.net_last) OR (ts.net_family=artex_ip_family(a.domain) AND artex_ip_address(a.domain) BETWEEN ts.net_first AND ts.net_last)))
     OR (ts.kind='icp' AND (
-         lower(regexp_replace(COALESCE(a.icp,''), '[[:space:]]+', '', 'g')) = ts.value
-         OR lower(regexp_replace(COALESCE(a.app_icp,''), '[[:space:]]+', '', 'g')) = ts.value
+         artex_icp_key(a.icp) = ts.value
+         OR artex_icp_key(a.app_icp) = ts.value
        ))
   )
   JOIN context_tasks ctx ON ctx.task_id=ts.task_id
@@ -93,7 +93,7 @@ target AS (
 func (s *AssetStore) ListTaskScopeWithSources(taskID int64) ([]TaskScope, error) {
 	rows, err := s.db.Query(`WITH `+directTaskContextCTE+`
 SELECT ts.id, ts.task_id, ts.kind, COALESCE(ts.company_id,0), COALESCE(c.name,''), COALESCE(ts.domain,''),
-       COALESCE(ts.net::text,''), COALESCE(ts.value,''), ts.source, COALESCE(ts.reason,'')
+       COALESCE(ts.net,''), COALESCE(ts.value,''), ts.source, COALESCE(ts.reason,'')
 FROM task_scope ts
 JOIN context_tasks ctx ON ctx.task_id=ts.task_id
 LEFT JOIN companies c ON c.id=ts.company_id
@@ -122,8 +122,10 @@ ORDER BY CASE WHEN ts.task_id=$1 THEN 0 ELSE 1 END, ts.id`, taskID)
 // the denominator, while fact anchors count as tested. No row is copied.
 func (s *AssetStore) TaskCoverageWithSources(taskID int64) (*Coverage, error) {
 	cov := &Coverage{ByType: []CoverageByType{}}
-	_ = s.db.QueryRow(`WITH `+directTaskContextCTE+`
-SELECT count(*) FROM task_scope ts JOIN context_tasks ctx ON ctx.task_id=ts.task_id`, taskID).Scan(&cov.ScopeRows)
+	if err := s.db.QueryRow(`WITH `+directTaskContextCTE+`
+SELECT count(*) FROM task_scope ts JOIN context_tasks ctx ON ctx.task_id=ts.task_id`, taskID).Scan(&cov.ScopeRows); err != nil {
+		return nil, err
+	}
 	rows, err := s.db.Query(`WITH `+contextCoverageCTE+`
 SELECT target.type, count(*) AS total,
        count(*) FILTER (WHERE target.id IN (SELECT asset_id FROM tested)) AS tested
@@ -203,7 +205,7 @@ func (s *AssetStore) HostsByTaskWithSources(taskID int64) ([]string, error) {
 context_assets AS (
   SELECT DISTINCT a.id
   FROM assets a
-  WHERE EXISTS (SELECT 1 FROM context_tasks ctx WHERE ctx.task_id=ANY(a.task_ids))
+  WHERE EXISTS (SELECT 1 FROM context_tasks ctx JOIN task_asset_links link ON link.task_id=ctx.task_id WHERE link.asset_id=a.id)
   UNION
   SELECT ea.asset_id
   FROM exploration_anchors ea
@@ -216,10 +218,10 @@ context_assets AS (
        (ts.kind='company'     AND a.company_id=ts.company_id)
     OR (ts.kind='root_domain' AND a.root_domain=ts.domain)
     OR (ts.kind='subdomain'   AND a.domain=ts.domain)
-    OR (ts.kind IN ('ip','cidr') AND ts.net >>= try_inet(a.ip))
+    OR (ts.kind IN ('ip','cidr') AND ts.net_family=COALESCE(a.ip_family,artex_ip_family(a.ip)) AND COALESCE(a.ip_address,artex_ip_address(a.ip)) BETWEEN ts.net_first AND ts.net_last)
     OR (ts.kind='icp' AND (
-         lower(regexp_replace(COALESCE(a.icp,''), '[[:space:]]+', '', 'g')) = ts.value
-         OR lower(regexp_replace(COALESCE(a.app_icp,''), '[[:space:]]+', '', 'g')) = ts.value
+         artex_icp_key(a.icp) = ts.value
+         OR artex_icp_key(a.app_icp) = ts.value
        ))
   )
   JOIN context_tasks ctx ON ctx.task_id=ts.task_id

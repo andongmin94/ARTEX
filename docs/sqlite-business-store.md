@@ -38,18 +38,22 @@ LLM 기록과 사용량 테이블도 여기에서 생성한다. M2.2h에서 두 
 
 프롬프트 순환 FK, 활성 모델/실행 중 재검증 유일성, 증거 참조와 대화 삭제 시 진행 중 재검증 중단을 반영했다.
 시간은 UTC TIMESTAMP다. AFTER 트리거와 RETURNING 시간 차이 및 Go time.Time 스캔은 실제 드라이버로 검증해야 한다.
-IP/CIDR 저장 열이 있어도 Go 정규화/자산 DSL/범위 검색의 이식이 완료된 것은 아니다.
+Go net/netip 정규화, 고정 길이 BLOB 범위, 명시적 SQLite Unicode/IP/ICP 검색 함수를 사용한다.
 기본 에이전트 6개, 승인·차단 규칙 20개(19개 enabled), 자산 차단 규칙 4개, MCP 2개를 한 번 생성한다.
 browser/ScopeSentry는 비활성 상태를 유지한다. PG 데이터 자동 이전이나 예전 seed 보정 경로는 지원하지 않는다.
 
-## 현재 미완료 경계
+## 앱 연결과 보관
 
-main에 모은 것은 전환 작업의 코드/이력이다. 배포 가능한 전체 앱이라고 주장하지 않는다.
-`NewManager`의 파일 경로 연결, `server.New` 오류 전파와 종료 정리, 실제 프록시 bind 검증이 남아 있다.
-업무 SQL의 미이식 배열/JSONB/행 잠금/PG 함수/보관 복원을 빈 결과나 무시한 오류로 대체하지 않는다.
-`DSN`과 `coordinateWithSchemaMigration`은 아직 미이식 호출자 때문에 남은 코드이며 SQLite fallback이 아니다. 호출자를 이식하면서 제거한다.
-다른 패키지의 PG fixture/skip과 전체 업무 테스트도 SQLite로 옮겨야 한다.
-main 병합과 실제 부팅/전체 API/Windows·macOS/Electron/도구/부하/백업 검증은 별도다.
+NewManager가 data/artex.sqlite를 열고 server.New는 실패를 호출자에게 반환한다.
+필수 설정·시드·로그·복구·프록시 시작이 실패하면 ready를 내보내지 않고 생성한 자원을 닫는다.
+DSN/PG advisory helper와 PG 테스트 환경·skip은 제거했다. 실제 업무 테스트는 독립된 임시 SQLite 파일을 사용한다.
+
+보관 형식4는 Go에서 JSON/시간/불리언/BLOB을 명시적으로 직렬화한다.
+복원은 허용된 테이블과 고정 열 목록으로 INSERT/UPDATE하고 자산 자연 키가 이미 있으면 ID를 매핑한다.
+관계 테이블·증거 스냅샷·스트리밍 LLM 기록을 동일 트랜잭션에서 복원한다. PG 형식1~3 호환 경로는 제거한다.
+사용자가 삭제한 전역 기업/모델은 재생성하지 않고 경고로 기록한다. 오류는 롤백하며 정상 복원으로 표시하지 않는다.
+
+현재 부팅·API·Windows·Electron·도구·부하·백업의 실제 결과는 development-plan.md에서 구분한다.
 
 ## 검증 기록
 

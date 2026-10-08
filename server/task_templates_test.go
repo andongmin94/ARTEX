@@ -17,10 +17,14 @@ import (
 func TestTaskTemplateHTTPCRUD(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) — skipping", err)
+		t.Fatalf("initialize SQLite business store: %v", err)
 	}
-	defer m.Close()
-	s := New(context.Background(), m, t.TempDir(), t.TempDir(), t.TempDir())
+	t.Cleanup(func() { _ = m.Close() })
+	s, err := New(context.Background(), m, t.TempDir(), t.TempDir(), t.TempDir())
+	if err != nil {
+		t.Fatalf("initialize server: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close(context.Background()) })
 	h := s.Handler()
 	token, err := signJWT(s.jwtKey)
 	if err != nil {

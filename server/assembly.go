@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"path/filepath"
@@ -191,17 +192,20 @@ func idSet(ids []int64) map[int64]bool {
 // agent_prompts on startup — first-insert only (SeedPromptIfEmpty is a no-op once
 // any version exists), so the DB becomes the authoritative editable source while
 // user edits survive restarts. Runs after seedBuiltins has created the agent rows.
-func seedPrompts(pg *db.DB) {
+func seedPrompts(pg *db.DB) error {
 	for key, tmpl := range agent.BuiltinPromptSeeds() {
 		a, err := pg.GetAgentByKey(key)
-		if err != nil || a == nil {
-			log.Printf("[prompts] 초기 데이터 %s 건너뜀: 에이전트 없음(%v)", key, err)
+		if err != nil {
+			return fmt.Errorf("기본 프롬프트 %s 에이전트 읽기: %w", key, err)
+		}
+		if a == nil {
 			continue
 		}
 		if err := pg.SeedPromptIfEmpty(a.ID, tmpl); err != nil {
-			log.Printf("[prompts] 초기 데이터 %s 생성 실패: %v", key, err)
+			return fmt.Errorf("기본 프롬프트 %s 저장: %w", key, err)
 		}
 	}
+	return nil
 }
 
 // wireTools seeds the built-in tool catalog (idempotent, first-insert only so page
@@ -209,7 +213,7 @@ func seedPrompts(pg *db.DB) {
 // tool-assembly time each built-in tool is filtered by its agent binding / enabled
 // flag and, if kept, wrapped so the model sees the DB-overridden description/schema
 // and缺省入参 get injected. MCP/skill/host tools have no row and pass through.
-func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) {
+func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) error {
 	agent.FindingTrafficBindingEnabled = func() bool { return pg.GetBool(settingAgentTrafficBinding, false) }
 	// Seed the built-in domain tools (first-insert only; DO NOTHING preserves edits).
 	// No startup prune: rows we didn't seed are left alone so future user-defined
@@ -218,18 +222,20 @@ func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) {
 		schema, _ := json.Marshal(s.Schema)
 		agents, _ := json.Marshal(s.Agents)
 		if err := pg.SeedTool(s.Key, s.Desc, schema, agents); err != nil {
-			log.Printf("[tools] 초기 데이터 %s 생성 실패: %v", s.Key, err)
+			return fmt.Errorf("기본 도구 %s 저장: %w", s.Key, err)
 		}
 	}
 	// Seed the traffic host tools so they're bindable per-agent like built-ins.
 	// Default binding = worker (preserves prior behavior). Their runtime availability
 	// is still gated by the global capture switch (hostTools() returns them only when
 	// capture is on), so an off-capture binding simply never surfaces the tool.
+	// Reporter is created with its complete bundle after every required tool
+	// exists; its FK bindings are installed by SeedReporter in that transaction.
 	trafficAgents, _ := json.Marshal([]string{"worker"})
 	for _, t := range traffic.SeedToolMetas() {
 		schema, _ := json.Marshal(t.InputSchema())
 		if err := pg.SeedTool(t.Name(), t.Description(), schema, trafficAgents); err != nil {
-			log.Printf("[tools] 초기 데이터 %s 생성 실패: %v", t.Name(), err)
+			return fmt.Errorf("트래픽 도구 %s 저장: %w", t.Name(), err)
 		}
 	}
 	// bashInteractiveShellNote is appended to Bash's description ONLY for agents whose
@@ -239,8 +245,12 @@ func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) {
 	agent.ToolResolve = func(ctx context.Context, agentKey string, tools []actool.CoreTool) []actool.CoreTool {
 		rows, err := pg.ListTools()
 		if err != nil {
-			log.Printf("[tools] 도구 목록 읽기 실패, 코드 기본값 적용: %v", err)
-			return tools
+			log.Printf("[tools] 도구 실행 정책 읽기 실패: %v", err)
+			blocked := make([]actool.CoreTool, len(tools))
+			for n, t := range tools {
+				blocked[n] = policyUnavailableTool{CoreTool: t}
+			}
+			return blocked
 		}
 		byKey := make(map[string]*db.Tool, len(rows))
 		for _, t := range rows {
@@ -296,7 +306,7 @@ func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) {
 				shellHints = append(shellHints, "- "+row.Key+": "+row.Description)
 			}
 		}
-		if len(shellHints) > 0 {
+		if len(shellHints) > 0 && !desktopToolsUnavailable() {
 			note := "\n\n다음 도구는 Bash 환경에 설치되어 있어 Bash로 직접 호출할 수 있습니다:\n" + strings.Join(shellHints, "\n")
 			for i, t := range out {
 				if t.Name() == "Bash" {
@@ -320,8 +330,24 @@ func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) {
 				}
 			}
 		}
+		if desktopToolsUnavailable() {
+			for index, tool := range out {
+				if externalProcessTool(tool.Name()) {
+					out[index] = unavailableDesktopTool{CoreTool: tool}
+				}
+			}
+		}
 		return out
 	}
+	return nil
+}
+
+// Keep a nonempty tool surface while refusing every call; the SDK must never
+// interpret a failed policy read as permission to restore its default tools.
+type policyUnavailableTool struct{ actool.CoreTool }
+
+func (t policyUnavailableTool) Call(context.Context, json.RawMessage, *actool.ToolContext) (actool.Result, error) {
+	return actool.Errorf("도구 실행 정책을 읽지 못해 실행을 거부했습니다"), nil
 }
 
 func contains(ss []string, v string) bool {

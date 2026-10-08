@@ -16,29 +16,21 @@ import (
 	"github.com/Autumn-27/artex/intercept"
 	"github.com/Autumn-27/norma/harness"
 	"github.com/Autumn-27/norma/llm"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// isFKViolation reports whether err is a Postgres foreign-key violation (SQLSTATE
-// 23503) — e.g. an activity insert whose exploration_id has no parent row.
+// isFKViolation identifies the SQLite foreign-key constraint error.
 func isFKViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23503"
+	return db.IsForeignKeyViolation(err)
 }
 
 // dropReason classifies why an activity write was dropped, so the log can be
 // grouped/analysed by cause rather than by raw error text.
 func dropReason(err error) string {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		switch pgErr.Code {
-		case "23503":
-			return "fk_violation(23503, 상위 exploration 없음)"
-		case "23505":
-			return "unique_violation(23505)"
-		default:
-			return "pg_error(" + pgErr.Code + ")"
-		}
+	if db.IsForeignKeyViolation(err) {
+		return "fk_violation(상위 exploration 없음)"
+	}
+	if db.IsUniqueViolation(err) {
+		return "unique_violation"
 	}
 	return "write_error"
 }
@@ -107,6 +99,7 @@ type Engine struct {
 	// task operation. Once BeginDelete returns, every admitted writer is reflected
 	// in inflight and every later writer is rejected.
 	deleteMu sync.RWMutex
+	closing  bool // guarded by deleteMu; shutdown rejects new task operations
 
 	// Every long-lived task goroutine (planner, workers and deadline coordinator)
 	// runs under one task-scoped context. Successful deletion cancels that context,
@@ -312,7 +305,7 @@ func (e *Engine) Resume(t *Task) {
 	}
 	e.deleteMu.RLock()
 	defer e.deleteMu.RUnlock()
-	if e.IsDeleting(t.ID) {
+	if e.closing || e.IsDeleting(t.ID) {
 		return
 	}
 	e.paused.Delete(t.ID)
@@ -748,7 +741,7 @@ func (e *Engine) ReadyFor(t *Task) bool {
 func (e *Engine) Run(ctx context.Context, t *Task) {
 	workers := e.m.Workers()
 	e.deleteMu.RLock()
-	if e.IsDeleting(t.ID) {
+	if e.closing || ctx.Err() != nil || e.IsDeleting(t.ID) {
 		e.deleteMu.RUnlock()
 		return
 	}
@@ -773,6 +766,50 @@ func (e *Engine) Run(ctx context.Context, t *Task) {
 	// 重启自动恢复时也可能只剩 running 意图,同样应跳过。
 	if has, _ := t.Store.HasActiveIntent(); !has {
 		t.Notify() // kick the first planning round (acted on once LLM is ready)
+	}
+}
+
+func (e *Engine) Close(ctx context.Context) error {
+	e.deleteMu.Lock()
+	e.closing = true
+	e.runtimeMu.Lock()
+	runtimes := make([]*taskRuntime, 0, len(e.runtimes))
+	for _, rt := range e.runtimes {
+		rt.cancel()
+		runtimes = append(runtimes, rt)
+	}
+	e.runtimeMu.Unlock()
+	e.deleteMu.Unlock()
+	e.execMu.Lock()
+	for _, cancel := range e.execCancel {
+		cancel(agent.AbortShutdown)
+	}
+	e.execMu.Unlock()
+	done := make(chan struct{})
+	go func() {
+		for _, rt := range runtimes {
+			rt.wg.Wait()
+		}
+		close(done)
+	}()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-done:
+	}
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		busy := false
+		e.inflight.Range(func(_, value any) bool { busy = busy || atomic.LoadInt64(value.(*int64)) > 0; return !busy })
+		if !busy {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
 	}
 }
 

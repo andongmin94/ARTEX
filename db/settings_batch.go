@@ -48,8 +48,7 @@ func (d *DB) SetSettingsContext(ctx context.Context, values map[string]string) e
 	for key := range values {
 		keys = append(keys, key)
 	}
-	// Stable lock order also prevents opposite-order updates from deadlocking
-	// while the current PostgreSQL entry point is still being replaced.
+	// 관련 설정을 항상 같은 순서로 기록한다.
 	sort.Strings(keys)
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
+	"time"
 
 	pgdb "github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/enrich"
@@ -20,15 +21,12 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	dsn, source, err := pgdb.DSN()
+	filename := filepath.Join(dir, "artex.sqlite")
+	store, err := pgdb.Open(filename)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("업무 SQLite 열기: %w", err)
 	}
-	log.Printf("[pg] DB 설정 출처: %s", source)
-	store, err := pgdb.Open(dsn)
-	if err != nil {
-		return nil, err
-	}
+	log.Printf("[sqlite] 업무 저장소: %s", filename)
 	return newManagerFromDB(dir, proxyAddr, store)
 }
 
@@ -64,6 +62,9 @@ func newManagerFromDB(dir, proxyAddr string, store *pgdb.DB) (result *Manager, e
 	}
 	m.assets = store.Assets()
 	m.interceptor = intercept.New(store)
+	if err := m.interceptor.Validate(); err != nil {
+		return nil, fmt.Errorf("도구 실행 정책 초기화: %w", err)
+	}
 	m.trafficOn, m.llmRecOn, m.webSearchOn = state.trafficOn, state.llmRecordOn, state.webSearchOn
 	m.webSearchBackend, m.braveKey, m.tavilyKey = state.webSearchBackend, state.braveKey, state.tavilyKey
 	m.webSearchProxy, m.globalProxy = state.webSearchProxy, state.globalProxy
@@ -92,17 +93,16 @@ func newManagerFromDB(dir, proxyAddr string, store *pgdb.DB) (result *Manager, e
 	if err := m.syncBrowserMCPProxy(); err != nil {
 		return nil, err
 	}
-	m.enrich = enrich.New(m.assets, m.ProxyAddr, 4)
-	// Do not start background serving before every synchronous initialization
-	// step has succeeded. Socket bind/readiness is still owned by Traffic.Start.
 	if tr := m.traffic; tr != nil {
-		go func() {
-			log.Printf("[traffic] recording proxy on %s", proxyAddr)
-			if err := tr.Start(); err != nil {
-				log.Printf("[traffic] proxy stopped: %v", err)
-			}
-		}()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err := tr.Start(ctx)
+		cancel()
+		if err != nil {
+			return nil, fmt.Errorf("트래픽 프록시 시작: %w", err)
+		}
+		log.Printf("[traffic] recording proxy on %s", proxyAddr)
 	}
+	m.enrich = enrich.New(m.assets, m.ProxyAddr, 4)
 	return m, nil
 }
 

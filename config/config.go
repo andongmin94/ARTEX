@@ -1,33 +1,19 @@
-// Package config loads runtime configuration from a JSON file, with environment
-// variables taking precedence. Currently it carries the PostgreSQL connection.
+// Package config locates writable runtime files and local skill configuration.
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"net/url"
+	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
-// Database is the PostgreSQL connection config. Either set DSN directly, or set
-// the component fields and a DSN is assembled from them.
-type Database struct {
-	DSN      string `json:"dsn"`
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	User     string `json:"user"`
-	Password string `json:"password"`
-	DBName   string `json:"dbname"`
-	SSLMode  string `json:"sslmode"`
-}
-
 // Config is the on-disk config file shape.
 type Config struct {
-	Database Database `json:"database"`
-	SkillDir string   `json:"skill_dir"`
+	SkillDir string `json:"skill_dir"`
 }
 
 // InitHome validates the explicit writable runtime root before opening stores.
@@ -120,16 +106,26 @@ func Path() string {
 	return candidates[0]
 }
 
-// Load reads and parses the config file. A missing/unreadable file yields a zero
-// Config (so callers fall back to defaults) rather than an error.
-func Load() Config {
+// Load accepts a missing optional config file, but never hides unreadable or
+// malformed configuration supplied by the user.
+func Load() (Config, error) {
 	var c Config
 	b, err := os.ReadFile(Path())
-	if err != nil {
-		return c
+	if os.IsNotExist(err) {
+		return c, nil
 	}
-	_ = json.Unmarshal(b, &c)
-	return c
+	if err != nil {
+		return c, fmt.Errorf("설정 파일 읽기: %w", err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(b))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&c); err != nil {
+		return Config{}, fmt.Errorf("설정 파일 JSON: %w", err)
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		return Config{}, fmt.Errorf("설정 파일에는 하나의 JSON 객체만 허용됩니다")
+	}
+	return c, nil
 }
 
 // SkillDir returns the skill root directory with precedence:
@@ -137,80 +133,21 @@ func Load() Config {
 //	env ARTEX_SKILL_DIR  >  config file (skill_dir)  >  BaseDir()/skills
 //
 // The directory is created if it does not exist.
-func SkillDir() string {
+func SkillDir() (string, error) {
+	cfg, err := Load()
+	if err != nil {
+		return "", err
+	}
 	var d string
 	if v := strings.TrimSpace(os.Getenv("ARTEX_SKILL_DIR")); v != "" {
 		d = v
-	} else if v := strings.TrimSpace(Load().SkillDir); v != "" {
+	} else if v := strings.TrimSpace(cfg.SkillDir); v != "" {
 		d = v
 	} else {
 		d = filepath.Join(BaseDir(), "skills")
 	}
-	_ = os.MkdirAll(d, 0o755)
-	return d
-}
-
-// PostgresDSN resolves the connection string with precedence:
-//
-//	env ARTEX_PG_DSN  >  config file (database.dsn, or assembled from fields)
-//
-// There is NO built-in fallback: when neither source supplies a database config,
-// it returns an error naming the config path it inspected, so startup fails loudly
-// instead of silently connecting to a wrong default. source describes where the
-// DSN came from (for startup logging).
-func PostgresDSN() (dsn, source string, err error) {
-	if v := strings.TrimSpace(os.Getenv("ARTEX_PG_DSN")); v != "" {
-		return v, "환경 변수 ARTEX_PG_DSN", nil
+	if err := os.MkdirAll(d, 0o755); err != nil {
+		return "", fmt.Errorf("스킬 디렉터리 초기화: %w", err)
 	}
-	db := Load().Database
-	if d := strings.TrimSpace(db.DSN); d != "" {
-		return d, "설정 파일 " + Path() + " (database.dsn)", nil
-	}
-	if db.Host != "" || db.DBName != "" || db.User != "" {
-		return db.buildDSN(), "설정 파일 " + Path() + " (database 필드)", nil
-	}
-	return "", "", fmt.Errorf("DB 설정이 없습니다. 환경 변수 ARTEX_PG_DSN이 없고 설정 파일 %s에 database(dsn 또는 host/user/dbname)가 지정되지 않았습니다. 설정 파일이나 환경 변수를 지정한 뒤 다시 시도하세요", Path())
-}
-
-func (d Database) buildDSN() string {
-	host := d.Host
-	if host == "" {
-		host = "127.0.0.1"
-	}
-	port := d.Port
-	if port == 0 {
-		port = 5432
-	}
-	ssl := d.SSLMode
-	if ssl == "" {
-		ssl = "disable"
-	}
-	u := url.URL{
-		Scheme: "postgres",
-		Host:   host + ":" + strconv.Itoa(port),
-		Path:   "/" + d.DBName,
-	}
-	if d.User != "" {
-		if d.Password != "" {
-			u.User = url.UserPassword(d.User, d.Password)
-		} else {
-			u.User = url.User(d.User)
-		}
-	}
-	u.RawQuery = url.Values{"sslmode": {ssl}}.Encode()
-	return u.String()
-}
-
-// String is a redacted view of the resolved DSN (password masked) for logging.
-func Redact(dsn string) string {
-	u, err := url.Parse(dsn)
-	if err != nil {
-		return dsn
-	}
-	if u.User != nil {
-		if _, hasPw := u.User.Password(); hasPw {
-			u.User = url.UserPassword(u.User.Username(), "****")
-		}
-	}
-	return fmt.Sprintf("%s", u.String())
+	return d, nil
 }

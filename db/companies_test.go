@@ -17,7 +17,7 @@ func cleanupCompany(d *DB, id int64) {
 func TestCompanyUpsertAndGet(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
-		t.Skipf("postgres unavailable (%v)", err)
+		t.Fatal(err)
 	}
 	defer d.Close()
 	cs := d.Companies()
@@ -64,7 +64,7 @@ func TestCompanyUpsertAndGet(t *testing.T) {
 func TestCreateCompanyWithScopeRejectsNormalizedDuplicate(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
-		t.Skipf("postgres unavailable (%v)", err)
+		t.Fatal(err)
 	}
 	defer d.Close()
 	cs := d.Companies()
@@ -103,14 +103,17 @@ func TestCreateCompanyWithScopeRejectsNormalizedDuplicate(t *testing.T) {
 func TestCreateCompanyWithScopeRollsBackOnScopeWriteFailure(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
-		t.Skipf("postgres unavailable (%v)", err)
+		t.Fatal(err)
 	}
 	defer d.Close()
 	cs := d.Companies()
+	if _, err := d.Exec(`CREATE TRIGGER reject_initial_company_scope BEFORE INSERT ON company_scope WHEN NEW.kind='keyword' BEGIN SELECT RAISE(ABORT,'injected storage failure'); END`); err != nil {
+		t.Fatal(err)
+	}
 
 	name := fmt.Sprintf("Atomic Create %d", time.Now().UnixNano())
 	_, _, _, _, _, err = cs.CreateCompanyWithScope(name, "", []ScopeInput{
-		{Kind: "keyword", Value: "invalid\x00postgres-text"},
+		{Kind: "keyword", Value: "오류 주입 대상"},
 	}, "test")
 	if err == nil {
 		t.Fatal("expected scope database write to fail")
@@ -128,7 +131,7 @@ func TestCreateCompanyWithScopeRollsBackOnScopeWriteFailure(t *testing.T) {
 func TestCompanyScope(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
-		t.Skipf("postgres unavailable (%v)", err)
+		t.Fatal(err)
 	}
 	defer d.Close()
 	cs := d.Companies()
@@ -166,7 +169,7 @@ func TestCompanyScope(t *testing.T) {
 func TestCompanyScopeInvalid(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
-		t.Skipf("postgres unavailable (%v)", err)
+		t.Fatal(err)
 	}
 	defer d.Close()
 	cs := d.Companies()
@@ -195,7 +198,7 @@ func TestCompanyScopeInvalid(t *testing.T) {
 func TestResolveCompany(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
-		t.Skipf("postgres unavailable (%v)", err)
+		t.Fatal(err)
 	}
 	defer d.Close()
 	cs := d.Companies()
@@ -236,7 +239,7 @@ func TestResolveCompany(t *testing.T) {
 func TestUpdateScope(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
-		t.Skipf("postgres unavailable (%v)", err)
+		t.Fatal(err)
 	}
 	defer d.Close()
 	cs := d.Companies()
@@ -281,7 +284,7 @@ func TestUpdateScope(t *testing.T) {
 func TestUpdateScopeRollsBackOnInsertFailure(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
-		t.Skipf("postgres unavailable (%v)", err)
+		t.Fatal(err)
 	}
 	defer d.Close()
 	cs := d.Companies()
@@ -298,8 +301,11 @@ func TestUpdateScopeRollsBackOnInsertFailure(t *testing.T) {
 		t.Fatalf("seed scope: added=%d invalid=%d errors=%v", added, invalid, addErrors)
 	}
 
+	if _, err := d.Exec(`CREATE TRIGGER inject_scope_insert_failure BEFORE INSERT ON company_scope WHEN NEW.kind='keyword' BEGIN SELECT RAISE(ABORT,'injected storage failure'); END`); err != nil {
+		t.Fatal(err)
+	}
 	added, invalid, updateErrors := cs.UpdateScopeInputs(id, []ScopeInput{
-		{Kind: "keyword", Value: "invalid\x00postgres-text"},
+		{Kind: "keyword", Value: "오류 주입 대상"},
 	}, "replacement")
 	if added != 0 || invalid != 0 || len(updateErrors) == 0 {
 		t.Fatalf("failed update result: added=%d invalid=%d errors=%v", added, invalid, updateErrors)
@@ -316,7 +322,7 @@ func TestUpdateScopeRollsBackOnInsertFailure(t *testing.T) {
 func TestDeleteCompany(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
-		t.Skipf("postgres unavailable (%v)", err)
+		t.Fatal(err)
 	}
 	defer d.Close()
 	cs := d.Companies()
@@ -344,7 +350,7 @@ func TestDeleteCompany(t *testing.T) {
 func TestDeleteCompanyWithAssetsDeletesBoth(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
-		t.Skipf("postgres unavailable (%v)", err)
+		t.Fatal(err)
 	}
 	defer d.Close()
 	cs := d.Companies()
@@ -391,7 +397,7 @@ RETURNING id`, domain, id).Scan(&assetID); err != nil {
 func TestRecomputeAttribution(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
-		t.Skipf("postgres unavailable (%v)", err)
+		t.Fatal(err)
 	}
 	defer d.Close()
 	cs := d.Companies()
@@ -433,7 +439,7 @@ func TestRecomputeAttribution(t *testing.T) {
 func TestListCompanies(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
-		t.Skipf("postgres unavailable (%v)", err)
+		t.Fatal(err)
 	}
 	defer d.Close()
 	cs := d.Companies()
