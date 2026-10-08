@@ -47,7 +47,7 @@ export function ScopeTextEditor({
         value={value}
         aria-invalid={parsed.errors.length > 0}
         placeholder={"example.com\n203.0.113.10\n198.51.100.0/24\n기업 이름 키워드"}
-        className="min-h-36 resize-y font-mono text-sm"
+        className="min-h-36 resize-y font-sans text-sm"
         onChange={(event) => onValueChange(event.target.value)}
       />
       {parsed.rules.length > 0 && (
@@ -56,7 +56,7 @@ export function ScopeTextEditor({
           {Object.entries(SCOPE_KIND_LABELS).map(([kind, kindLabel]) => {
             const count = counts.get(kind as CompanyScopeKind) ?? 0;
             return count > 0 ? (
-              <Badge key={kind} variant="secondary" className="font-mono tabular-nums">
+              <Badge key={kind} variant="secondary" className="font-sans tabular-nums">
                 {kindLabel} {count}
               </Badge>
             ) : null;

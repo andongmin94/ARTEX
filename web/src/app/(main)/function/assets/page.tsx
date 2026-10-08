@@ -78,7 +78,7 @@ function MethodBadge({ method }: { method: string }) {
   return (
     <span
       className={cn(
-        "inline-block rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold leading-none",
+        "inline-block rounded px-1.5 py-0.5 font-sans text-[10px] font-semibold leading-none",
         METHOD_COLOR[m] ?? "bg-muted text-muted-foreground",
       )}
     >
@@ -374,7 +374,7 @@ export default function AssetsPage() {
                         {c.scope?.length ? (
                           <div className="flex flex-wrap gap-1">
                             {c.scope.map((s, i) => (
-                              <Badge key={i} variant="secondary" className="font-mono text-[11px]">
+                              <Badge key={i} variant="secondary" className="font-sans text-[11px]">
                                 {s.raw}
                               </Badge>
                             ))}
@@ -436,7 +436,7 @@ export default function AssetsPage() {
                 <TableCell className="w-8 pr-0">
                   <Checkbox checked={selected.has(a.id)} onCheckedChange={() => toggleSelect(a.id)} />
                 </TableCell>
-                <TableCell className="font-mono text-xs font-medium">{a.domain}</TableCell>
+                <TableCell className="font-sans text-xs font-medium">{a.domain}</TableCell>
                 <TableCell className="text-xs">{a.icp || "—"}</TableCell>
                 <TableCell className="text-xs">
                   {companyName(a.company_id) || <span className="text-muted-foreground">미지정</span>}
@@ -477,8 +477,8 @@ export default function AssetsPage() {
                 <TableCell className="w-8 pr-0">
                   <Checkbox checked={selected.has(a.id)} onCheckedChange={() => toggleSelect(a.id)} />
                 </TableCell>
-                <TableCell className="font-mono text-xs font-medium">{a.ip}</TableCell>
-                <TableCell className="font-mono text-xs">{a.c_segment || "—"}</TableCell>
+                <TableCell className="font-sans text-xs font-medium">{a.ip}</TableCell>
+                <TableCell className="font-sans text-xs">{a.c_segment || "—"}</TableCell>
                 <TableCell>
                   <Chips items={a.bound_domains ?? []} mono />
                 </TableCell>
@@ -524,10 +524,10 @@ export default function AssetsPage() {
                 <TableCell className="w-8 pr-0">
                   <Checkbox checked={selected.has(a.id)} onCheckedChange={() => toggleSelect(a.id)} />
                 </TableCell>
-                <TableCell className="font-mono text-xs font-medium">{a.domain}</TableCell>
-                <TableCell className="font-mono text-xs">{a.root_domain || "—"}</TableCell>
+                <TableCell className="font-sans text-xs font-medium">{a.domain}</TableCell>
+                <TableCell className="font-sans text-xs">{a.root_domain || "—"}</TableCell>
                 <TableCell className="text-xs">{a.record_type || "—"}</TableCell>
-                <TableCell className="max-w-xs truncate font-mono text-xs">
+                <TableCell className="max-w-xs truncate font-sans text-xs">
                   {(Array.isArray(a.record_value) ? a.record_value.join(", ") : a.record_value) || "—"}
                 </TableCell>
                 <TableCell className="w-8 pl-0">
@@ -567,7 +567,7 @@ export default function AssetsPage() {
                   <Checkbox checked={selected.has(a.id)} onCheckedChange={() => toggleSelect(a.id)} />
                 </TableCell>
                 <TableCell className="text-xs font-medium">{a.app_name || "—"}</TableCell>
-                <TableCell className="font-mono text-xs">{a.bundle_id || "—"}</TableCell>
+                <TableCell className="font-sans text-xs">{a.bundle_id || "—"}</TableCell>
                 <TableCell className="text-xs">{a.category || "—"}</TableCell>
                 <TableCell className="text-xs">{a.app_icp || "—"}</TableCell>
                 <TableCell className="w-8 pl-0">
@@ -625,18 +625,18 @@ export default function AssetsPage() {
                     <Checkbox checked={selected.has(a.id)} onCheckedChange={() => toggleSelect(a.id)} />
                   </TableCell>
                   <TableCell className="text-xs">
-                    <Badge variant={isHttp ? "default" : "secondary"} className="font-mono text-[10px]">
+                    <Badge variant={isHttp ? "default" : "secondary"} className="font-sans text-[10px]">
                       {svc || "—"}
                     </Badge>
                   </TableCell>
-                  <TableCell className="max-w-[14rem] truncate font-mono text-xs" title={a.domain || a.url}>
+                  <TableCell className="max-w-[14rem] truncate font-sans text-xs" title={a.domain || a.url}>
                     {domainCell}
                   </TableCell>
-                  <TableCell className="font-mono text-xs">{a.ip || "—"}</TableCell>
-                  <TableCell className="font-mono text-xs tabular-nums">{a.port || "—"}</TableCell>
+                  <TableCell className="font-sans text-xs">{a.ip || "—"}</TableCell>
+                  <TableCell className="font-sans text-xs tabular-nums">{a.port || "—"}</TableCell>
                   <TableCell>
                     {a.status_code != null ? (
-                      <span className={cn("font-mono text-xs font-semibold tabular-nums", statusTone(a.status_code))}>
+                      <span className={cn("font-sans text-xs font-semibold tabular-nums", statusTone(a.status_code))}>
                         {a.status_code}
                       </span>
                     ) : (
@@ -659,7 +659,7 @@ export default function AssetsPage() {
                         return (
                           <span key={i} className="inline-flex items-center gap-1 text-[11px]">
                             <KeyRoundIcon className="size-3 text-muted-foreground" />
-                            <span className="font-mono">{label}</span>
+                            <span className="font-sans">{label}</span>
                           </span>
                         );
                       })
@@ -705,7 +705,7 @@ export default function AssetsPage() {
                 <TableCell className="w-16">
                   <MethodBadge method={a.method || ""} />
                 </TableCell>
-                <TableCell className="max-w-sm truncate font-mono text-xs" title={a.url}>
+                <TableCell className="max-w-sm truncate font-sans text-xs" title={a.url}>
                   {a.url || "—"}
                 </TableCell>
                 <TableCell>
@@ -933,7 +933,7 @@ function Chips({ items, mono }: { items: string[]; mono?: boolean }) {
   return (
     <div className="flex flex-wrap gap-1">
       {clean.map((s, i) => (
-        <Badge key={i} variant="outline" className={cn("text-[10px]", mono && "font-mono")}>
+        <Badge key={i} variant="outline" className={cn("text-[10px]", mono && "font-sans")}>
           {s}
         </Badge>
       ))}

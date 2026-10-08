@@ -83,7 +83,7 @@ app.on("before-quit", (event) => {
 
 if (locked) app.whenReady().then(async () => {
   protocol.handle("artex", (request) => {
-    if (request.url === "artex://startup/fonts/NotoSansKR-Variable.ttf") return new Response(fs.readFileSync(path.join(resourceRoot, "fonts/NotoSansKR-Variable.ttf")), { headers: { "content-type": "font/ttf" } });
+    if (request.url === "artex://startup/fonts/PretendardVariable.woff2") return new Response(fs.readFileSync(path.join(resourceRoot, "fonts/PretendardVariable.woff2")), { headers: { "content-type": "font/woff2" } });
     const file = request.url === "artex://startup/" ? "startup.html" : request.url === "artex://startup/startup.js" ? "startup.js" : null;
     if (!file) return new Response("찾을 수 없습니다", { status: 404 });
     return new Response(fs.readFileSync(path.join(__dirname, file)), { headers: { "content-type": file.endsWith(".js") ? "text/javascript; charset=utf-8" : "text/html; charset=utf-8" } });
@@ -94,7 +94,7 @@ if (locked) app.whenReady().then(async () => {
   ses.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   ses.setPermissionCheckHandler(() => false);
   ses.webRequest.onBeforeRequest((details, callback) => {
-    const internal = details.url === "artex://startup/startup.js" || details.url === "artex://startup/fonts/NotoSansKR-Variable.ttf" || details.url.startsWith("devtools://") || details.url.startsWith("data:") || details.url.startsWith("blob:");
+    const internal = details.url === "artex://startup/startup.js" || details.url === "artex://startup/fonts/PretendardVariable.woff2" || details.url.startsWith("devtools://") || details.url.startsWith("data:") || details.url.startsWith("blob:");
     callback({ cancel: !trusted(details.url) && !internal });
   });
   ses.webRequest.onBeforeSendHeaders((details, callback) => {

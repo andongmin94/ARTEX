@@ -88,7 +88,7 @@ export function ConfigField({
       return (
         <Textarea
           id={id}
-          className="font-mono"
+          className="font-sans"
           placeholder={def.placeholder}
           value={masked ? "" : raw}
           onChange={(e) => onChange(e.target.value)}
@@ -108,7 +108,7 @@ export function ConfigField({
     return (
       <Input
         id={id}
-        className={def.kind === "text" ? "font-mono" : ""}
+        className={def.kind === "text" ? "font-sans" : ""}
         type={inputType(def.kind)}
         placeholder={def.placeholder}
         value={masked ? "" : raw}

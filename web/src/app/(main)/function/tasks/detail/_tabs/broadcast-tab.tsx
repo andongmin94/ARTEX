@@ -231,7 +231,7 @@ function AssetList({ assets, dense = false }: { assets: FindingAsset[]; dense?: 
               title={`${typeLabel} · ${a.label}`}
             >
               <span className="shrink-0 rounded bg-muted px-1 text-[10px] text-muted-foreground">{typeLabel}</span>
-              <code className="truncate font-mono text-xs">{a.label}</code>
+              <code className="truncate font-sans text-xs">{a.label}</code>
             </li>
           );
         })}
@@ -251,7 +251,7 @@ function RelatedNodeCard({ node, assets }: { node: TaskNode; assets: FindingAsse
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-1.5">
         <KindChip kind={kind} />
-        <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">#{node.id}</code>
+        <code className="rounded bg-muted px-1.5 py-0.5 font-sans text-xs text-muted-foreground">#{node.id}</code>
         <NodeStateBadge node={node} />
         {node.priority > 0 && (kind === "goal" || kind === "intent") && (
           <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">P{node.priority}</span>
@@ -264,7 +264,7 @@ function RelatedNodeCard({ node, assets }: { node: TaskNode; assets: FindingAsse
       </div>
       <p className="line-clamp-4 text-xs break-words">{summary || "(요약 없음)"}</p>
       <AssetList assets={assets} dense />
-      <pre className="max-h-40 overflow-auto rounded border bg-muted/40 p-2 font-mono text-[11px] whitespace-pre-wrap">
+      <pre className="max-h-40 overflow-auto rounded border bg-muted/40 p-2 font-sans text-[11px] whitespace-pre-wrap">
         {prettyPayload(node.payload)}
       </pre>
     </div>
@@ -379,7 +379,7 @@ function BroadcastRow({
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 flex-wrap items-center gap-1.5">
               <KindChip kind={kind} />
-              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">#{node.id}</code>
+              <code className="rounded bg-muted px-1.5 py-0.5 font-sans text-xs text-muted-foreground">#{node.id}</code>
               <NodeStateBadge node={node} />
               {node.priority > 0 && (kind === "goal" || kind === "intent") && (
                 <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">P{node.priority}</span>
@@ -399,7 +399,7 @@ function BroadcastRow({
           <div className="mt-2 ml-5 flex flex-col gap-3 rounded-md border bg-muted/30 p-3">
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
               <span>
-                노드 <code className="font-mono">#{node.id}</code>
+                노드 <code className="font-sans">#{node.id}</code>
               </span>
               <span>유형 {meta.label}</span>
               <span>출처 {node.origin || "system"}</span>
@@ -420,7 +420,7 @@ function BroadcastRow({
             )}
             <div>
               <div className="mb-1.5 text-xs font-medium text-muted-foreground">payload</div>
-              <pre className="max-h-64 overflow-auto rounded-md border bg-background p-3 font-mono text-xs whitespace-pre-wrap">
+              <pre className="max-h-64 overflow-auto rounded-md border bg-background p-3 font-sans text-xs whitespace-pre-wrap">
                 {prettyPayload(node.payload)}
               </pre>
             </div>

@@ -937,7 +937,7 @@ export default function TasksPage() {
                       label="ID"
                       activeField={sortField}
                       direction={sortDirection}
-                      className="font-mono"
+                      className="font-sans"
                       onSort={sortTasksBy}
                     />
                     <TableHead>이름</TableHead>
@@ -1188,7 +1188,7 @@ const TaskRow = React.memo(function TaskRow({
         />
       </TableCell>
       <TableCell>
-        <code className="bg-muted rounded px-1.5 py-0.5 font-mono text-xs">{task.id}</code>
+        <code className="bg-muted rounded px-1.5 py-0.5 font-sans text-xs">{task.id}</code>
       </TableCell>
       <TableCell className="font-medium">
         <div className="flex max-w-xs items-center gap-2">
@@ -2339,7 +2339,7 @@ function BulkDeleteTasksDialog({
         </AlertDialogHeader>
         <div className="text-muted-foreground flex flex-wrap gap-1 text-xs">
           {ids.slice(0, 30).map((id) => (
-            <code key={id} className="bg-muted rounded px-1.5 py-0.5 font-mono">
+            <code key={id} className="bg-muted rounded px-1.5 py-0.5 font-sans">
               #{id}
             </code>
           ))}

@@ -93,7 +93,7 @@ function MethodBadge({ method }: { method: string }) {
   return (
     <span
       className={cn(
-        "inline-block rounded px-1.5 py-0.5 font-mono font-semibold text-[10px] leading-none",
+        "inline-block rounded px-1.5 py-0.5 font-sans font-semibold text-[10px] leading-none",
         METHOD_COLOR[normalized] ?? "bg-muted text-muted-foreground",
       )}
     >
@@ -123,7 +123,7 @@ function Chips({ items, mono }: { items: string[]; mono?: boolean }) {
   return (
     <div className="flex flex-wrap gap-1">
       {clean.map((item) => (
-        <Badge key={item} variant="outline" className={cn(mono && "font-mono")}>
+        <Badge key={item} variant="outline" className={cn(mono && "font-sans")}>
           {item}
         </Badge>
       ))}
@@ -146,7 +146,7 @@ function SourceCell({ asset }: { asset: Asset }) {
           <span className="font-medium">{taskAssetSourceLabel(source)}</span>
           <span className="[overflow-wrap:anywhere]">{summary}</span>
           {asset.task_source_node_id ? (
-            <span className="font-mono opacity-80">소스 노드 #{asset.task_source_node_id}</span>
+            <span className="font-sans opacity-80">소스 노드 #{asset.task_source_node_id}</span>
           ) : null}
         </div>
       </TooltipContent>
@@ -509,7 +509,7 @@ export function AssetsTab({ taskId }: { taskId: string }) {
           <AssetCard cols={["도메인", "ICP 등록", "소스", "작업"]} {...commonCardProps}>
             {rows.map((asset) => (
               <TableRow key={asset.id}>
-                <TableCell className="font-medium font-mono text-xs">{asset.domain}</TableCell>
+                <TableCell className="font-medium font-sans text-xs">{asset.domain}</TableCell>
                 <TableCell className="text-xs">{asset.icp || "—"}</TableCell>
                 <TableCell>
                   <SourceCell asset={asset} />
@@ -524,8 +524,8 @@ export function AssetsTab({ taskId }: { taskId: string }) {
           <AssetCard cols={["IP", "C 대역", "연결 도메인", "열린 포트", "소스", "작업"]} {...commonCardProps}>
             {rows.map((asset) => (
               <TableRow key={asset.id}>
-                <TableCell className="font-medium font-mono text-xs">{asset.ip}</TableCell>
-                <TableCell className="font-mono text-xs">{asset.c_segment || "—"}</TableCell>
+                <TableCell className="font-medium font-sans text-xs">{asset.ip}</TableCell>
+                <TableCell className="font-sans text-xs">{asset.c_segment || "—"}</TableCell>
                 <TableCell>
                   <Chips items={asset.bound_domains ?? []} mono />
                 </TableCell>
@@ -550,10 +550,10 @@ export function AssetsTab({ taskId }: { taskId: string }) {
           <AssetCard cols={["도메인", "루트 도메인", "해석 유형", "해석 값", "소스", "작업"]} {...commonCardProps}>
             {rows.map((asset) => (
               <TableRow key={asset.id}>
-                <TableCell className="font-medium font-mono text-xs">{asset.domain}</TableCell>
-                <TableCell className="font-mono text-xs">{asset.root_domain || "—"}</TableCell>
+                <TableCell className="font-medium font-sans text-xs">{asset.domain}</TableCell>
+                <TableCell className="font-sans text-xs">{asset.root_domain || "—"}</TableCell>
                 <TableCell className="text-xs">{asset.record_type || "—"}</TableCell>
-                <TableCell className="max-w-xs truncate font-mono text-xs">
+                <TableCell className="max-w-xs truncate font-sans text-xs">
                   {(Array.isArray(asset.record_value) ? asset.record_value.join(", ") : asset.record_value) || "—"}
                 </TableCell>
                 <TableCell>
@@ -570,7 +570,7 @@ export function AssetsTab({ taskId }: { taskId: string }) {
             {rows.map((asset) => (
               <TableRow key={asset.id}>
                 <TableCell className="max-w-48 truncate font-medium text-xs">{asset.app_name || "—"}</TableCell>
-                <TableCell className="max-w-xs truncate font-mono text-xs" title={asset.url}>
+                <TableCell className="max-w-xs truncate font-sans text-xs" title={asset.url}>
                   {asset.url || "—"}
                 </TableCell>
                 <TableCell className="text-xs">{asset.category || "—"}</TableCell>
@@ -599,13 +599,13 @@ export function AssetsTab({ taskId }: { taskId: string }) {
                 : asset.service_name || [asset.ip || asset.domain, asset.port].filter(Boolean).join(":");
               return (
                 <TableRow key={asset.id}>
-                  <TableCell className="max-w-xs truncate font-mono text-xs" title={address}>
+                  <TableCell className="max-w-xs truncate font-sans text-xs" title={address}>
                     {address || "—"}
                   </TableCell>
                   <TableCell>
                     {asset.status_code != null ? (
                       <span
-                        className={cn("font-mono font-semibold text-xs tabular-nums", statusTone(asset.status_code))}
+                        className={cn("font-sans font-semibold text-xs tabular-nums", statusTone(asset.status_code))}
                       >
                         {asset.status_code}
                       </span>
@@ -630,7 +630,7 @@ export function AssetsTab({ taskId }: { taskId: string }) {
                             className="inline-flex items-center gap-1 text-[11px]"
                           >
                             <KeyRoundIcon className="size-3 text-muted-foreground" />
-                            <span className="font-mono">{item.type || item.username || "인증"}</span>
+                            <span className="font-sans">{item.type || item.username || "인증"}</span>
                           </span>
                         );
                       })
@@ -653,7 +653,7 @@ export function AssetsTab({ taskId }: { taskId: string }) {
                 <TableCell className="w-16">
                   <MethodBadge method={asset.method || ""} />
                 </TableCell>
-                <TableCell className="max-w-sm truncate font-mono text-xs" title={asset.url}>
+                <TableCell className="max-w-sm truncate font-sans text-xs" title={asset.url}>
                   {asset.url || "—"}
                 </TableCell>
                 <TableCell>

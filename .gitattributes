@@ -1,2 +1,4 @@
 *.bat text eol=crlf
 *.sh  text eol=lf
+# 공식 OFL 원문의 바이트와 줄 끝 공백을 그대로 보존한다.
+web/src/lib/fonts/files/OFL-Pretendard.txt -text -whitespace

@@ -67,7 +67,7 @@ function AgentGridCard({
         <div className="flex flex-wrap items-center gap-2">
           <Bot className="text-muted-foreground size-4" />
           <span className="text-sm font-medium">{agent.name}</span>
-          <span className="text-muted-foreground font-mono text-xs">{agent.key}</span>
+          <span className="text-muted-foreground font-sans text-xs">{agent.key}</span>
           {agent.builtin ? (
             <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
               기본 제공
@@ -170,7 +170,7 @@ function CreateAgentDialog({ onCreated }: { onCreated: (key: string) => void }) 
               placeholder="예: research_helper"
               value={key}
               onChange={(e) => setKey(e.target.value)}
-              className="font-mono"
+              className="font-sans"
             />
             {key.length > 0 && !keyOk && (
               <span className="text-destructive text-xs">소문자로 시작하며 소문자/숫자/밑줄만 사용</span>
@@ -264,7 +264,7 @@ export default function AgentsPage() {
               <SheetHeader className="px-4">
                 <SheetTitle className="flex items-center gap-2">
                   {editing.name}
-                  <span className="text-muted-foreground font-mono text-xs">{editing.key}</span>
+                  <span className="text-muted-foreground font-sans text-xs">{editing.key}</span>
                   {!editing.builtin && (
                     <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
                       사용자 정의

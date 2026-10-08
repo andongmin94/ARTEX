@@ -272,7 +272,7 @@ export default function MCPPage() {
               <Label htmlFor="m-cmd">명령</Label>
               <Input
                 id="m-cmd"
-                className="font-mono"
+                className="font-sans"
                 placeholder="npx"
                 value={form.command}
                 onChange={(e) => setF({ command: e.target.value })}
@@ -282,7 +282,7 @@ export default function MCPPage() {
               <Label htmlFor="m-args">매개변수(공백 구분)</Label>
               <Input
                 id="m-args"
-                className="font-mono"
+                className="font-sans"
                 placeholder="-y @modelcontextprotocol/server-filesystem /data"
                 value={form.args}
                 onChange={(e) => setF({ args: e.target.value })}
@@ -294,7 +294,7 @@ export default function MCPPage() {
             <Label htmlFor="m-url">원격 URL</Label>
             <Input
               id="m-url"
-              className="font-mono"
+              className="font-sans"
               placeholder="https://mcp.example.com/mcp"
               value={form.url}
               onChange={(e) => setF({ url: e.target.value })}
@@ -316,7 +316,7 @@ export default function MCPPage() {
           </Label>
           <Textarea
             id="m-env"
-            className="font-mono"
+            className="font-sans"
             placeholder={
               form.transport !== "stdio" ? "Authorization=Bearer xxxx" : "API_KEY=xxxx\nFOO=bar"
             }
@@ -345,7 +345,7 @@ export default function MCPPage() {
           <div className="flex flex-col divide-y">
             {tools.map((t) => (
               <div key={t.name} className="py-2.5">
-                <code className="font-mono text-sm">{t.name}</code>
+                <code className="font-sans text-sm">{t.name}</code>
                 {t.description && (
                   <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
                     {t.description}

@@ -228,7 +228,7 @@ export default function AssetInterceptPage() {
                       <KindBadge kind={rule.kind} />
                     </TableCell>
                     <TableCell className="max-w-[280px]">
-                      <code className="block truncate rounded bg-muted px-1.5 py-0.5 text-xs font-mono">
+                      <code className="block truncate rounded bg-muted px-1.5 py-0.5 text-xs font-sans">
                         {rule.pattern}
                       </code>
                     </TableCell>

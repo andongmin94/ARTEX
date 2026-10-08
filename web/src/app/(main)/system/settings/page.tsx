@@ -623,7 +623,7 @@ export default function SystemSettingsPage() {
           <CardContent className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
               <Input
-                className="font-mono text-sm"
+                className="font-sans text-sm"
                 placeholder="/usr/bin/python3(비워두면 자동 탐색)"
                 value={pyInterp}
                 disabled={!loaded || saving}
@@ -655,7 +655,7 @@ export default function SystemSettingsPage() {
               <Input
                 type="number"
                 min={1}
-                className="w-32 font-mono text-sm"
+                className="w-32 font-sans text-sm"
                 placeholder="3"
                 value={workers}
                 disabled={!loaded || savingWorkers}

@@ -718,7 +718,7 @@ export default function DashboardPage() {
                     <div key={label}>
                       <div className="mb-1 flex items-center justify-between text-[10px]">
                         <span className="text-muted-foreground">{label}</span>
-                        <span className={cn("font-mono font-semibold tabular-nums", text)}>{fmtTokens(value)}</span>
+                        <span className={cn("font-sans font-semibold tabular-nums", text)}>{fmtTokens(value)}</span>
                       </div>
                       <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                         <div
@@ -828,7 +828,7 @@ export default function DashboardPage() {
                               {(dailyTrendConfig as Record<string, { label: string }>)[String(name)]?.label ??
                                 String(name)}
                             </span>
-                            <span className="font-mono font-semibold tabular-nums">{fmtTokens(Number(value))}</span>
+                            <span className="font-sans font-semibold tabular-nums">{fmtTokens(Number(value))}</span>
                           </div>
                         )}
                       />
@@ -886,7 +886,7 @@ export default function DashboardPage() {
                 <div key={a.seq} className="flex gap-2.5 py-2">
                   <span
                     className={cn(
-                      "shrink-0 self-start rounded border px-1.5 py-0.5 font-mono text-[9px]",
+                      "shrink-0 self-start rounded border px-1.5 py-0.5 font-sans text-[9px]",
                       workerBg(a.worker),
                     )}
                   >
@@ -998,7 +998,7 @@ export default function DashboardPage() {
                     <td className="max-w-xs px-4 py-3">
                       <Link href={`/function/tasks/detail?id=${t.id}`} className="group flex flex-col">
                         <span className="truncate font-medium group-hover:underline">{t.description}</span>
-                        <span className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">{t.id}</span>
+                        <span className="mt-0.5 truncate font-sans text-[10px] text-muted-foreground">{t.id}</span>
                       </Link>
                     </td>
                     <td className="px-4 py-3">
@@ -1092,7 +1092,7 @@ export default function DashboardPage() {
                       className={cn("w-full min-h-1 rounded-sm", statusBg(code), "opacity-80")}
                       style={{ height: Math.max(4, (n / trafficMax) * 36) }}
                     />
-                    <span className={cn("text-[9px] font-mono", statusColor(code))}>{code}</span>
+                    <span className={cn("text-[9px] font-sans", statusColor(code))}>{code}</span>
                   </div>
                 ))}
               </div>
@@ -1104,7 +1104,7 @@ export default function DashboardPage() {
                     <div key={e.id} className="flex items-center gap-1.5 text-[10px]">
                       <span
                         className={cn(
-                          "shrink-0 rounded border px-1 py-0 font-mono text-[9px]",
+                          "shrink-0 rounded border px-1 py-0 font-sans text-[9px]",
                           e.method === "GET"
                             ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
                             : "border-blue-500/30 bg-blue-500/10 text-blue-400",
@@ -1116,7 +1116,7 @@ export default function DashboardPage() {
                         {e.host}
                         {e.url.replace(/^https?:\/\/[^/]+/, "").substring(0, 30)}
                       </span>
-                      <span className={cn("shrink-0 font-mono text-[9px]", statusColor(e.status))}>{e.status}</span>
+                      <span className={cn("shrink-0 font-sans text-[9px]", statusColor(e.status))}>{e.status}</span>
                     </div>
                   ))}
                 </div>
@@ -1163,7 +1163,7 @@ export default function DashboardPage() {
             {activeProfile && (
               <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-3 py-2">
                 <div className="text-[10px] text-muted-foreground">활성 모델</div>
-                <span className="font-mono text-[10px]">{activeProfile.model}</span>
+                <span className="font-sans text-[10px]">{activeProfile.model}</span>
               </div>
             )}
           </div>

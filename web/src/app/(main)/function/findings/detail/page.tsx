@@ -143,7 +143,7 @@ function FindingDetailInner() {
           <h1 className="max-w-md truncate text-sm font-semibold" title={title}>
             {title}
           </h1>
-          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">#{finding.id}</code>
+          <code className="rounded bg-muted px-1.5 py-0.5 font-sans text-xs text-muted-foreground">#{finding.id}</code>
           <Separator orientation="vertical" className="mx-1 h-4" />
           <StatusBadge domain="severity" value={finding.severity} dot />
           <StatusBadge domain="finding" value={finding.status} dot />
@@ -179,7 +179,7 @@ function FindingDetailInner() {
                 </CardHeader>
                 <CardContent>
                   {finding.evidence ? (
-                    <pre className="max-h-[46vh] overflow-auto rounded-md bg-muted px-3 py-2 font-mono text-xs whitespace-pre-wrap">
+                    <pre className="max-h-[46vh] overflow-auto rounded-md bg-muted px-3 py-2 font-sans text-xs whitespace-pre-wrap">
                       {finding.evidence}
                     </pre>
                   ) : (
@@ -223,7 +223,7 @@ function FindingDetailInner() {
               <CardContent className="divide-y">
                 {/* 취약점 ID */}
                 <FieldRow label="취약점 ID">
-                  <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+                  <code className="rounded bg-muted px-1.5 py-0.5 font-sans text-xs text-muted-foreground">
                     #{finding.id}
                   </code>
                 </FieldRow>
@@ -275,7 +275,7 @@ function FindingDetailInner() {
                 {/* 취약점 유형 */}
                 <FieldRow label="취약점 유형">
                   {finding.vulnclass ? (
-                    <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{finding.vulnclass}</code>
+                    <code className="rounded bg-muted px-1.5 py-0.5 font-sans text-xs">{finding.vulnclass}</code>
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}
@@ -288,7 +288,7 @@ function FindingDetailInner() {
                       {finding.assets.map((a) => (
                         <code
                           key={a.id}
-                          className="max-w-[16rem] truncate rounded bg-muted px-1.5 py-0.5 font-mono text-xs"
+                          className="max-w-[16rem] truncate rounded bg-muted px-1.5 py-0.5 font-sans text-xs"
                           title={`${a.type} · ${a.label}`}
                         >
                           {a.label}

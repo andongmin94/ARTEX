@@ -236,19 +236,19 @@ export default function CommandsPage() {
                       <TableCell className="text-xs text-muted-foreground tabular-nums">
                         {fmtTime(cmd.created_at)}
                       </TableCell>
-                      <TableCell className="text-xs font-mono text-muted-foreground">#{cmd.exploration_id}</TableCell>
+                      <TableCell className="text-xs font-sans text-muted-foreground">#{cmd.exploration_id}</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="text-xs font-mono">
+                        <Badge variant="outline" className="text-xs font-sans">
                           {cmd.worker || "-"}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className="text-xs font-mono">
+                        <Badge variant="secondary" className="text-xs font-sans">
                           {cmd.tool || "-"}
                         </Badge>
                       </TableCell>
                       <TableCell className="max-w-0">
-                        <code className="block truncate font-mono text-xs">
+                        <code className="block truncate font-sans text-xs">
                           {truncate(toolInput(cmd.command), CMD_MAX_LEN)}
                         </code>
                       </TableCell>
@@ -307,7 +307,7 @@ export default function CommandsPage() {
                 <div key={s.tool} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md p-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="truncate font-mono text-xs font-medium">{s.tool}</span>
+                      <span className="truncate font-sans text-xs font-medium">{s.tool}</span>
                       {s.errors > 0 && (
                         <span className="text-[11px] tabular-nums text-red-600 dark:text-red-400">실패 {s.errors}</span>
                       )}
@@ -340,13 +340,13 @@ export default function CommandsPage() {
                 <SheetTitle className="pr-8">도구 실행 상세</SheetTitle>
                 <SheetDescription>{fmtTime(selected.created_at)}</SheetDescription>
                 <div className="flex flex-wrap items-center gap-2 pt-2">
-                  <Badge variant="outline" className="text-xs font-mono">
+                  <Badge variant="outline" className="text-xs font-sans">
                     #{selected.exploration_id}
                   </Badge>
-                  <Badge variant="outline" className="text-xs font-mono">
+                  <Badge variant="outline" className="text-xs font-sans">
                     {selected.worker || "-"}
                   </Badge>
-                  <Badge variant="secondary" className="text-xs font-mono">
+                  <Badge variant="secondary" className="text-xs font-sans">
                     {selected.tool || "-"}
                   </Badge>
                   {selected.is_error ? (
@@ -364,7 +364,7 @@ export default function CommandsPage() {
                 <div className="flex min-h-0 min-w-0 flex-col">
                   <div className="border-b px-5 py-2 text-xs font-medium text-muted-foreground">입력 Input</div>
                   <div className="min-h-0 flex-1 overflow-auto">
-                    <pre className="p-5 font-mono text-xs break-all whitespace-pre-wrap">
+                    <pre className="p-5 font-sans text-xs break-all whitespace-pre-wrap">
                       {toolInput(selected.command)}
                     </pre>
                   </div>
@@ -374,7 +374,7 @@ export default function CommandsPage() {
                   <div className="min-h-0 flex-1 overflow-auto">
                     <pre
                       className={cn(
-                        "p-5 font-mono text-xs break-all whitespace-pre-wrap",
+                        "p-5 font-sans text-xs break-all whitespace-pre-wrap",
                         selected.is_error && "text-red-600 dark:text-red-400",
                       )}
                     >

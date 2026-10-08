@@ -189,7 +189,7 @@ export default function LogsPage() {
             const el = e.currentTarget;
             stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
           }}
-          className="h-[calc(100vh-14rem)] overflow-auto rounded-lg border bg-card p-2 font-mono text-xs leading-relaxed"
+          className="h-[calc(100vh-14rem)] overflow-auto rounded-lg border bg-card p-2 font-sans text-xs leading-relaxed"
         >
           {hasMore && (
             <div className="flex justify-center py-2">

@@ -75,7 +75,7 @@ function statusTone(status: number) {
 }
 
 function MethodBadge({ method }: { method: string }) {
-  return <Badge className="shrink-0 font-mono">{method}</Badge>;
+  return <Badge className="shrink-0 font-sans">{method}</Badge>;
 }
 
 // Older captures may predate Host persistence because net/http keeps Host
@@ -356,7 +356,7 @@ export default function TrafficPage() {
             <RadioTowerIcon className="size-3.5" />
             {traffic?.enabled ? "기록 중" : "비활성화"}
           </span>
-          {traffic?.proxy && <span className="font-mono text-xs text-muted-foreground">{traffic.proxy}</span>}
+          {traffic?.proxy && <span className="font-sans text-xs text-muted-foreground">{traffic.proxy}</span>}
           <span className="text-xs text-muted-foreground">
             총 <span className="tabular-nums">{traffic?.count ?? 0}</span>건
           </span>
@@ -430,7 +430,7 @@ export default function TrafficPage() {
                         )
                       }
                     />
-                    <span className="truncate font-mono">{h.host}</span>
+                    <span className="truncate font-sans">{h.host}</span>
                     <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">{h.count}</span>
                   </label>
                 ))
@@ -690,15 +690,15 @@ export default function TrafficPage() {
                       />
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground tabular-nums">{fmtTime(e.ts)}</TableCell>
-                    <TableCell className="font-mono text-xs">{e.host}</TableCell>
+                    <TableCell className="font-sans text-xs">{e.host}</TableCell>
                     <TableCell>
                       <MethodBadge method={e.method} />
                     </TableCell>
                     <TableCell className="max-w-0">
-                      <span className="block truncate font-mono text-xs">{e.url}</span>
+                      <span className="block truncate font-sans text-xs">{e.url}</span>
                     </TableCell>
                     <TableCell>
-                      <span className={cn("font-mono text-xs font-semibold tabular-nums", statusTone(e.status))}>
+                      <span className={cn("font-sans text-xs font-semibold tabular-nums", statusTone(e.status))}>
                         {e.status}
                       </span>
                     </TableCell>
@@ -733,13 +733,13 @@ export default function TrafficPage() {
               <SheetHeader className="border-b px-5 py-4">
                 <div className="flex items-center gap-2 pr-8">
                   <MethodBadge method={selected.method} />
-                  <Badge variant="secondary" className={cn("font-mono tabular-nums", statusTone(selected.status))}>
+                  <Badge variant="secondary" className={cn("font-sans tabular-nums", statusTone(selected.status))}>
                     {selected.status}
                   </Badge>
                   <span className="ml-auto text-xs text-muted-foreground tabular-nums">{fmtTime(selected.ts)}</span>
                 </div>
-                <SheetTitle className="break-all font-mono">{selected.host}</SheetTitle>
-                <SheetDescription className="break-all font-mono">{selected.url}</SheetDescription>
+                <SheetTitle className="break-all font-sans">{selected.host}</SheetTitle>
+                <SheetDescription className="break-all font-sans">{selected.url}</SheetDescription>
               </SheetHeader>
               <Tabs defaultValue="request" className="min-h-0 flex-1 gap-0">
                 <TabsList className="mx-5 mt-4 grid w-auto grid-cols-2">
@@ -795,7 +795,7 @@ export default function TrafficPage() {
               {deleteMode === "selected" && (
                 <>
                   영구 삭제할 대상: <span className="font-semibold tabular-nums">{selectedHosts.length}</span> 개 대상(
-                  <span className="font-mono">
+                  <span className="font-sans">
                     {selectedHosts.slice(0, 3).join("、")}
                     {selectedHosts.length > 3 ? "…" : ""}
                   </span>
@@ -804,7 +804,7 @@ export default function TrafficPage() {
               )}
               {deleteMode === "filter" && (
                 <>
-                  host에 다음 문자열이 포함된 기록을 영구 삭제합니다: <span className="font-mono font-semibold">{hostQ}</span>{" "}
+                  host에 다음 문자열이 포함된 기록을 영구 삭제합니다: <span className="font-sans font-semibold">{hostQ}</span>{" "}
                   . 해당하는 모든 트래픽 기록(요청/응답 원문 포함)을 삭제하며 되돌릴 수 없습니다.
                 </>
               )}

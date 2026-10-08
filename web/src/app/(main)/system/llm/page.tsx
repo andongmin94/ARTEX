@@ -230,7 +230,7 @@ function PoolSheet({
                       )}
                     >
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span className="w-5 shrink-0 text-center font-mono text-muted-foreground text-xs">
+                        <span className="w-5 shrink-0 text-center font-sans text-muted-foreground text-xs">
                           {order ?? "—"}
                         </span>
                         <span className="font-medium">{m.name}</span>
@@ -262,11 +262,11 @@ function PoolSheet({
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-x-3 pl-7 text-muted-foreground text-xs">
-                        <code className="truncate font-mono">{m.model}</code>
+                        <code className="truncate font-sans">{m.model}</code>
                         {!m.active && <span>우선순위 {m.priority}</span>}
                       </div>
                       {m.last_error && (
-                        <p className="truncate pl-7 font-mono text-muted-foreground text-xs" title={m.last_error}>
+                        <p className="truncate pl-7 font-sans text-muted-foreground text-xs" title={m.last_error}>
                           {m.last_error}
                         </p>
                       )}
@@ -507,7 +507,7 @@ function ProfileSheet({
             <div className="flex gap-2">
               <Input
                 id="p-model"
-                className="font-mono"
+                className="font-sans"
                 placeholder="claude-opus-4-8"
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
@@ -534,7 +534,7 @@ function ProfileSheet({
                       <button
                         key={m}
                         type="button"
-                        className="w-full shrink-0 rounded-md px-2 py-1.5 text-left font-mono text-xs hover:bg-accent hover:text-accent-foreground"
+                        className="w-full shrink-0 rounded-md px-2 py-1.5 text-left font-sans text-xs hover:bg-accent hover:text-accent-foreground"
                         onClick={() => {
                           setModel(m);
                           setModelsOpen(false);
@@ -553,7 +553,7 @@ function ProfileSheet({
             <Label htmlFor="p-base-url">Base URL(선택)</Label>
             <Input
               id="p-base-url"
-              className="font-mono"
+              className="font-sans"
               placeholder="https://api.openai.com/v1"
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
@@ -564,7 +564,7 @@ function ProfileSheet({
             <Label htmlFor="p-proxy">프록시(선택)</Label>
             <Input
               id="p-proxy"
-              className="font-mono"
+              className="font-sans"
               placeholder="socks5://user:pass@127.0.0.1:1080 · http://127.0.0.1:8080"
               value={proxy}
               onChange={(e) => setProxy(e.target.value)}
@@ -579,7 +579,7 @@ function ProfileSheet({
             <Label htmlFor="p-session-header">사용자 정의 세션 헤더(선택)</Label>
             <Input
               id="p-session-header"
-              className="font-mono"
+              className="font-sans"
               placeholder="예: x-session-id(비워두면 전송 안 함)"
               value={sessionHeaderKey}
               onChange={(e) => setSessionHeaderKey(e.target.value)}
@@ -912,7 +912,7 @@ export default function LLMPage() {
                             {h.label}
                           </Badge>
                         </div>
-                        <code className="mt-1 block truncate font-mono text-muted-foreground text-xs">{p.model}</code>
+                        <code className="mt-1 block truncate font-sans text-muted-foreground text-xs">{p.model}</code>
                       </div>
                     </div>
 

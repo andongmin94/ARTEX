@@ -222,7 +222,7 @@ export function FindingsTable({
                       {f.assets.slice(0, 3).map((a) => (
                         <code
                           key={a.id}
-                          className="max-w-full truncate rounded bg-muted px-1.5 py-0.5 font-mono text-xs"
+                          className="max-w-full truncate rounded bg-muted px-1.5 py-0.5 font-sans text-xs"
                           title={`${a.type} · ${a.label}`}
                         >
                           {a.label}
@@ -379,22 +379,22 @@ export function FindingsTable({
                         {f.vulnclass && (
                           <span>
                             · 유형:
-                            <code className="rounded bg-muted px-1.5 py-0.5 font-mono">{f.vulnclass}</code>
+                            <code className="rounded bg-muted px-1.5 py-0.5 font-sans">{f.vulnclass}</code>
                           </span>
                         )}
-                        {f.param_id && <code className="rounded bg-muted px-1.5 py-0.5 font-mono">{f.param_id}</code>}
+                        {f.param_id && <code className="rounded bg-muted px-1.5 py-0.5 font-sans">{f.param_id}</code>}
                         {f.assets && f.assets.length > 0 && (
                           <span className="flex flex-wrap items-center gap-1">
                             · 자산：
                             {f.assets.map((a) => (
-                              <code key={a.id} className="rounded bg-muted px-1.5 py-0.5 font-mono" title={a.type}>
+                              <code key={a.id} className="rounded bg-muted px-1.5 py-0.5 font-sans" title={a.type}>
                                 {a.label}
                               </code>
                             ))}
                           </span>
                         )}
                       </div>
-                      <pre className="overflow-x-auto rounded-md bg-muted px-3 py-2 font-mono text-xs whitespace-pre-wrap">
+                      <pre className="overflow-x-auto rounded-md bg-muted px-3 py-2 font-sans text-xs whitespace-pre-wrap">
                         {f.evidence}
                       </pre>
 

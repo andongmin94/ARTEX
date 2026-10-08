@@ -213,7 +213,7 @@ const TokenMetrics = React.forwardRef<
       {values.map((value, index) => (
         <React.Fragment key={names[index]}>
           <span>{names[index]}</span>
-          <Badge variant="secondary" className="h-5 px-1.5 font-mono tabular-nums">
+          <Badge variant="secondary" className="h-5 px-1.5 font-sans tabular-nums">
             {fmtTokens(value)}
           </Badge>
         </React.Fragment>
@@ -385,7 +385,7 @@ function SessionItem({
       >
         {icon ?? <span className="size-3.5 shrink-0" />}
         {s.intent_id && (
-          <span className="shrink-0 rounded bg-muted px-1 py-0.5 font-mono text-[10px] tabular-nums text-muted-foreground">
+          <span className="shrink-0 rounded bg-muted px-1 py-0.5 font-sans text-[10px] tabular-nums text-muted-foreground">
             #{s.intent_id}
           </span>
         )}
@@ -464,7 +464,7 @@ function WorkerAssetBadge({ assets }: { assets: IntentAsset[] }) {
         <div className="flex flex-col gap-2">
           {displayAssets.map((asset) => (
             <div key={`${asset.intent_id}-${asset.asset_id}`} className="min-w-0">
-              <div className="break-all font-mono text-xs">{asset.label.trim() || `#${asset.asset_id}`}</div>
+              <div className="break-all font-sans text-xs">{asset.label.trim() || `#${asset.asset_id}`}</div>
               <div className="mt-0.5 text-xs text-muted-foreground">
                 {taskAssetTypeLabel(asset.type)} · {taskAssetSourceLabel(asset.source)}
                 {asset.inherited ? ` · 소스 작업 #${asset.source_task_id}` : ""}

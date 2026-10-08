@@ -33,7 +33,7 @@ func htmlTitle(m Message) string {
 // htmlBody 渲染邮件正文 HTML。maxRunes<=0 表示不截断。
 func htmlBody(m Message, maxRunes int) string {
 	var b strings.Builder
-	b.WriteString(`<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;font-size:14px;color:#262626;line-height:1.6;">`)
+	b.WriteString(`<div style="font-family:Pretendard,sans-serif;font-size:14px;color:#262626;line-height:1.6;">`)
 	if m.Batch {
 		b.WriteString(htmlBatchIntro(m))
 		for _, it := range m.Items {

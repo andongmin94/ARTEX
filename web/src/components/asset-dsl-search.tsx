@@ -260,7 +260,7 @@ const KIND_STYLE: Record<string, string> = {
   logic: "text-emerald-500 dark:text-emerald-400",
 };
 
-// AssetDslSearch is the shared DSL search box: a monospace input with a
+// AssetDslSearch is the shared DSL search box: an input with a
 // field/operator/logic autocomplete popover and a status line ("找到 N 条" /
 // error / loading). Used by both the global asset view and the per-task view.
 export function AssetDslSearch({
@@ -348,7 +348,7 @@ export function AssetDslSearch({
           onFocus={() => refresh(query, cursorPos())}
           onClick={() => refresh(query, cursorPos())}
           onBlur={() => setTimeout(() => setOpen(false), 120)}
-          className="h-8 pl-8 font-mono text-xs"
+          className="h-8 pl-8 font-sans text-xs"
         />
         {open && suggestions.length > 0 && (
           <div className="absolute top-full left-0 z-50 mt-1 w-max min-w-full max-w-sm rounded-md border bg-popover py-1 shadow-md">
@@ -366,7 +366,7 @@ export function AssetDslSearch({
                   apply(s);
                 }}
               >
-                <span className={cn("shrink-0 font-mono text-xs font-semibold", KIND_STYLE[s.kind])}>{s.label}</span>
+                <span className={cn("shrink-0 font-sans text-xs font-semibold", KIND_STYLE[s.kind])}>{s.label}</span>
                 <span className="text-xs text-muted-foreground">{s.desc}</span>
               </button>
             ))}

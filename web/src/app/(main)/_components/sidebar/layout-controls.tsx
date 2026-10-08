@@ -7,11 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { type FontKey, fontOptions } from "@/lib/fonts/registry";
 import type { ContentLayout, NavbarStyle, SidebarCollapsible, SidebarVariant } from "@/lib/preferences/layout";
 import {
   applyContentLayout,
-  applyFont,
   applyNavbarStyle,
   applySidebarCollapsible,
   applySidebarVariant,
@@ -36,8 +34,6 @@ export function LayoutControls() {
   const setSidebarVariant = usePreferencesStore((s) => s.setSidebarVariant);
   const collapsible = usePreferencesStore((s) => s.sidebarCollapsible);
   const setSidebarCollapsible = usePreferencesStore((s) => s.setSidebarCollapsible);
-  const font = usePreferencesStore((s) => s.font);
-  const setFont = usePreferencesStore((s) => s.setFont);
 
   const onThemePresetChange = (preset: ThemePreset) => {
     applyThemePreset(preset);
@@ -79,13 +75,6 @@ export function LayoutControls() {
     void persistPreference("sidebar_collapsible", value);
   };
 
-  const onFontChange = (value: FontKey | "") => {
-    if (!value) return;
-    applyFont(value);
-    setFont(value);
-    void persistPreference("font", value);
-  };
-
   const handleRestore = () => {
     onThemePresetChange(PREFERENCE_DEFAULTS.theme_preset);
     onThemeModeChange(PREFERENCE_DEFAULTS.theme_mode);
@@ -93,7 +82,6 @@ export function LayoutControls() {
     onNavbarStyleChange(PREFERENCE_DEFAULTS.navbar_style);
     onSidebarStyleChange(PREFERENCE_DEFAULTS.sidebar_variant);
     onSidebarCollapseModeChange(PREFERENCE_DEFAULTS.sidebar_collapsible);
-    onFontChange(PREFERENCE_DEFAULTS.font);
   };
 
   return (
@@ -128,24 +116,6 @@ export function LayoutControls() {
                           }}
                         />
                         {preset.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="font-medium text-xs">글꼴</Label>
-              <Select value={font} onValueChange={onFontChange}>
-                <SelectTrigger size="sm" className="w-full text-xs">
-                  <SelectValue placeholder="글꼴 선택" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {fontOptions.map((font) => (
-                      <SelectItem key={font.key} className="text-xs" value={font.key}>
-                        {font.label}
                       </SelectItem>
                     ))}
                   </SelectGroup>

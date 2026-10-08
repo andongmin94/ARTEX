@@ -80,7 +80,7 @@ function Row({
             {f.assets.slice(0, 2).map((a) => (
               <code
                 key={a.id}
-                className="max-w-[10rem] truncate rounded bg-muted px-1.5 py-0.5 font-mono text-xs"
+                className="max-w-[10rem] truncate rounded bg-muted px-1.5 py-0.5 font-sans text-xs"
                 title={`${a.type} · ${a.label}`}
               >
                 {a.label}
@@ -128,7 +128,7 @@ function Row({
       {open && (
         <div className="bg-muted/30 px-4 pb-4 pl-11">
           <div className="mb-1 text-xs font-medium text-muted-foreground">증거 / PoC</div>
-          <pre className="overflow-auto rounded-md border bg-background p-3 font-mono text-xs whitespace-pre-wrap">
+          <pre className="overflow-auto rounded-md border bg-background p-3 font-sans text-xs whitespace-pre-wrap">
             {f.evidence}
           </pre>
         </div>

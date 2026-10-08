@@ -38,8 +38,6 @@
   --chart-3: #9a744c;
   --chart-4: #887196;
   --chart-5: #477c79;
-  --font-sans: var(--font-noto-sans-kr);
-  --font-mono: var(--font-geist-mono), var(--font-noto-sans-kr);
 }
 
 .dark {

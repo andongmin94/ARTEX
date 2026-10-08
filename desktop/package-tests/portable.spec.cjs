@@ -13,7 +13,9 @@ test("Windows 실행 패키지의 실제 Go·SQLite·UI 부팅 및 재시작", a
   const bundle = path.resolve(__dirname, `../dist/ARTEX-win32-${process.arch}`);
   const executablePath = path.join(bundle, "ARTEX.exe");
   expect(fs.existsSync(executablePath), "먼저 npm run package를 실행하세요").toBe(true);
-  for (const license of ["LICENSE", "LICENSES.chromium.html", "resources/artex/licenses/ARTEX-LICENSE.txt", "resources/artex/licenses/neobrutal-ui-MIT.txt", "resources/artex/licenses/OFL-NotoSansKR.txt"]) expect(fs.existsSync(path.join(bundle, license)), license).toBe(true);
+  for (const license of ["LICENSE", "LICENSES.chromium.html", "resources/artex/licenses/ARTEX-LICENSE.txt", "resources/artex/licenses/neobrutal-ui-MIT.txt", "resources/artex/licenses/OFL-Pretendard.txt"]) expect(fs.existsSync(path.join(bundle, license)), license).toBe(true);
+  expect(fs.readdirSync(path.join(bundle, "resources/artex/fonts"))).toEqual(["PretendardVariable.woff2"]);
+  expect(fs.existsSync(path.join(bundle, "resources/artex/licenses/OFL-NotoSansKR.txt"))).toBe(false);
   let electron;
   let page;
   async function api(route, method = "GET", body) {
@@ -37,6 +39,7 @@ test("Windows 실행 패키지의 실제 Go·SQLite·UI 부팅 및 재시작", a
     await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
     await expect(page.locator("main")).toBeVisible();
     await expect(page.locator('input[type="password"]')).toHaveCount(0);
+    expect(await page.evaluate(async () => { await document.fonts.ready; return [...document.fonts].map(({ family, status }) => ({ family, status })); })).toEqual([{ family: expect.stringMatching(/pretendard/i), status: "loaded" }]);
     expect(await api("/auth/status")).toEqual({ initialized: false, mode: "desktop" });
     expect(fs.existsSync(path.join(home, "data/artex.sqlite"))).toBe(true);
     const customSkill = path.join(home, "skills", "package-inspection.txt");

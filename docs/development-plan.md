@@ -4,7 +4,36 @@
 UI 기준: **[andongmin94/neobrutal-ui](https://github.com/andongmin94/neobrutal-ui)**. 기존 기능·한국어·화면 흐름을 유지하고 시각·상호작용을 통일한다.
 작업 기준: **main 단일 브랜치**. 최종 갱신: 2026-10-07.
 
-## 현재 상태 — 2026-10-07 비밀번호 없는 Electron 진입
+## 현재 상태 — 2026-10-07 Pretendard 단일 글꼴
+
+사용자 요청으로 한국어·영문·숫자·코드·로그·그래프와 Electron 시작/실패 화면을 로컬 Pretendard Variable 하나로 통일했다.
+미커밋 변경이 없는 main/원격 `6d76903330b63f08c9cf0421c74c127a437759af`에서 시작했다.
+Noto 파일/라이선스·Geist 의존성·폰트 registry/선택 UI/상태/쿠키 적용 경로를 제거했다. 기존 사용자 설정을 삭제하거나 이행하지 않는다.
+`font-mono` 호출을 `font-sans`로 교체하고 code/pre/kbd/samp는 동일 글꼴을 상속한다. G6 canvas는 글꼴 로딩 후 실제 body family로 렌더링한다.
+Mono 색상/테두리/섀도와 기존 비밀번호 없는 진입·업무 API는 유지한다. 알림 HTML의 개별 OS 글꼴 지정도 Pretendard로 교체했다.
+
+공식 v1.3.9의 글꼴과 OFL을 원격 Git blob/로컬 SHA256으로 대조했다. 출처·크기·해시·원저작자와 라이선스는 `docs/ui-design.md`에 기록한다.
+정적 UI와 시작 화면 각각에서 같은 원본 WOFF2 하나를 제공하며 실행 중 CDN이나 다른 글꼴을 요청하지 않는다.
+변경 파일은 웹 글꼴/설정/로더·39개 화면/컴포넌트의 글꼴 클래스·G6 연결·package/lock,
+`desktop/{scripts/build.cjs,src/main.cjs,src/startup.html,tests/desktop.spec.cjs,package-tests/portable.spec.cjs}`·`notify/html.go`·OFL 원문 보존용 `.gitattributes`·PRODUCT/README 두 개/UI 기준/이 계획이다.
+기존 생성 패키지와 검사 증거는 별도 경로에 보존하고, 새 생성 자원에는 사용하지 않는 글꼴을 포함하지 않는다.
+다음 구현 시작점은 M4의 앱 전용 도구 런타임이다. 설치/서명/업데이트·다른 OS 실제 실행·물리 IME/OS DPI 검증은 별도 미완료다.
+
+### 단일 글꼴 단위의 로컬 검증
+
+| 검사 | 실제 결과와 범위 |
+| --- | --- |
+| 원본/생성 자원 | 공식 Git blob·SHA256 일치. OFL 원문의 기존 줄 끝 공백과 LF도 `.gitattributes`로 보존한다. 최종 `web/out` 글꼴은 Pretendard WOFF2 1개이며 시작 화면/패키지 글꼴과 SHA256이 동일하다. Noto 자원·구 라이선스·Geist package/lock/설치 항목과 구 글꼴 선택 경로가 없다. |
+| 정적 검사/빌드 | 타입·한국어·입력·관련 7개 구조 파일 lint·JS 문법·gofmt·diff 검사 통과. 최종 31페이지 정적 export, 지정 Go 1.26.3 embedui와 Windows 실행 패키지 빌드 통과. 전체 Biome formatter 검사는 기존 CRLF 진단으로 미통과이며 관련 없는 자동 서식 변경은 하지 않았다. |
+| 실제 Electron + 일반 Chrome | `npm run test:electron` 3개 통과32.0초·실패0·skip0. 로딩된 font face 1개, 본문/컨트롤/코드의 동일 font family, CDP의 한글 실제 렌더링 글꼴이 custom Pretendard임을 확인했다. 글꼴 선택 UI 부재·시작/실패 화면과 진단 pre의 실제 Pretendard 로딩, 기존 자동 진입/업무/보관/재시작/격리와 21페이지×2모드×2폭·상세10탭·입력 조합·확대·모션 회귀도 통과했다. |
+| 실제 실행 패키지 | `npm run test:package` 1개 통과3.1초·실패0·skip0. 패키지의 폰트 파일/라이선스 1종, 실제 Pretendard 로딩·자동 진입·재시작·스킬/SQLite 보존·API 경계 확인. |
+| 알림 HTML | 실제 `go test -count=1 -timeout 120s ./notify` 통과0.5초. 메일 발송이나 외부 이메일 클라이언트 렌더링 검사는 하지 않았다. |
+
+위 최종 기능/글꼴/빌드 검사에는 실패/skip이 없다. 전체 Go/서버·기존 web unit·race·다른 OS 실행 검사는 반복하지 않았으며 이전 단위 결과와 구분한다.
+스크린샷·임시 DB·진단·trace는 로컬에만 보존한다. Actions 실행/재실행·자동 트리거·원격 artifact·태그·배포는 없다.
+원격 반영 SHA는 완료 보고와 이 단위의 Git 커밋에서 확인한다.
+
+## 이전 단위 — 2026-10-07 비밀번호 없는 Electron 진입
 
 사용자 요청으로 Electron의 비밀번호 설정/로그인 화면을 앱 세션 인증으로 교체했다.
 미커밋 변경이 없는 main/원격 `6c8183f8cf6a4e25697a7718e1b816882c290445`에서 시작했다.
@@ -105,7 +134,7 @@ DB 선택 스위치/SQL 번역기/PG fallback/구 데이터 자동 이전기/임
 
 UI 지침과 최신 지정 원본을 읽었고 원본 SHA b4da2463fe710a77bf464c65125a1a7f40424722가 동일함을 확인했다.
 
-- [x] 공통 Mono 토큰/로컬 한글 글꼴/컨트롤/표/오버레이와 호출부 연결, MIT/OFL/기존 저작권 보존.
+- [x] 공통 Mono 색상 토큰/Pretendard 단일 로컬 글꼴/컨트롤/표/오버레이와 호출부 연결, MIT/OFL/기존 저작권 보존.
 - [ ] 셸/전체 업무 화면의 기본 21개 페이지 ×2모드×2폭 검사는 통과. 모든 데이터·오류·승인 상태의 시각 검수는 미완료.
 - [x] Electron 메인/렌더러 분리, lockfile/Go/정적 UI, 단일 인스턴스/userData/ready/장애/정상 종료.
 - [ ] 앱 세션/Origin/Host/IPC/CSP/탐색·부모 EOF 검사는 통과. OS 강제 kill·자손 정리는 M4와 연결해 추가 검증.

@@ -266,7 +266,7 @@ function InterceptCard({
           <div className="min-w-0 space-y-0.5">
             <div className="flex items-center gap-1.5 font-medium">
               <span className="text-amber-700 dark:text-amber-400">승인 요청</span>
-              <code className="rounded bg-amber-100 dark:bg-amber-900/50 px-1 font-mono text-amber-800 dark:text-amber-300">
+              <code className="rounded bg-amber-100 dark:bg-amber-900/50 px-1 font-sans text-amber-800 dark:text-amber-300">
                 {toolName}
               </code>
               {pendingId && (
@@ -274,7 +274,7 @@ function InterceptCard({
               )}
             </div>
             {inputStr && (
-              <p className="font-mono text-muted-foreground truncate">{inputStr}</p>
+              <p className="font-sans text-muted-foreground truncate">{inputStr}</p>
             )}
           </div>
         </div>
@@ -467,11 +467,11 @@ function ToolBlock({
         <ToolIcon className={"mt-0.5 size-3.5 shrink-0 " + (running ? "text-sky-600 dark:text-sky-400" : statusTone)} />
         {showWorker && <span className={chip(group.worker)}>{group.worker}</span>}
         <span className="shrink-0 font-medium text-sky-600 dark:text-sky-400">{toolName}</span>
-        {cmd && <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground">{cmd}</span>}
+        {cmd && <span className="min-w-0 flex-1 truncate font-sans text-muted-foreground">{cmd}</span>}
         <span className={"ml-auto shrink-0 font-medium " + statusTone}>{statusText}</span>
       </button>
       {open && (
-        <pre className="ml-7 mb-1 max-h-72 overflow-auto whitespace-pre-wrap break-all rounded bg-muted/50 p-2 font-mono text-[11px] leading-relaxed">
+        <pre className="ml-7 mb-1 max-h-72 overflow-auto whitespace-pre-wrap break-all rounded bg-muted/50 p-2 font-sans text-[11px] leading-relaxed">
           {detail ?? "불러오는 중…"}
         </pre>
       )}
@@ -540,7 +540,7 @@ function MessageBlock({
         </span>
       </button>
       {open && (
-        <pre className="ml-7 mb-1 max-h-72 overflow-auto whitespace-pre-wrap break-all rounded bg-muted/50 p-2 font-mono text-[11px] leading-relaxed">
+        <pre className="ml-7 mb-1 max-h-72 overflow-auto whitespace-pre-wrap break-all rounded bg-muted/50 p-2 font-sans text-[11px] leading-relaxed">
           {detail ?? "불러오는 중…"}
         </pre>
       )}

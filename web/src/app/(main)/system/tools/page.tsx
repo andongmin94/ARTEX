@@ -217,7 +217,7 @@ function ToolEditor({
                     onCheckedChange={() => toggleAgent(ag.key)}
                   />
                   {ag.name}
-                  <span className="text-muted-foreground font-mono text-xs">{ag.key}</span>
+                  <span className="text-muted-foreground font-sans text-xs">{ag.key}</span>
                 </label>
               ))}
               {agents.length === 0 && <span className="text-muted-foreground text-xs">(에이전트 없음)</span>}
@@ -235,7 +235,7 @@ function ToolEditor({
         <div className="grid gap-1.5">
           <Label className="text-muted-foreground text-xs">도구 설명(모델에 전송)</Label>
           <Textarea
-            className="font-mono text-xs"
+            className="font-sans text-xs"
             rows={6}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -257,8 +257,8 @@ function ToolEditor({
               }
             >
               <div className="flex flex-wrap items-center gap-2">
-                {r.parentKey && <span className="text-muted-foreground font-mono text-[10px]">↳</span>}
-                <span className="font-mono text-sm">{r.name}</span>
+                {r.parentKey && <span className="text-muted-foreground font-sans text-[10px]">↳</span>}
+                <span className="font-sans text-sm">{r.name}</span>
                 <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
                   {r.type || "?"}
                 </Badge>
@@ -318,7 +318,7 @@ function ToolGridCard({ tool, onClick }: { tool: Tool; onClick: () => void }) {
       className="hover:border-primary/50 hover:bg-muted/40 focus-visible:ring-ring flex flex-col gap-2 rounded-lg border p-4 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-sm font-medium">{tool.key}</span>
+        <span className="font-sans text-sm font-medium">{tool.key}</span>
         {tool.system ? (
           <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
             시스템
@@ -490,7 +490,7 @@ export default function ToolsPage() {
           {selected && (
             <>
               <SheetHeader className="px-4">
-                <SheetTitle className="font-mono">{selected.key}</SheetTitle>
+                <SheetTitle className="font-sans">{selected.key}</SheetTitle>
                 <SheetDescription>설명, 매개변수 기본값, 연결 에이전트 편집</SheetDescription>
               </SheetHeader>
               <ToolEditor
@@ -685,7 +685,7 @@ function CustomToolDialog({
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
           <div className="grid gap-1.5">
             <Label className="text-xs">Key</Label>
-            <Input className="font-mono" placeholder="예: nmap_scan" value={key} disabled={!isNew}
+            <Input className="font-sans" placeholder="예: nmap_scan" value={key} disabled={!isNew}
               onChange={(e) => setKey(e.target.value)} />
           </div>
           <div className="grid gap-1.5">
@@ -712,14 +712,14 @@ function CustomToolDialog({
           {kind === "command" && (
             <div className="grid gap-1.5">
               <Label className="text-xs">명령 템플릿(자리표시자 {"{param}"}, 예: nmap -p {"{ports}"} {"{target}"}）</Label>
-              <Textarea className="font-mono text-xs" rows={2} value={ex.command}
+              <Textarea className="font-sans text-xs" rows={2} value={ex.command}
                 onChange={(e) => setEx({ ...ex, command: e.target.value })} />
             </div>
           )}
           {kind === "script" && (
             <div className="grid gap-1.5">
               <Label className="text-xs">Python 본문(매개변수: stdin JSON / os.environ["TOOL_X"])</Label>
-              <Textarea className="font-mono text-xs" rows={10} value={ex.code}
+              <Textarea className="font-sans text-xs" rows={10} value={ex.code}
                 placeholder={'import json,sys\nargs=json.load(sys.stdin)\nprint(...)'}
                 onChange={(e) => setEx({ ...ex, code: e.target.value })} />
             </div>
@@ -733,22 +733,22 @@ function CustomToolDialog({
                 </div>
                 <div className="grid flex-1 gap-1.5">
                   <Label className="text-xs">URL(사용 가능한 자리표시자: {"{param}"}）</Label>
-                  <Input className="font-mono text-xs" value={ex.url} onChange={(e) => setEx({ ...ex, url: e.target.value })} />
+                  <Input className="font-sans text-xs" value={ex.url} onChange={(e) => setEx({ ...ex, url: e.target.value })} />
                 </div>
               </div>
               <div className="grid gap-1.5">
                 <Label className="text-xs">Headers(JSON, 사용 가능한 자리표시자: {"{param}"}）</Label>
-                <Textarea className="font-mono text-xs" rows={2} value={ex.headers}
+                <Textarea className="font-sans text-xs" rows={2} value={ex.headers}
                   placeholder={'{"Authorization": "Bearer {token}"}'} onChange={(e) => setEx({ ...ex, headers: e.target.value })} />
               </div>
               <div className="grid gap-1.5">
                 <Label className="text-xs">Body(사용 가능한 자리표시자: {"{param}"}）</Label>
-                <Textarea className="font-mono text-xs" rows={2} value={ex.body} onChange={(e) => setEx({ ...ex, body: e.target.value })} />
+                <Textarea className="font-sans text-xs" rows={2} value={ex.body} onChange={(e) => setEx({ ...ex, body: e.target.value })} />
               </div>
               <div className="flex items-center gap-4">
                 <div className="grid gap-1.5">
                   <Label className="text-xs">프록시 URL(비워두면 직접 연결)</Label>
-                  <Input className="font-mono text-xs w-56" value={ex.proxy} onChange={(e) => setEx({ ...ex, proxy: e.target.value })} />
+                  <Input className="font-sans text-xs w-56" value={ex.proxy} onChange={(e) => setEx({ ...ex, proxy: e.target.value })} />
                 </div>
                 <label className="mt-4 flex items-center gap-2 text-sm">
                   <Checkbox checked={ex.use_recording_proxy} onCheckedChange={(v) => setEx({ ...ex, use_recording_proxy: !!v })} />
@@ -772,7 +772,7 @@ function CustomToolDialog({
               <Label className="text-xs">
                 매개변수 JSON Schema{kind === "http" ? "(http 도구 필수, properties 포함)" : "(비워두면 기본 {args} 구조 자동 제공)"}
               </Label>
-              <Textarea className="font-mono text-xs" rows={4} value={schemaText}
+              <Textarea className="font-sans text-xs" rows={4} value={schemaText}
                 placeholder={'{"type":"object","properties":{"target":{"type":"string"}},"required":["target"]}'}
                 onChange={(e) => setSchemaText(e.target.value)} />
             </div>
@@ -784,7 +784,7 @@ function CustomToolDialog({
               {agents.map((a) => (
                 <label key={a.key} className="flex items-center gap-2 text-sm">
                   <Checkbox checked={bound.includes(a.key)} onCheckedChange={() => toggleAgent(a.key)} />
-                  {a.name}<span className="text-muted-foreground font-mono text-xs">{a.key}</span>
+                  {a.name}<span className="text-muted-foreground font-sans text-xs">{a.key}</span>
                 </label>
               ))}
             </div>
@@ -804,7 +804,7 @@ function CustomToolDialog({
           {kind !== "shell" && (
             <div className="grid gap-1.5 rounded-md border p-3">
               <Label className="text-xs font-medium">테스트 실행(현재 입력값 사용, 저장하지 않음)</Label>
-              <Textarea className="font-mono text-xs" rows={2} value={paramsText}
+              <Textarea className="font-sans text-xs" rows={2} value={paramsText}
                 placeholder={"매개변수 JSON 예: {\"target\":\"example.com\"}"}
                 onChange={(e) => setParamsText(e.target.value)} />
               <div>
@@ -815,7 +815,7 @@ function CustomToolDialog({
               {testResult && (
                 <pre
                   className={
-                    "max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-2 font-mono text-xs " +
+                    "max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-2 font-sans text-xs " +
                     (testResult.is_error ? "text-destructive" : "")
                   }
                 >

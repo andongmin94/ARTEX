@@ -38,9 +38,10 @@ collect(ui);
 fs.writeFileSync(path.join(resources, "csp.json"), JSON.stringify([...hashes]));
 fs.cpSync(path.join(root, "skills"), path.join(resources, "skills"), { recursive: true });
 fs.cpSync(path.join(root, "web/licenses"), path.join(resources, "licenses"), { recursive: true });
-fs.copyFileSync(path.join(root, "web/src/lib/fonts/files/OFL-NotoSansKR.txt"), path.join(resources, "licenses/OFL-NotoSansKR.txt"));
+fs.copyFileSync(path.join(root, "web/src/lib/fonts/files/OFL-Pretendard.txt"), path.join(resources, "licenses/OFL-Pretendard.txt"));
 fs.mkdirSync(path.join(resources, "fonts"), { recursive: true });
-fs.copyFileSync(path.join(root, "web/src/lib/fonts/files/NotoSansKR-Variable.ttf"), path.join(resources, "fonts/NotoSansKR-Variable.ttf"));
+// Go 준비 전 시작·오류 화면도 웹 UI와 같은 로컬 글꼴을 사용한다.
+fs.copyFileSync(path.join(root, "web/src/lib/fonts/files/PretendardVariable.woff2"), path.join(resources, "fonts/PretendardVariable.woff2"));
 fs.copyFileSync(path.join(root, "LICENSE"), path.join(resources, "licenses/ARTEX-LICENSE.txt"));
 const go = process.env.ARTEX_GO ?? "go";
 if (process.env.ARTEX_GO && !path.isAbsolute(go)) throw new Error("ARTEX_GO는 개발 도구의 절대 경로여야 합니다");

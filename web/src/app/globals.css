@@ -49,8 +49,8 @@
   --shadow-press: 1px 1px 0 var(--shadow-color);
   --spacing-press-x: 3px;
   --spacing-press-y: 3px;
-  --font-heading: var(--font-sans);
-  --font-sans: var(--font-sans);
+  --font-heading: var(--font-pretendard);
+  --font-sans: var(--font-pretendard);
 }
 
 @layer base {
@@ -60,7 +60,7 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: var(--font-sans), var(--font-noto-sans-kr), sans-serif;
+    font-family: var(--font-pretendard);
     font-weight: var(--base-font-weight);
     word-break: keep-all;
     overflow-wrap: anywhere;
@@ -68,11 +68,8 @@
   html {
     @apply font-sans;
   }
-}
-
-@layer utilities {
-  html[data-font="geistMono"] body {
-    --font-sans: var(--font-geist-mono), var(--font-noto-sans-kr);
+  code, pre, kbd, samp {
+    font-family: inherit;
   }
 }
 

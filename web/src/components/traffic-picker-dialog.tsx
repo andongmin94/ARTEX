@@ -211,7 +211,7 @@ export function TrafficPickerDialog({
                       />
                     </TableCell>
                     <TableCell>
-                      <span className="font-mono text-xs">
+                      <span className="font-sans text-xs">
                         {e.method} {e.url}
                       </span>
                       {alreadyBound.has(e.id) ? <Badge variant="secondary">연결됨</Badge> : null}

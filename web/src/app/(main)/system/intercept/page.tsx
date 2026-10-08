@@ -347,7 +347,7 @@ function JudgeCard() {
                 </Button>
               </div>
               <Textarea
-                className="min-h-[22rem] flex-1 resize-none font-mono text-xs leading-relaxed"
+                className="min-h-[22rem] flex-1 resize-none font-sans text-xs leading-relaxed"
                 value={cfg.prompt}
                 onChange={(e) => patch({ prompt: e.target.value })}
                 placeholder="비워두면 기본 제공 템플릿 사용"
@@ -700,7 +700,7 @@ export default function InterceptPage() {
                 {rules.map((rule) => (
                   <TableRow key={rule.id} className={!rule.enabled ? "opacity-40" : ""}>
                     <TableCell>
-                      <span className="font-mono text-xs tabular-nums">{rule.priority}</span>
+                      <span className="font-sans text-xs tabular-nums">{rule.priority}</span>
                     </TableCell>
                     <TableCell className="font-medium text-sm">{rule.name}</TableCell>
                     <TableCell>
@@ -714,7 +714,7 @@ export default function InterceptPage() {
                       </span>
                     </TableCell>
                     <TableCell className="max-w-[220px]">
-                      <code className="block truncate rounded bg-muted px-1.5 py-0.5 text-xs font-mono">
+                      <code className="block truncate rounded bg-muted px-1.5 py-0.5 text-xs font-sans">
                         {rule.pattern}
                       </code>
                     </TableCell>
@@ -825,7 +825,7 @@ export default function InterceptPage() {
                 <p className="text-xs text-destructive mt-1">{regexErr}</p>
               )}
               {regexWarn && (
-                <p className="text-xs text-amber-600 mt-1">Go RE2 확장 문법(예: <code className="font-mono">(?i)</code> )이 포함되어 브라우저에서 미리 볼 수 없습니다. 제출 후 서버에서 검증합니다</p>
+                <p className="text-xs text-amber-600 mt-1">Go RE2 확장 문법(예: <code className="font-sans">(?i)</code> )이 포함되어 브라우저에서 미리 볼 수 없습니다. 제출 후 서버에서 검증합니다</p>
               )}
             </Field>
 
@@ -955,7 +955,7 @@ export default function InterceptPage() {
                         />
                         <label htmlFor={`scope-${t.key}`} className="flex-1 min-w-0 cursor-pointer">
                           <div className="flex items-center gap-1.5">
-                            <span className="font-mono text-sm">{t.key}</span>
+                            <span className="font-sans text-sm">{t.key}</span>
                             {(t.kind && t.kind !== "builtin") && (
                               <Badge variant="outline" className="px-1 py-0 text-[10px]">{t.kind}</Badge>
                             )}

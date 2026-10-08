@@ -109,6 +109,28 @@ test("실제 Electron 자동 진입·모델 저장·재시작·화면·격리", 
   try {
     await launch();
     await enteredApp();
+    const fontState = await page.evaluate(async () => {
+      await document.fonts.ready;
+      return { faces: [...document.fonts].map(({ family, status }) => ({ family, status })), families: [...new Set([...document.querySelectorAll("body, button, input, textarea, code, pre, kbd, h1, h2, p, span")].map((node) => getComputedStyle(node).fontFamily))] };
+    });
+    expect(fontState.faces).toHaveLength(1);
+    expect(fontState.faces[0]).toMatchObject({ family: expect.stringMatching(/pretendard/i), status: "loaded" });
+    expect(fontState.families).toHaveLength(1);
+    expect(fontState.families[0]).toMatch(/pretendard/i);
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("DOM.enable");
+    await cdp.send("CSS.enable");
+    const { root } = await cdp.send("DOM.getDocument");
+    const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: '[data-slot="sidebar-footer"] button span.text-xs' });
+    const { fonts } = await cdp.send("CSS.getPlatformFontsForNode", { nodeId });
+    expect(fonts).toHaveLength(1);
+    expect(fonts[0]).toMatchObject({ familyName: expect.stringMatching(/Pretendard/), isCustomFont: true });
+    expect(fonts[0].glyphCount).toBeGreaterThan(0);
+    await cdp.detach();
+    await testInfo.attach("rendered-font", { body: JSON.stringify({ ...fontState, platformFonts: fonts }, null, 2), contentType: "application/json" });
+    await page.getByRole("button", { name: "화면 설정", exact: true }).click();
+    await expect(page.getByText("글꼴", { exact: true })).toHaveCount(0);
+    await page.keyboard.press("Escape");
     expect(await api("/auth/status")).toEqual({ initialized: false, mode: "desktop" });
     for (const trigger of [page.locator('[data-slot="sidebar-footer"]').getByRole("button"), page.locator('header [aria-haspopup="menu"]').last()]) {
       await trigger.click();
@@ -335,6 +357,13 @@ test("프록시 포트 충돌은 시작 실패로 표시하고 실제 백엔드�
     const page = await electron.firstWindow();
     await expect.poll(async () => (await page.evaluate(() => window.artexDesktop?.status()).catch(() => null))?.state, { timeout: 40_000 }).toBe("failed");
     await expect(page.getByText("백엔드를 시작할 수 없습니다. 진단 정보를 확인한 뒤 다시 시도하세요.", { exact: true })).toBeVisible();
+    const startupFont = await page.evaluate(async () => {
+      await document.fonts.ready;
+      return { faces: [...document.fonts].map(({ family, status }) => ({ family, status })), body: getComputedStyle(document.body).fontFamily, diagnostics: getComputedStyle(document.querySelector("pre")).fontFamily };
+    });
+    expect(startupFont.faces).toEqual([{ family: "Pretendard", status: "loaded" }]);
+    expect(startupFont.body).toBe(startupFont.diagnostics);
+    expect(startupFont.body).toContain("Pretendard");
     await expect(page.getByRole("button", { name: "다시 시도", exact: true })).toBeEnabled();
     await page.getByText("진단 정보", { exact: true }).click();
     await page.screenshot({ path: testInfo.outputPath("proxy-conflict.png") });

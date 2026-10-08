@@ -224,7 +224,7 @@ function SkillsOverview({
                 onClick={() => onSelect(s.name)}
                 className="group flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left hover:bg-muted"
               >
-                <span className="w-40 shrink-0 truncate font-mono text-xs" title={s.name}>{s.name}</span>
+                <span className="w-40 shrink-0 truncate font-sans text-xs" title={s.name}>{s.name}</span>
                 <span className="relative h-2 flex-1 overflow-hidden rounded-full bg-muted">
                   <span
                     className="absolute inset-y-0 left-0 rounded-full bg-primary/70"
@@ -255,7 +255,7 @@ function SkillsOverview({
                   onClick={() => onSelect(s.name)}
                   className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-muted"
                 >
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs" title={s.name}>{s.name}</span>
+                  <span className="min-w-0 flex-1 truncate font-sans text-xs" title={s.name}>{s.name}</span>
                   <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{fmtTime(s.last_used)}</span>
                 </button>
               ))}
@@ -280,7 +280,7 @@ function SkillsOverview({
                   onClick={() => onSelect(s.name)}
                   title={s.name}
                 >
-                  <Badge variant="outline" className="max-w-[12rem] cursor-pointer truncate font-mono text-xs font-normal hover:bg-muted">
+                  <Badge variant="outline" className="max-w-[12rem] cursor-pointer truncate font-sans text-xs font-normal hover:bg-muted">
                     {s.name}
                   </Badge>
                 </button>
@@ -607,7 +607,7 @@ export default function SkillsPage() {
         }
         <Input
           ref={inlineRef}
-          className="h-6 flex-1 px-1 py-0 font-mono text-xs"
+          className="h-6 flex-1 px-1 py-0 font-sans text-xs"
           placeholder={creating?.kind === "dir" ? "folder-name" : "filename.py"}
           value={newEntryName}
           onChange={(e) => setNewEntryName(e.target.value)}
@@ -683,7 +683,7 @@ export default function SkillsPage() {
           onClick={() => setSelected({ skill, path: node.path })}
         >
           <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1 truncate font-mono text-xs" title={node.path}>{node.name}</span>
+          <span className="min-w-0 flex-1 truncate font-sans text-xs" title={node.path}>{node.name}</span>
           <span className={cn(
             "absolute inset-y-0 right-1 hidden items-center rounded pl-1 group-hover:flex",
             isSelected ? "bg-accent" : "bg-muted",
@@ -726,7 +726,7 @@ export default function SkillsPage() {
               <div className="space-y-1">
                 {missing.map((m) => (
                   <div key={m.skill} className="flex items-center gap-2 text-sm">
-                    <code className="min-w-0 flex-1 truncate font-mono text-xs" title={m.skill}>{m.skill}</code>
+                    <code className="min-w-0 flex-1 truncate font-sans text-xs" title={m.skill}>{m.skill}</code>
                     <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{m.calls} 회</span>
                     <span className="shrink-0 text-xs text-muted-foreground">{fmtTime(m.last_used)}</span>
                   </div>
@@ -849,7 +849,7 @@ export default function SkillsPage() {
           {selected && selected.path === null && selectedSkill && (
             <div className="max-w-5xl space-y-5">
               <div>
-                <h2 className="font-mono text-base font-semibold">{selectedSkill.name}</h2>
+                <h2 className="font-sans text-base font-semibold">{selectedSkill.name}</h2>
                 {selectedSkill.description && (
                   <p className="mt-1 text-sm text-muted-foreground">{selectedSkill.description}</p>
                 )}
@@ -967,7 +967,7 @@ export default function SkillsPage() {
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <span className="font-medium text-foreground">{selected.skill}</span>
                 <span>/</span>
-                <span className="font-mono">{selected.path}</span>
+                <span className="font-sans">{selected.path}</span>
                 <Button size="sm" className="ml-auto" onClick={saveFile} disabled={!dirty || saving}>
                   {saving ? "저장 중…" : "저장"}
                 </Button>
@@ -976,7 +976,7 @@ export default function SkillsPage() {
                 <p className="text-xs text-muted-foreground">불러오는 중…</p>
               ) : (
                 <Textarea
-                  className="flex-1 resize-none font-mono text-xs"
+                  className="flex-1 resize-none font-sans text-xs"
                   value={fileContent}
                   onChange={(e) => { setFileContent(e.target.value); setDirty(true); }}
                 />
@@ -1068,7 +1068,7 @@ export default function SkillsPage() {
               <div className="flex min-h-0 flex-1 flex-col gap-1.5">
                 <Label htmlFor="sk-inst">본문 <span className="text-muted-foreground text-xs font-normal">(비워두면 기본 구조 자동 생성)</span></Label>
                 <Textarea id="sk-inst"
-                  className="min-h-40 flex-1 resize-none font-mono text-sm leading-relaxed"
+                  className="min-h-40 flex-1 resize-none font-sans text-sm leading-relaxed"
                   placeholder={"## 실행 방법\n\n1. 오류를 먼저 확인합니다.\n2. 블라인드 인젝션 유형을 구분합니다.\n\n스크립트는 scripts/ 디렉터리에 저장합니다."}
                   value={newInst} onChange={(e) => setNewInst(e.target.value)} />
               </div>

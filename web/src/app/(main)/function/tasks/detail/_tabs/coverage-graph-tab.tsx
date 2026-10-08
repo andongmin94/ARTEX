@@ -279,7 +279,7 @@ function RefList({ title, items }: { title: string; items: CoverageAssetRef[] })
             key={`${r.kind}-${r.id}`}
             className="flex flex-wrap items-start gap-2 rounded-md bg-muted/50 px-2 py-1.5 text-xs"
           >
-            <span className="shrink-0 font-mono text-muted-foreground">#{r.id}</span>
+            <span className="shrink-0 font-sans text-muted-foreground">#{r.id}</span>
             {r.state && <span className="shrink-0 text-muted-foreground">{r.state}</span>}
             <span className="min-w-32 flex-1 break-words text-foreground">{r.summary || "—"}</span>
             {r.inherited && r.source_task_id && (
@@ -336,7 +336,7 @@ function AssetSheet({
                 </span>
                 <div className="min-w-0">
                   <SheetTitle className="leading-tight">{meta.label}</SheetTitle>
-                  <span className="text-muted-foreground truncate font-mono text-xs" title={node.label}>
+                  <span className="text-muted-foreground truncate font-sans text-xs" title={node.label}>
                     {node.label}
                   </span>
                 </div>
@@ -363,13 +363,13 @@ function AssetSheet({
                   <DetailRow label="IP">{node.ip}</DetailRow>
                   <DetailRow label="포트">{node.port ? node.port : undefined}</DetailRow>
                   <DetailRow label="URL">
-                    {node.url ? <span className="font-mono text-xs break-all">{node.url}</span> : undefined}
+                    {node.url ? <span className="font-sans text-xs break-all">{node.url}</span> : undefined}
                   </DetailRow>
                   <DetailRow label="제목">{node.page_title}</DetailRow>
                   <DetailRow label="상태 코드">{node.status_code ? node.status_code : undefined}</DetailRow>
                   <DetailRow label="App">{node.app_name}</DetailRow>
                   <DetailRow label="자산 ID">
-                    {node.asset_id ? <span className="font-mono text-xs">{node.asset_id}</span> : undefined}
+                    {node.asset_id ? <span className="font-sans text-xs">{node.asset_id}</span> : undefined}
                   </DetailRow>
                 </section>
                 {refs && (refs.intents.length > 0 || refs.facts.length > 0 || refs.findings.length > 0) && (
@@ -381,7 +381,7 @@ function AssetSheet({
                 )}
                 <section className="border-t pt-3">
                   <h4 className="text-muted-foreground mb-1.5 text-xs font-medium">원본 데이터</h4>
-                  <pre className="bg-muted/50 text-foreground max-w-full overflow-hidden rounded-md border p-3 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap">
+                  <pre className="bg-muted/50 text-foreground max-w-full overflow-hidden rounded-md border p-3 font-sans text-xs leading-relaxed break-all whitespace-pre-wrap">
                     {raw}
                   </pre>
                 </section>
@@ -435,7 +435,7 @@ function FoldSheet({
                     >
                       <Icon className="size-3 text-white" />
                     </span>
-                    <span className="min-w-0 flex-1 truncate font-mono text-xs" title={n.label}>
+                    <span className="min-w-0 flex-1 truncate font-sans text-xs" title={n.label}>
                       {n.label}
                     </span>
                     {n.tested && <span className="size-1.5 shrink-0 rounded-full bg-emerald-500" />}
@@ -537,7 +537,9 @@ function GraphInner({ taskId, coverageEnabled = true }: { taskId: string; covera
     let graph: G6Graph | null = null;
     void (async () => {
       const { Graph } = await import("@antv/g6");
+      await document.fonts.ready;
       if (destroyed || !containerRef.current) return;
+      const labelFontFamily = getComputedStyle(document.body).fontFamily;
       graph = new Graph({
         container: containerRef.current,
         autoResize: true,
@@ -555,6 +557,7 @@ function GraphInner({ taskId, coverageEnabled = true }: { taskId: string; covera
             iconHeight: (d: unknown) => Math.max(12, nd(d).size * 0.55),
             labelText: (d: unknown) => nd(d).lbl,
             labelFontSize: 10,
+            labelFontFamily,
             labelPlacement: "bottom",
             labelFill: "#475569",
             labelBackground: true,

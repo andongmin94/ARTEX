@@ -28,11 +28,11 @@ const components: Components = {
   code: ({ node, className, children, ...rest }) => {
     const block = /language-/.test(className || "");
     return block ? (
-      <code className={"font-mono text-xs " + (className || "")} {...rest}>
+      <code className={"font-sans text-xs " + (className || "")} {...rest}>
         {children}
       </code>
     ) : (
-      <code className="break-all rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]" {...rest}>
+      <code className="break-all rounded bg-muted px-1 py-0.5 font-sans text-[0.85em]" {...rest}>
         {children}
       </code>
     );

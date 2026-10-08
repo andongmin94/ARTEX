@@ -294,7 +294,7 @@ export default function LLMRecordsPage() {
             ) : (
               tasks.map((t) => (
                 <SelectItem key={t.task_id} value={t.task_id}>
-                  <span className="font-mono">#{t.task_id}</span>
+                  <span className="font-sans">#{t.task_id}</span>
                   <span className="ml-2 text-muted-foreground">（{t.count}）</span>
                 </SelectItem>
               ))
@@ -416,11 +416,11 @@ export default function LLMRecordsPage() {
                       <TableCell className="text-xs text-muted-foreground tabular-nums">
                         {fmtTime(rec.ts)}
                       </TableCell>
-                      <TableCell className="text-xs font-mono text-muted-foreground">
+                      <TableCell className="text-xs font-sans text-muted-foreground">
                         {rec.task_id ? `#${rec.task_id}` : "-"}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="text-xs font-mono">
+                        <Badge variant="outline" className="text-xs font-sans">
                           {rec.worker || "-"}
                         </Badge>
                       </TableCell>
@@ -428,7 +428,7 @@ export default function LLMRecordsPage() {
                         <span className="text-xs">{rec.profile_name || "-"}</span>
                       </TableCell>
                       <TableCell>
-                        <span className="text-xs font-mono">{rec.model || "-"}</span>
+                        <span className="text-xs font-sans">{rec.model || "-"}</span>
                       </TableCell>
                       <TableCell>
                         <span className={cn("text-xs", rec.latency_ms > 30000 && "text-amber-500")}>
@@ -460,17 +460,17 @@ export default function LLMRecordsPage() {
           <Card className="flex h-[42%] min-h-0 flex-col overflow-hidden py-0">
             {/* Detail header */}
             <div className="flex items-center gap-2 border-b px-3 py-2">
-              <Badge variant="outline" className="text-xs font-mono">
+              <Badge variant="outline" className="text-xs font-sans">
                 #{selected.id}
               </Badge>
-              <Badge variant="outline" className="text-xs font-mono">
+              <Badge variant="outline" className="text-xs font-sans">
                 {selected.profile_name || "-"}
               </Badge>
-              <Badge variant="outline" className="text-xs font-mono">
+              <Badge variant="outline" className="text-xs font-sans">
                 {selected.model || "-"}
               </Badge>
               {selected.task_id && (
-                <Badge variant="outline" className="text-xs font-mono">
+                <Badge variant="outline" className="text-xs font-sans">
                   작업 #{selected.task_id}
                 </Badge>
               )}
@@ -520,7 +520,7 @@ export default function LLMRecordsPage() {
                       불러오는 중…
                     </div>
                   ) : (
-                    <pre className="p-3 font-mono text-xs break-all whitespace-pre-wrap">
+                    <pre className="p-3 font-sans text-xs break-all whitespace-pre-wrap">
                       {reqText || "(비어 있음)"}
                     </pre>
                   )}
@@ -539,7 +539,7 @@ export default function LLMRecordsPage() {
                     </div>
                   ) : (
                     <pre className={cn(
-                      "p-3 font-mono text-xs break-all whitespace-pre-wrap",
+                      "p-3 font-sans text-xs break-all whitespace-pre-wrap",
                       selected.status !== "ok" && "text-red-600 dark:text-red-400",
                     )}>
                       {respText || "(비어 있음)"}

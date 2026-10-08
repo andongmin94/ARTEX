@@ -17,8 +17,3 @@ export function applySidebarCollapsible(value: string) {
   const root = document.documentElement;
   root.setAttribute("data-sidebar-collapsible", value);
 }
-
-export function applyFont(value: string) {
-  const root = document.documentElement;
-  root.setAttribute("data-font", value);
-}

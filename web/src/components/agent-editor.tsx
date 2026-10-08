@@ -368,7 +368,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
                 <Tooltip key={v.name}>
                   <TooltipTrigger asChild>
                     <button type="button" onClick={() => setPrompt((p) => `${p}{{.${v.name}}}`)}
-                      className="hover:bg-muted inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-1 font-mono text-xs">
+                      className="hover:bg-muted inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-1 font-sans text-xs">
                       {`{{.${v.name}}}`}
                       <Badge variant="secondary" className="px-1 py-0 text-[10px]">{v.source}</Badge>
                     </button>
@@ -383,7 +383,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
             </div>
           </div>
 
-          <Textarea className="font-mono text-xs" rows={16} value={prompt}
+          <Textarea className="font-sans text-xs" rows={16} value={prompt}
             placeholder="비워두면 기본 제공 프롬프트를 사용합니다" onChange={(e) => setPrompt(e.target.value)} />
 
           <div className="flex flex-wrap gap-2">
@@ -418,7 +418,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
             <ul className="grid gap-1">
               {versions.map((ver, i) => (
                 <li key={ver.version} className="flex items-center gap-2 rounded-md px-1 py-0.5 text-xs hover:bg-muted/50">
-                  <span className="font-mono shrink-0">v{ver.version}</span>
+                  <span className="font-sans shrink-0">v{ver.version}</span>
                   {i === 0 && <Badge variant="secondary" className="px-1.5 py-0 shrink-0">현재</Badge>}
                   <span className="text-muted-foreground truncate flex-1">{ver.note}</span>
                   {ver.ts && (
@@ -461,7 +461,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
                   )}
                 </DialogDescription>
               </DialogHeader>
-              <pre className="bg-muted max-h-[55vh] overflow-auto whitespace-pre-wrap rounded-md p-3 font-mono text-xs">
+              <pre className="bg-muted max-h-[55vh] overflow-auto whitespace-pre-wrap rounded-md p-3 font-sans text-xs">
                 {viewVer?.template_text || "(비어 있음)"}
               </pre>
               <div className="flex gap-2 justify-end">
@@ -514,7 +514,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
             )}
           </div>
           <Textarea
-            className="font-mono text-xs"
+            className="font-sans text-xs"
             rows={10}
             value={wrapup}
             placeholder={wrapupDefault || "비워두면 기본 마무리 프롬프트를 사용합니다"}
@@ -558,7 +558,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
                 )}
               </div>
               <Textarea
-                className="font-mono text-xs"
+                className="font-sans text-xs"
                 rows={10}
                 value={ttWrapup}
                 placeholder={ttWrapupDefault || "비워두면 기본 작업 시간 초과 마무리 프롬프트를 사용합니다"}
@@ -610,7 +610,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
           {skills.map((s) => (
             <label key={s.name} className="flex items-center gap-2 rounded-md border p-2 text-sm">
               <Checkbox checked={skillVisible.includes(s.name)} onCheckedChange={() => toggleSkill(s.name)} />
-              <span className="font-mono text-xs">{s.name}</span>
+              <span className="font-sans text-xs">{s.name}</span>
               {s.description && <span className="text-muted-foreground ml-auto truncate text-xs">{s.description}</span>}
             </label>
           ))}
@@ -638,7 +638,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
                   disabled={gated}
                   onCheckedChange={() => toggleTool(t)}
                 />
-                <span className="font-mono text-xs">{t.key}</span>
+                <span className="font-sans text-xs">{t.key}</span>
                 {isTraffic && (
                   <Badge variant="secondary" className="px-1 py-0 text-[9px]">트래픽</Badge>
                 )}
@@ -706,7 +706,7 @@ function computeDiff(oldText: string, newText: string): DiffLine[] {
 function DiffView({ oldText, newText }: { oldText: string; newText: string }) {
   const lines = React.useMemo(() => computeDiff(oldText, newText), [oldText, newText]);
   return (
-    <pre className="max-h-[60vh] overflow-auto rounded-md border bg-muted/30 p-2 font-mono text-xs leading-5">
+    <pre className="max-h-[60vh] overflow-auto rounded-md border bg-muted/30 p-2 font-sans text-xs leading-5">
       {lines.map((l, idx) => (
         <div
           key={idx}

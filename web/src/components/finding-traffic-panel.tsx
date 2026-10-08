@@ -148,7 +148,7 @@ export function FindingTrafficPanel({
                   className="h-auto justify-start p-0 text-left whitespace-normal"
                   onClick={() => setPreview(b.id)}
                 >
-                  <span className="break-all font-mono text-xs">{b.snapshot.url}</span>
+                  <span className="break-all font-sans text-xs">{b.snapshot.url}</span>
                 </Button>
                 {b.note ? <p className="text-sm whitespace-pre-wrap">{b.note}</p> : null}
                 <div className="flex flex-wrap items-center justify-between gap-2">

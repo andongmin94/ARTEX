@@ -243,10 +243,10 @@ export default function WorkspacePage() {
                       ) : (
                         <FileIcon className="text-muted-foreground size-4 shrink-0" />
                       )}
-                      <span className="truncate font-mono text-sm">{e.name}</span>
+                      <span className="truncate font-sans text-sm">{e.name}</span>
                     </button>
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-right font-mono text-xs">
+                  <TableCell className="text-muted-foreground text-right font-sans text-xs">
                     {e.dir ? "—" : fmtSize(e.size)}
                   </TableCell>
                   <TableCell className="text-muted-foreground text-xs">{fmtTime(e.mtime)}</TableCell>
@@ -287,7 +287,7 @@ export default function WorkspacePage() {
           {edit && (
             <>
               <SheetHeader className="border-b p-4">
-                <SheetTitle className="flex items-center gap-2 truncate font-mono text-sm">
+                <SheetTitle className="flex items-center gap-2 truncate font-sans text-sm">
                   <FileIcon className="size-4 shrink-0" />
                   <span className="truncate" title={edit.file.path}>
                     {edit.file.path}
@@ -312,7 +312,7 @@ export default function WorkspacePage() {
                       value={edit.content}
                       onChange={(ev) => setEdit({ ...edit, content: ev.target.value, dirty: true })}
                       spellCheck={false}
-                      className="h-full min-h-[50vh] resize-none font-mono text-xs leading-relaxed"
+                      className="h-full min-h-[50vh] resize-none font-sans text-xs leading-relaxed"
                     />
                   </div>
                   <SheetFooter className="flex-row items-center justify-between border-t p-3">

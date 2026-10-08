@@ -784,7 +784,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
                   <tbody>
                     {modelTokens.map((m) => (
                       <tr key={m.model} className="border-b last:border-0">
-                        <td className="max-w-[16rem] truncate py-1.5 pr-3 font-mono text-xs" title={m.model}>
+                        <td className="max-w-[16rem] truncate py-1.5 pr-3 font-sans text-xs" title={m.model}>
                           {m.model}
                         </td>
                         <td className="py-1.5 pr-3 text-right tabular-nums">{m.calls}</td>
@@ -869,7 +869,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
                   <span className="bg-muted text-muted-foreground shrink-0 rounded px-1.5 py-0.5 text-xs">
                     {SCOPE_KIND_LABELS[row.kind]}
                   </span>
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs">{scopeValue(row)}</span>
+                  <span className="min-w-0 flex-1 truncate font-sans text-xs">{scopeValue(row)}</span>
                   <span className="text-muted-foreground shrink-0 text-xs">{SCOPE_SOURCE_LABELS[row.source]}</span>
                   {row.task_id.toString() === taskId ? (
                     <Button

@@ -21,6 +21,9 @@ Go가 PATH에 없으면 개발 빌드에서 `$env:ARTEX_GO='<지정 Go 실행 �
 준비가 끝나면 비밀번호 입력 없이 작업 화면으로 바로 진입한다. 기존 비밀번호 설정과 사용자 데이터는 유지한다.
 기록 프록시는 `127.0.0.1:8788`을 사용한다. 포트 충돌은 시작 실패로 표시하며 해소 후 다시 시도할 수 있다.
 
+UI의 Mono는 색상 테마 이름이며 글꼴은 Pretendard Variable 하나를 사용한다. 웹 UI의 글꼴은 Go에 내장하고, Go 준비 전 시작·오류 화면은 동일한 `PretendardVariable.woff2`를 `resources/fonts`에서 읽는다. 코드·진단 로그도 같은 글꼴을 사용하며 글꼴 선택 설정은 제공하지 않는다.
+빌드에는 로컬 글꼴과 `resources/licenses/OFL-Pretendard.txt`의 저작권·SIL Open Font License를 포함한다. 실행 중 원격 글꼴을 요청하지 않는다.
+
 렌더러는 sandbox/contextIsolation을 유지하고 Node·파일·명령 API를 제공하지 않는다.
 IPC는 메인 프레임과 URL을 검증한 뒤 상태 조회·실패 재시도·앱 종료만 허용한다.
 Go ready PID/loopback URL을 검증하며 외부 탐색/새 창/권한은 차단한다.

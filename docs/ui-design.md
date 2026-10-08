@@ -20,7 +20,8 @@ UI 구현을 시작할 때 원본 최신 ref와 위 기준의 차이를 확인�
 
 ## 채택할 시각·상호작용 규칙
 
-원본 토큰의 출발점은 **Mono, 2px 컨트롤 테두리, 4px/4px 무블러 섀도, 5px 기본 모서리, 본문 500/제목 700**이다.
+원본 토큰의 출발점은 **Mono 색상 테마, 2px 컨트롤 테두리, 4px/4px 무블러 섀도, 5px 기본 모서리, 본문 500/제목 700**이다.
+글꼴은 사용자 요청에 따라 **Pretendard Variable 하나**를 로컬 제공한다. Mono는 색상 테마 이름이며 고정폭 글꼴을 뜻하지 않는다.
 버튼 원본은 140ms 전환으로 hover 때 섀도를 줄이고 active 때 눌림 위치로 이동한다.
 이를 공통 토큰/컴포넌트에서 정의하고 화면마다 다른 임의 값으로 흉내 내지 않는다.
 
@@ -28,8 +29,8 @@ ARTEX 적용 시에는 다음을 함께 지킨다.
 
 - 배경/본문은 차분하게 유지하고 강한 색은 주요 액션·상태·심각도에 의미 있게 사용한다. 색만으로 상태를 표현하지 않는다.
 - 카드, 폼, 탭, 표 도구막대, 사이드바의 간격/정렬/선 두께/선택 상태를 통일한다. 표의 모든 셀과 중첩 컨테이너에 굵은 테두리·섀도를 중복 적용하지 않는다.
-- 표/로그/요청·응답/코드처럼 밀도가 높은 영역은 행 높이, 구분선, 고정폭 서체와 스크롤을 별도로 설계한다. 디자인 때문에 정보나 기능을 삭제하지 않는다.
-- 한글/영문/숫자는 동일한 역할의 글꼴 크기·굵기를 사용한다. 한국어 글리프가 포함된 폰트를 로컬 제공하고 OS별 대체 글꼴에서 굵기가 튀지 않는지 확인한다.
+- 표/로그/요청·응답/코드처럼 밀도가 높은 영역도 Pretendard를 사용하며 행 높이, 구분선, 들여쓰기와 스크롤을 설계한다. 디자인 때문에 정보나 기능을 삭제하지 않는다.
+- 한글/영문/숫자는 동일한 역할의 글꼴 크기·굵기를 사용한다. 한국어 글리프가 포함된 Pretendard를 로컬 제공하고 실제 로딩과 굵기를 확인한다. 글꼴 선택 설정은 제공하지 않는다.
 - 클릭 가능한 사이드바·탭·정렬·접기 항목에는 알맞은 커서와 hover/pressed/focus를 제공한다. 비활성 컨트롤과 단순 정보 카드는 눌리는 것처럼 표현하지 않는다.
 - hover 이동 때문에 인접 컨트롤·팝오버가 겹치거나 표의 열 정렬이 변하지 않게 한다. `prefers-reduced-motion`과 키보드 포커스를 유지한다.
 - 라이트/다크에서 입력, 오류, 메뉴, 다이얼로그, 비활성 상태까지 검수한다. 기존 muted 등의 의미가 원본 토큰과 다를 수 있으므로 전역 CSS만 덮어쓰지 않는다.
@@ -74,7 +75,16 @@ Mono 라이트/다크 역할 색상, 2px 테두리·4px 하드 섀도·5px 모�
 기존 Radix/native primitive의 API·포커스·폼·오버레이 동작은 유지하며 원본 Button variants의 시각 규칙을 적용했다.
 외부 런타임 CSS/JS는 주입하지 않는다. 불필요한 shadcn CLI는 제거하고 필요한 MIT CSS만 소스와 저작권을 보존한다.
 
-Noto Sans KR Variable을 로컬 파일로 제공하고 OFL을 포함한다. 고정폭은 기존 로컬 Geist Mono를 사용한다.
+2026-10-07 사용자 요청으로 웹 UI와 Electron 시작·실패 화면의 글꼴을 로컬 Pretendard Variable 하나로 통일한다. 코드·로그의 별도 서체와 글꼴 선택 설정도 제거한다.
+원본 파일은 `web/src/lib/fonts/files/PretendardVariable.woff2`이며 `OFL-Pretendard.txt`의 저작권과 SIL Open Font License를 앱에 포함한다. 실행 중 원격 글꼴을 요청하지 않는다.
+
+글꼴 출처는 [orioncactus/pretendard 공식 v1.3.9](https://github.com/orioncactus/pretendard/releases/tag/v1.3.9), 확인 ref는 `5c41199ea0024a9e0b2cb31735265056e5472d76`이다. 원본 경로는 `packages/pretendard/dist/web/variable/woff2/PretendardVariable.woff2`이며 파일을 변형하지 않고 포함한다. 원저자 Kil Hyung-jin, Reserved Font Name Pretendard와 SIL Open Font License 1.1 전문을 보존한다.
+
+| 포함 파일 | 크기 | 확인한 SHA256 |
+| --- | --- | --- |
+| `PretendardVariable.woff2` | 2,057,688바이트 | `9599f12fd42fc0bce1cd50b47a0c022e108d7aa64dd0d1bb0ed44f3282d900b4` |
+| `OFL-Pretendard.txt` | 4,418바이트 | `d31ddd9f2bed32fd7e302a205cf2380ba0de6529152d239ef99cfb6f261bfc04` |
+
 한국어 참조 token·IME 입력, 사이드바 선택 경로·aria-current, 실제 설정의 토스트 테마도 함께 연결했다.
 Playwright는 실제 Electron/Go에서 주요 21개 화면을 라이트/다크·1280/1440으로 열고 캡처한다.
 125/150% Electron zoom 검사는 실제 Windows 디스플레이 배율 검사와 다르다. DOM composition 검사도 OS 네이티브 한글 IME의 완전한 대체가 아니다.

@@ -148,7 +148,7 @@ function CodeBlock({ label, text, truncated = false }: { label: string; text: st
           </Button>
         ) : null}
       </div>
-      <pre className="max-h-80 min-w-0 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted/60 p-3 font-mono text-xs leading-6 [overflow-wrap:anywhere]">
+      <pre className="max-h-80 min-w-0 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted/60 p-3 font-sans text-xs leading-6 [overflow-wrap:anywhere]">
         {text || "기록 없음"}
       </pre>
       {truncated ? <p className="text-muted-foreground text-xs">내용이 잘렸습니다. 위에는 저장된 일부 내용만 표시됩니다.</p> : null}
