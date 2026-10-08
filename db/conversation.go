@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"encoding/json"
 	"time"
 )
 
@@ -21,12 +22,12 @@ type ConvTokenSummary struct {
 // result-row token usage (0 for conversations with no completed run yet).
 func (d *DB) ConversationTokenSummaries() ([]ConvTokenSummary, error) {
 	rows, err := d.Query(`
-SELECT c.llm_profile_id, c.created_at::text,
+SELECT c.llm_profile_id, CAST(c.created_at AS TEXT),
        COALESCE(sum(ca.input_tokens),0), COALESCE(sum(ca.output_tokens),0),
        COALESCE(sum(ca.cache_read_tokens),0), COALESCE(sum(ca.cache_write_tokens),0)
 FROM conversations c
 LEFT JOIN conversation_activities ca ON ca.conversation_id = c.id AND ca.kind = 'result'
-GROUP BY c.id`)
+GROUP BY c.id ORDER BY c.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -88,24 +89,15 @@ func (d *DB) CreateConversation(agentKey, title string, llmProfileID *int64) (*C
 	}
 	defer tx.Rollback()
 
-	// Insert the child without a profile first. The new row is exclusively owned
-	// by this transaction before it takes a profile lock, matching DeleteProfile's
-	// child-row -> profile-row protocol.
-	c, err := scanConv(tx.QueryRow(`
-INSERT INTO conversations(agent_key, title, llm_profile_id) VALUES ($1, $2, NULL)
-RETURNING `+convCols, agentKey, title))
-	if err != nil {
-		return nil, err
-	}
+	// IMMEDIATE protects the profile from deletion until the new reference commits.
 	if err := lockLLMProfileForReference(tx, llmProfileID); err != nil {
 		return nil, err
 	}
-	if llmProfileID != nil {
-		c, err = scanConv(tx.QueryRow(`UPDATE conversations SET llm_profile_id=$2
-WHERE id=$1 RETURNING `+convCols, c.ID, llmProfileID))
-		if err != nil {
-			return nil, err
-		}
+	c, err := scanConv(tx.QueryRow(`
+INSERT INTO conversations(agent_key, title, llm_profile_id) VALUES ($1, $2, $3)
+RETURNING `+convCols, agentKey, title, llmProfileID))
+	if err != nil {
+		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
@@ -122,7 +114,7 @@ func (d *DB) UpdateConversationProfile(id int64, llmProfileID *int64) error {
 	defer tx.Rollback()
 
 	var lockedID int64
-	if err := tx.QueryRow(`SELECT id FROM conversations WHERE id=$1 FOR UPDATE`, id).Scan(&lockedID); err != nil {
+	if err := tx.QueryRow(`SELECT id FROM conversations WHERE id=$1`, id).Scan(&lockedID); err != nil {
 		if err == sql.ErrNoRows {
 			// Preserve the previous UPDATE semantics: an unknown id is a no-op.
 			return tx.Commit()
@@ -172,26 +164,37 @@ func (d *DB) GetConversation(id int64) (*Conversation, error) {
 // UpdateConversation applies a partial title/pin mutation and returns the updated
 // row. Pinning an already-pinned conversation preserves its original pin order.
 func (d *DB) UpdateConversation(id int64, patch ConversationPatch) (*Conversation, error) {
-	c, err := scanConv(d.QueryRow(`UPDATE conversations SET
-	title = CASE WHEN $2::boolean THEN $3 ELSE title END,
+	tx, err := d.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var updatedID int64
+	err = tx.QueryRow(`UPDATE conversations SET
+	title = CASE WHEN $2 THEN $3 ELSE title END,
 	pinned_at = CASE
-		WHEN $4::boolean IS NULL THEN pinned_at
-		WHEN $4::boolean THEN COALESCE(pinned_at, now())
+		WHEN $4 IS NULL THEN pinned_at
+		WHEN $4 THEN COALESCE(pinned_at, strftime('%Y-%m-%d %H:%M:%f','now'))
 		ELSE NULL
 	END
-WHERE id=$1
-RETURNING `+convCols, id, patch.Title != nil, patch.Title, patch.Pinned))
+WHERE id=$1 RETURNING id`, id, patch.Title != nil, patch.Title, patch.Pinned).Scan(&updatedID)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
+	c, err := scanConv(tx.QueryRow(`SELECT `+convCols+` FROM conversations WHERE id=$1`, updatedID))
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
 	return &c, nil
 }
 
-// RenameConversation sets a thread's title. Kept for automatic first-message
-// titles and compatibility with existing callers.
+// RenameConversation sets an automatic first-message title.
 func (d *DB) RenameConversation(id int64, title string) error {
 	_, err := d.UpdateConversation(id, ConversationPatch{Title: &title})
 	return err
@@ -199,7 +202,7 @@ func (d *DB) RenameConversation(id int64, title string) error {
 
 // TouchConversation bumps updated_at so the thread floats to the top of the list.
 func (d *DB) TouchConversation(id int64) error {
-	_, err := d.Exec(`UPDATE conversations SET updated_at=now() WHERE id=$1`, id)
+	_, err := d.Exec(`UPDATE conversations SET updated_at=strftime('%Y-%m-%d %H:%M:%f','now') WHERE id=$1`, id)
 	return err
 }
 
@@ -215,7 +218,12 @@ func (d *DB) DeleteConversations(ids []int64) ([]int64, error) {
 	if len(ids) == 0 {
 		return []int64{}, nil
 	}
-	rows, err := d.Query(`DELETE FROM conversations WHERE id=ANY($1::bigint[]) RETURNING id`, ids)
+	encoded, err := json.Marshal(ids)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := d.Query(`DELETE FROM conversations
+WHERE id IN (SELECT value FROM json_each($1)) RETURNING id`, string(encoded))
 	if err != nil {
 		return nil, err
 	}
