@@ -99,6 +99,8 @@ Go가 공식 OAuth·PKCE 로그인, ID 토큰 검증과 토큰 갱신을 담당�
 구독 연결은 공식 공개 Responses 엔드포인트의 스트리밍·`store:false` 계약을 사용합니다. 모델에 보낸 검토 소스는 외부 모델 입력이므로 실제 비밀번호·개인정보가 없는 복사본을 사용하세요.
 공식 연결 조건과 한도는 [Sign in with ChatGPT 안내](https://developers.openai.com/siwc/quickstart)와 [구독 세션·사용량](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions)을 확인하세요.
 
+2026-10-07 Windows 실제 계정 검증에서 로그인·구독 동의, 모델 목록 조회·활성화, 같은 데이터 홈 재시작 후 연결 유지와 GPT-6-Astra의 `OK` 응답을 확인했습니다. 서버가 `Content-Type`을 생략한 응답도 SSE 본문과 `response.completed`를 검증합니다. JSON·HTML·완료되지 않은 스트림을 성공으로 처리하지 않습니다.
+
 **API 키로 사용하기**
 
 웹 화면의 API 설정을 사용하거나 `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`를 지정할 수 있습니다. 선택 환경 변수는 `ARTEX_LLM_PROVIDER`, `ARTEX_LLM_MODEL`, `ARTEX_LLM_BASE_URL`, `ARTEX_LLM_PROXY`입니다.

@@ -25,7 +25,7 @@ UI의 Mono는 색상 테마 이름이며 글꼴은 Pretendard Variable 하나를
 빌드에는 로컬 글꼴과 `resources/licenses/OFL-Pretendard.txt`의 저작권·SIL Open Font License를 포함한다. 실행 중 원격 글꼴을 요청하지 않는다.
 
 렌더러는 sandbox/contextIsolation을 유지하고 Node·파일·명령 API를 제공하지 않는다.
-IPC는 메인 프레임과 URL을 검증한 뒤 상태 조회·실패 재시도·앱 종료만 허용한다.
+IPC는 메인 프레임과 URL을 검증한 뒤 상태 조회·실패 재시도·앱 종료와 지정된 ChatGPT 로그인·사용량 페이지의 기본 브라우저 열기만 허용한다.
 Go ready PID/loopback URL을 검증하며 외부 탐색/새 창/권한은 차단한다.
 백엔드 시작마다 메인 프로세스가 새 앱 세션 키를 만들고 환경변수로 Go에 전달한다.
 실제 backend origin의 HTTP 요청에만 `X-Artex-Desktop-Session`을 주입한다.

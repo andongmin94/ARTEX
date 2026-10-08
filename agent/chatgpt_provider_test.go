@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Autumn-27/artex/llmrec"
 	"github.com/Autumn-27/norma/llm"
 )
 
@@ -64,7 +65,7 @@ func TestChatGPTWireHistoryAndCompletion(t *testing.T) {
 		if tools[0].(map[string]any)["type"] != "namespace" {
 			t.Error("tools not namespaced")
 		}
-		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Content-Type", "Text/Event-Stream; charset=utf-8")
 		fmt.Fprint(w, "data: {\"type\":\"response.created\"}\n\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"확인\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":13,\"output_tokens\":2,\"input_tokens_details\":{\"cached_tokens\":4}}}}\n\n")
 	})
 	temp := 0.5
@@ -94,6 +95,100 @@ func TestChatGPTStreamRequiresCompleted(t *testing.T) {
 			msg, _, _, err := p.Complete(t.Context(), llm.CompletionRequest{})
 			if err == nil || !strings.Contains(err.Error(), tc.want) || len(msg.Content) != 0 {
 				t.Fatalf("unexpected success/partial result: %+v %v", msg, err)
+			}
+		})
+	}
+}
+
+func TestChatGPTNonSSECapturesBoundedDiagnosticAndRejects(t *testing.T) {
+	for _, tc := range []struct{ name, contentType, body, wantType string }{
+		{"json", "application/json; diagnostic=fixture-oauth-token", `{"status":"completed","output":"private-response-body"}`, "application/json"},
+		{"html", "text/html; charset=utf-8", "<html>private-response-body</html>", "text/html"},
+		{"malformed", `text/event-stream; charset="unfinished`, "private-response-body", "(invalid)"},
+		{"wrong-sse-prefix", "text/event-streaming", "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n", "text/event-streaming"},
+		{"bounded", "application/json", "private-response-body" + strings.Repeat("x", 70<<10), "application/json"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			token := &subscriptionFixtureToken{}
+			p := subscriptionFixtureProvider(t, token, func(w http.ResponseWriter, r *http.Request) {
+				if r.Header.Get("Authorization") != "Bearer fixture-oauth-token" {
+					t.Error("missing OAuth authorization")
+				}
+				// A nil value prevents net/http's automatic content sniffing.
+				w.Header()["Content-Type"] = nil
+				if tc.contentType != "" {
+					w.Header().Set("Content-Type", tc.contentType)
+				}
+				fmt.Fprint(w, tc.body)
+			})
+			// Exercise the production transport and tee, not a synthetic capture.
+			p.client.Transport = quotaAwareTransport{base: p.client.Transport}
+			ctx, capture := llmrec.NewCapture(t.Context())
+			msg, _, _, err := p.Complete(ctx, llm.CompletionRequest{})
+			if err == nil || !strings.Contains(err.Error(), "media type: "+tc.wantType) || len(msg.Content) != 0 {
+				t.Fatalf("unexpected non-SSE result: %+v %v", msg, err)
+			}
+			if strings.Contains(err.Error(), "private-response-body") || strings.Contains(err.Error(), "fixture-oauth-token") {
+				t.Fatal("private body or header parameter escaped into public error")
+			}
+			wantBody := tc.body[:min(len(tc.body), 64<<10)]
+			attempts := capture.Attempts()
+			if len(attempts) != 1 || attempts[0].Status != http.StatusOK || attempts[0].Body != wantBody || token.calls != 1 {
+				t.Fatalf("diagnostic missing, unbounded, or retried: attempts=%d body=%d calls=%d", len(attempts), len(capture.RawResponse()), token.calls)
+			}
+			if strings.Contains(capture.RawRequest(), "fixture-oauth-token") || strings.Contains(capture.RawResponse(), "fixture-oauth-token") {
+				t.Fatal("OAuth authorization was recorded")
+			}
+		})
+	}
+}
+
+func TestChatGPTMissingContentTypeRequiresSSECompletion(t *testing.T) {
+	validSSE := "event: response.created\ndata: {\"type\":\"response.created\"}\n\n" +
+		"event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"확인\"}\n\n" +
+		"event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"item\":{\"id\":\"item-1\",\"type\":\"function_call\",\"namespace\":\"artex\",\"call_id\":\"call-1\",\"name\":\"Read\"}}\n\n" +
+		"event: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"item-1\",\"delta\":\"{\\\"path\\\":\\\"fixture.txt\\\"}\"}\n\n" +
+		"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":13,\"output_tokens\":2,\"input_tokens_details\":{\"cached_tokens\":4}}}}\n\n"
+	for _, tc := range []struct{ name, body, wantError string }{
+		{"valid-sse", validSSE, ""},
+		{"json", `{"type":"response.completed","response":{"status":"completed"},"output":"private-response-body"}`, "response.completed"},
+		{"html", "<html>private-response-body</html>", "response.completed"},
+		{"empty", "", "response.completed"},
+		{"truncated", "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"private-response-body\"}\n\n", "response.completed"},
+		{"malformed-data", "data: {\"private-response-body\":\n\n", "invalid SSE data"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			token := &subscriptionFixtureToken{}
+			p := subscriptionFixtureProvider(t, token, func(w http.ResponseWriter, r *http.Request) {
+				// Match the official endpoint's observed absence of Content-Type.
+				w.Header()["Content-Type"] = nil
+				fmt.Fprint(w, tc.body)
+			})
+			p.client.Transport = quotaAwareTransport{base: p.client.Transport}
+			ctx, capture := llmrec.NewCapture(t.Context())
+			msg, stop, usage, err := p.Complete(ctx, llm.CompletionRequest{Tools: []llm.ToolSchema{{Name: "Read"}}})
+			if tc.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantError) || len(msg.Content) != 0 {
+					t.Fatalf("non-SSE or incomplete body accepted: %+v %v", msg, err)
+				}
+				if strings.Contains(err.Error(), "private-response-body") || strings.Contains(err.Error(), "fixture-oauth-token") {
+					t.Fatal("private response escaped into public error")
+				}
+			} else {
+				uses := msg.ToolUses()
+				if err != nil || msg.Text() != "확인" || stop != "tool_use" || usage.InputTokens != 13 || usage.OutputTokens != 2 || usage.CacheReadTokens != 4 || len(uses) != 1 {
+					t.Fatalf("headerless SSE completion=%+v %s %+v %v", msg, stop, usage, err)
+				}
+				if uses[0].ID != "call-1" || uses[0].Name != "Read" || string(uses[0].Input) != `{"path":"fixture.txt"}` {
+					t.Fatalf("headerless tool identity or arguments lost: %+v", uses)
+				}
+			}
+			attempts := capture.Attempts()
+			if len(attempts) != 1 || attempts[0].Status != http.StatusOK || attempts[0].Body != tc.body || token.calls != 1 {
+				t.Fatalf("headerless capture lost or retried: attempts=%d body=%d calls=%d", len(attempts), len(capture.RawResponse()), token.calls)
+			}
+			if strings.Contains(capture.RawRequest(), "fixture-oauth-token") || strings.Contains(capture.RawResponse(), "fixture-oauth-token") {
+				t.Fatal("OAuth authorization was recorded")
 			}
 		})
 	}

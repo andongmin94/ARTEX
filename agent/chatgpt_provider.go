@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"mime"
 	"net/http"
 	"strings"
 	"sync"
@@ -227,8 +228,18 @@ func (p *chatGPTProvider) Stream(ctx context.Context, req llm.CompletionRequest)
 			return
 		}
 		defer resp.Body.Close()
-		if !strings.HasPrefix(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream") {
-			fail(errors.New("ChatGPT: expected an SSE response"))
+		contentType := resp.Header.Get("Content-Type")
+		mediaType, _, mediaErr := mime.ParseMediaType(contentType)
+		// The official endpoint can omit Content-Type. Such responses still
+		// require the same SSE events and confirmed completion below.
+		if contentType != "" && (mediaErr != nil || mediaType != "text/event-stream") {
+			// Read only a bounded diagnostic through the existing capture tee. Do
+			// not expose the response body or header parameters in public errors.
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+			if mediaErr != nil {
+				mediaType = "(invalid)"
+			}
+			fail(fmt.Errorf("ChatGPT: expected an SSE response (media type: %s)", mediaType))
 			return
 		}
 		scanner := bufio.NewScanner(resp.Body)
