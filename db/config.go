@@ -19,7 +19,7 @@ type Agent struct {
 	MaxTurns         int    `json:"max_turns"`         // 单次运行最大轮次;0=不限制
 	RunSecs          int    `json:"run_seconds"`       // worker 单次运行墙钟上限(秒);0=不限制
 	WebSearch        bool   `json:"web_search"`        // 是否启用网络搜索(受系统全局开关门控)
-	InteractiveShell bool   `json:"interactive_shell"` // 是否启用交互式 shell(持久 PTY 会话工具族)
+	InteractiveShell bool   `json:"interactive_shell"` // 是否启用交互式 shell(持久 PTY 会话)
 	WrapupPrompt     string `json:"wrapup_prompt"`     // 收尾提示词(超时/步数耗尽时的 settlement 提示);空=用代码内置默认
 	WrapupMaxTurns   int    `json:"wrapup_max_turns"`  // 收尾阶段自身的轮数预算;0=用代码内置默认(按 agent)
 	// 任务级超时收尾词(与 per-run 两套;仅 worker/planner 用);空/0=用代码内置默认。
@@ -77,7 +77,7 @@ func (d *DB) GetAgentByKey(key string) (*Agent, error) {
 
 // AgentBindingCounts returns per-agent binding counts in a few grouped queries
 // (NO N+1): visible MCP servers and skills keyed by agent id, and bound tools
-// keyed by agent key (tools.agents is a JSONB array of agent keys). Missing keys
+// keyed by agent key (the tool_agents relation). Missing keys
 // mean zero. Used to show "MCP N · Skill N · 工具 N" on the agent cards.
 func (d *DB) AgentBindingCounts() (mcp map[int64]int, skill map[int64]int, tools map[string]int, err error) {
 	mcp, skill, tools = map[int64]int{}, map[int64]int{}, map[string]int{}
@@ -103,7 +103,7 @@ func (d *DB) AgentBindingCounts() (mcp map[int64]int, skill map[int64]int, tools
 	if err = byID(`SELECT agent_id, count(*) FROM agent_skill_visibility WHERE enabled GROUP BY agent_id`, skill); err != nil {
 		return
 	}
-	rows, e := d.Query(`SELECT elem, count(*) FROM tools, jsonb_array_elements_text(agents) AS elem GROUP BY elem`)
+	rows, e := d.Query(`SELECT agent_key, count(*) FROM tool_agents GROUP BY agent_key`)
 	if e != nil {
 		err = e
 		return
@@ -145,7 +145,7 @@ func (d *DB) UpdateAgentMeta(key, name, description string) error {
 
 // DeleteAgent removes a custom agent. Built-in agents are protected by the
 // builtin=false guard. agent_prompts / agent_prompt_vars / visibility rows cascade
-// via FK; tools.agents bindings for the key are cleaned by the caller.
+// and tool_agents bindings cascade via FK in the same DELETE statement.
 func (d *DB) DeleteAgent(key string) error {
 	_, err := d.Exec(`DELETE FROM agents WHERE key=$1 AND builtin=false`, key)
 	return err
@@ -170,10 +170,10 @@ func (d *DB) SetAgentLLMProfile(key string, id *int64) error {
 	}
 	defer tx.Rollback()
 
-	// DeleteProfile locks reference rows before the profile row. Keep the same
-	// order here so a concurrent rebind cannot form a child/profile deadlock.
+	// The business opener starts this transaction IMMEDIATE. Its writer lock
+	// protects both the agent and profile through validation and publication.
 	var agentID int64
-	if err := tx.QueryRow(`SELECT id FROM agents WHERE key=$1 FOR UPDATE`, key).Scan(&agentID); err != nil {
+	if err := tx.QueryRow(`SELECT id FROM agents WHERE key=$1`, key).Scan(&agentID); err != nil {
 		if err == sql.ErrNoRows {
 			// Preserve the previous UPDATE semantics: an unknown key is a no-op.
 			return tx.Commit()
@@ -189,14 +189,15 @@ func (d *DB) SetAgentLLMProfile(key string, id *int64) error {
 	return tx.Commit()
 }
 
-// lockLLMProfileForReference makes the profile side of the shared lock-order
-// protocol explicit. Callers must already own the referencing child row.
+// lockLLMProfileForReference verifies a profile under the transaction's writer
+// lock. Callers must use the business store's IMMEDIATE transaction; a separate
+// pooled lookup would lose this protection and can deadlock on a single pool.
 func lockLLMProfileForReference(tx *sql.Tx, profileID *int64) error {
 	if profileID == nil {
 		return nil
 	}
 	var lockedID int64
-	if err := tx.QueryRow(`SELECT id FROM llm_profiles WHERE id=$1 FOR KEY SHARE`, *profileID).Scan(&lockedID); err != nil {
+	if err := tx.QueryRow(`SELECT id FROM llm_profiles WHERE id=$1`, *profileID).Scan(&lockedID); err != nil {
 		if err == sql.ErrNoRows {
 			return ErrLLMProfileNotFound
 		}

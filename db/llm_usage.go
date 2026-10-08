@@ -1,6 +1,7 @@
 package db
 
 import (
+	"errors"
 	"sort"
 	"strconv"
 	"time"
@@ -26,53 +27,21 @@ type LLMUsage struct {
 	Status        string `json:"status"` // ok | error
 }
 
-const llmUsageSchema = `
-CREATE TABLE IF NOT EXISTS llm_usage (
-    id             BIGSERIAL PRIMARY KEY,
-    ts             TIMESTAMPTZ NOT NULL DEFAULT now(),
-    task_id        TEXT,
-    exploration_id BIGINT,
-    worker         TEXT,
-    model          TEXT,
-    profile_name   TEXT,
-    latency_ms     INTEGER,
-    input_tokens   INTEGER NOT NULL DEFAULT 0,
-    output_tokens  INTEGER NOT NULL DEFAULT 0,
-    cache_read     INTEGER NOT NULL DEFAULT 0,
-    cache_write    INTEGER NOT NULL DEFAULT 0,
-    status         TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_llm_usage_task  ON llm_usage(task_id);
-CREATE INDEX IF NOT EXISTS idx_llm_usage_model ON llm_usage(task_id, model);
-CREATE INDEX IF NOT EXISTS idx_llm_usage_exp   ON llm_usage(exploration_id);
-`
-
-// EnsureLLMUsageTable creates the llm_usage metering table if it does not exist.
-func (d *DB) EnsureLLMUsageTable() error {
-	tx, err := d.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback() //nolint:errcheck
-	if err := coordinateWithSchemaMigration(tx); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(llmUsageSchema); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
+// llm_usage is created with the business schema, not during service startup.
 
 // InsertLLMUsage appends one metering row. Best-effort: callers log and continue on
 // error (a lost metering row must never break the LLM call).
 func (d *DB) InsertLLMUsage(u *LLMUsage) error {
+	if u == nil {
+		return errors.New("LLM 사용량이 없습니다")
+	}
 	var expID any
 	if u.ExplorationID > 0 {
 		expID = u.ExplorationID
 	}
 	_, err := d.Exec(`
 INSERT INTO llm_usage(task_id, exploration_id, worker, model, profile_name, latency_ms, input_tokens, output_tokens, cache_read, cache_write, status)
-VALUES (NULLIF($1,''),$2,NULLIF($3,''),NULLIF($4,''),NULLIF($5,''),$6,$7,$8,$9,$10,$11)`,
+VALUES (NULLIF(?1,''),?2,NULLIF(?3,''),NULLIF(?4,''),NULLIF(?5,''),?6,?7,?8,?9,?10,?11)`,
 		u.TaskID, expID, u.Worker, u.Model, u.ProfileName,
 		u.LatencyMs, u.InputTokens, u.OutputTokens, u.CacheRead, u.CacheWrite, u.Status)
 	return err
@@ -88,7 +57,7 @@ SELECT COALESCE(NULLIF(model,''),'(unknown)') AS model, COUNT(*) AS calls,
        COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0),
        COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_write),0)
 FROM llm_usage
-WHERE COALESCE(task_id,'') = $1
+WHERE COALESCE(task_id,'') = ?1
 GROUP BY model
 ORDER BY SUM(input_tokens) + SUM(output_tokens) DESC, model`, taskID)
 	if err != nil {
@@ -104,7 +73,10 @@ ORDER BY SUM(input_tokens) + SUM(output_tokens) DESC, model`, taskID)
 		}
 		out = append(out, m)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // ProfileUsage aggregates the whole ledger's token spend for one LLM profile
@@ -144,6 +116,9 @@ ORDER BY SUM(input_tokens) + SUM(output_tokens) DESC`)
 		out = append(out, p)
 	}
 	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
 		return nil, err
 	}
 	archived, err := d.archivedTaskAggregates()
@@ -201,10 +176,10 @@ func (d *DB) UsageDaily(days int) ([]ProfileDayUsage, error) {
 	}
 	rows, err := d.Query(`
 SELECT COALESCE(profile_name,'') AS profile_name,
-       to_char(ts AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
+       date(ts) AS day,
        COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(cache_read),0)
 FROM llm_usage
-WHERE ts >= now() - ($1 * interval '1 day')
+WHERE ts >= strftime('%Y-%m-%d %H:%M:%f','now',printf('-%d days',?1))
 GROUP BY profile_name, day
 ORDER BY day`, days)
 	if err != nil {
@@ -220,6 +195,9 @@ ORDER BY day`, days)
 		out = append(out, p)
 	}
 	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
 		return nil, err
 	}
 	archived, err := d.archivedTaskAggregates()
@@ -299,10 +277,10 @@ WHERE worker = 'judge'`).Scan(&u.Calls, &u.InputTokens, &u.OutputTokens,
 		return JudgeUsage{}, err
 	}
 	rows, err := d.Query(`
-SELECT to_char(ts AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
+SELECT date(ts) AS day,
        COUNT(*), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0)
 FROM llm_usage
-WHERE worker = 'judge' AND ts >= now() - ($1 * interval '1 day')
+WHERE worker = 'judge' AND ts >= strftime('%Y-%m-%d %H:%M:%f','now',printf('-%d days',?1))
 GROUP BY day
 ORDER BY day`, days)
 	if err != nil {

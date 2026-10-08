@@ -1,26 +1,36 @@
 # 개발 절차
 
-## 작업 단위
+## 현재 작업 방식
 
-`main`이 현재 기준이다. 원격 최신 ref와 계획을 읽고 가장 앞의 미완료 단위를 선택한다.
-하나의 단위는 구현, 호출 경로 연결, 회귀 검사, 계획 갱신으로 끝낸다.
-전환 도중 전체 앱을 깨뜨릴 수 있는 DB 변경은 기능 브랜치에서 완성한 뒤 병합한다.
-작동하지 않는 브랜치를 배포하지 않으며, 이를 이유로 PG fallback이나 이중 저장을 만들지 않는다.
+2026-10-07 사용자 요청으로 작업 브랜치의 내용을 `main`에 통합한다. 이후 재개 기준은 최신 `main`이다.
+과거의 기능 브랜치 유지/통합 검증 뒤 main 병합 지침은 종료한다. 새 장기 전환 브랜치를 만들지 않는다.
+현재 main의 SQLite 전환은 미완료이며, main 병합만으로 실행/배포 가능한 버전이라고 판단하지 않는다.
+최신 ref와 미커밋 변경을 확인하고 유일한 현재 작업 목록인 `docs/development-plan.md`의 앞선 미완료 단위를 진행한다.
+한 단위는 구현 → 실제 호출자 연결 → 검사 → 계획 갱신 → 원격 반영이다.
 
-전환 순서는 `실행 기반 → SQLite 저장소와 실제 기능 동등성 → Electron 연결 → 도구 환경 → 배포 정리`다.
-주 DB 이식이 끝나기 전에 Electron 포장만 완료했다고 보고하지 않는다.
+순서는 `실행 기반 → SQLite 기능 동등성/실제 부팅 → Electron/UI → 도구 환경 → 배포 정리`다.
+오류를 숨기는 우회로, 이중 저장, DB fallback, 임시 SQL 번역기를 만들지 않는다.
+사용자 데이터 대신 폐기 가능한 임시 파일과 로컬 HTTP/모델 fixture로 검사한다.
 
-## 검증 자원 정책
+## Actions 금지
 
-2026-10-05 사용자 요청으로 GitHub Actions 자동 실행을 사용하지 않는다.
-`verify.yml`과 `sqlite-foundation.yml`은 `workflow_dispatch`만 허용한다.
-수동 실행·재실행도 사용자가 명시적으로 요청한 경우에만 수행한다.
-로컬에서 불가능한 검사를 원격 runner로 우회하거나, 일회성 소스 편집 workflow를 만들지 않는다.
-커밋에는 `[skip ci]`를 사용하고 검사 실패·미실행을 그대로 보고한다.
-기존 테스트 명령과 수동 workflow는 보존한다. 검증 생략을 테스트 성공으로 바꾸지 않는다.
-태그 릴리스 workflow는 이번 정책 변경에서 수정하지 않았으며, 별도 요청 없이 태그를 만들지 않는다.
+2026-10-05 사용자 요청으로 `verify`와 `sqlite-foundation`은 workflow_dispatch만 허용한다.
+명시 요청 없는 실행/재실행, push/PR 트리거 추가, 원격 runner 우회, 임시 편집 workflow/artifact 업로드를 금지한다.
+커밋에는 `[skip ci]`를 넣고 태그/배포는 만들지 않는다. 기존 검사 내용과 artifact/cache는 임의 삭제하지 않는다.
 
-## 기본 로컬 검사
+## 로컬 검사
+
+프로젝트 지정 Go 버전과 기존 modernc 의존성을 확보한 환경에서 실제 SQLite 검사부터 실행한다.
+아래 명령은 제어 검사와 실제 업무 Open/schema/seed 검사를 함께 실행한다. 실패를 skip으로 바꾸지 않는다.
+
+```sh
+go test -race -count=1 -timeout 120s -run '^(TestTaskChainControl|TestSQLiteTaskChain)' ./db
+go test -race -count=1 -timeout 120s -run '^(TestLLMStorageControl|TestSQLiteLLMStorage)' ./db
+go test -race -count=1 -timeout 120s -run '^TestRecorderPersistsRawWireBodies$' ./server
+```
+
+이전 미실행 SQLite 테스트의 범위와 결과는 계획과 해당 구현 커밋을 확인한다.
+전체 SQL/fixture 이식이 끝난 뒤 다음 검사를 수행한다. 현재 PG 전용 fixture가 남아 있으므로 전체 통과를 전제하지 않는다.
 
 ```sh
 go test -p 1 -count=1 -timeout 180s ./...
@@ -33,45 +43,21 @@ npx tsc --noEmit
 npm run build:static
 ```
 
-전체 Go 테스트는 현재 PG 테스트 DB가 필요하다. M2가 완료되면 DB 서비스 없이 같은 범위를 실행하도록 교체한다.
+`check-backend-lifecycle.mjs`는 아직 PG 준비를 전제하는 과거 검사다. 현재 SQLite main을 검증한 것으로 사용하지 않는다.
+실제 부팅 연결 시 PG 조건을 제거하고 새 한글/공백 데이터 경로에서 ready/HTTP/종료/재시작을 확인하도록 함께 이식한다.
+외부 모델이나 실제 대상에 작업을 실행하지 않는다. 요청하지 않은 운영 DB를 테스트에 사용하지 않는다.
 
-실행 기반의 독립 검사는 다음과 같다.
+## 환경 제약
 
-```sh
-go test -race -count=1 -timeout 60s ./config
-go test -race -count=1 -timeout 60s cmd/artex/http_lifecycle.go cmd/artex/http_lifecycle_test.go
-node --check scripts/check-backend-lifecycle.mjs
-```
+지정 Go/의존성 다운로드가 실패하면 버전을 낮추거나 Actions로 우회하지 않는다.
+표준 라이브러리만 쓰는 정확한 업무 함수의 격리 검사는 가능하지만 경계 타입/오류 주입 드라이버를 명시한다.
+Python SQLite에서 SQL을 실행한 결과는 Go 스캔/드라이버/전체 앱 부팅의 증거가 아니다.
+`python scripts/check-sqlite-task-context.py`는 실제 Go SQL과 선택된 9개 테이블만 검사한다. 전체 스키마 테스트가 아니다.
 
-모델/프롬프트 저장의 새 Go 검사에는 프로젝트 지정 Go와 기존 modernc 의존성이 필요하다.
-폐기 가능한 SQLite 파일만 사용하며 모델 API나 외부 대상에 연결하지 않는다.
+## 통합과 브랜치 정리
 
-```sh
-go test -race -count=1 -timeout 120s -run '^(TestSQLiteProfile|TestSQLitePrompt|TestPromptTransactionControl)' ./db
-```
-
-실제 백엔드의 준비/종료 검사는 `ARTEX_SMOKE_PG_DSN`으로 **이름이 `artex_desktop_smoke`인 폐기 가능한 DB**를 명시하고 실행한다.
-일반 `ARTEX_PG_DSN`을 암묵적으로 재사용하지 않는다. 운영 DB나 기존 사용자 데이터로 실행하지 않는다.
-
-```sh
-ARTEX_SMOKE_PG_DSN='postgres://artex:TEST_PASSWORD@127.0.0.1:5432/artex_desktop_smoke?sslmode=disable' \
-  node scripts/check-backend-lifecycle.mjs ./artex
-```
-
-이 검사는 새 한글/공백 경로에서 실제 Go 실행 파일을 시작하고 ready JSON, HTTP health, stdin EOF에 의한 정상 종료를 확인한다.
-새 작업이나 외부 대상 요청은 실행하지 않는다. M2 완료 시 이 검사에서 PG 준비 조건을 제거한다.
-
-## 환경 제약 기록
-
-프로젝트 지정 Go 버전이나 의존성을 사용할 수 없으면 `go.mod` 버전을 임의로 낮추지 않는다.
-표준 라이브러리만 사용하는 독립 범위에 한해 `GO111MODULE=off`로 격리 검증할 수 있다.
-대체 SQL 드라이버를 쓴 제어 흐름 검사와 Python SQLite 실행은 Go modernc 통합 검사가 아니다.
-실제 Go/SQLite 버전, 가져온 소스, 명령, 실행하지 못한 범위를 계획에 적는다.
-전체 빌드와 native OS 검증은 해당 환경에서 수행한다. CI 사용에는 위 사용자 승인 조건을 적용한다.
-
-## 원격 반영
-
-최신 ref를 다시 확인하고 정상 fast-forward 또는 PR로 반영한다. 동시 변경은 먼저 병합/재검토한다.
-함수 이동처럼 함께 적용해야 컴파일되는 변경은 하나의 tree/commit으로 반영한다.
-원격 blob SHA가 검사한 파일과 일치하는지 확인한다.
-이번에 수행한 로컬 검사와 이전 커밋의 CI 성공 기록을 구분하고, 다음 단위와 남은 위험을 함께 남긴다.
+원격 변경 전 최신 main/대상 브랜치 HEAD를 다시 확인한다. 비교 기준이 달라졌으면 새 변경부터 검토한다.
+이미 squash 병합한 브랜치는 트리 동일성을 확인해 구 소스로 되돌리지 않는다.
+여러 브랜치를 통합할 때 각 부모 이력을 보존하고 최신 파일을 기준으로 충돌을 해결한다.
+브랜치 삭제 전 해당 HEAD가 main의 조상임을 확인한다. 이름만 옮기거나 삭제 실패를 성공으로 표시하지 않는다.
+원격 blob과 검사한 로컬 파일의 SHA를 대조하고 실제 ref/Actions 상태를 읽어 마무리한다.

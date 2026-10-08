@@ -189,55 +189,18 @@ func (s *Server) findingRetestTools() []actool.CoreTool {
 	}
 }
 
-// Seed the editable agent atomically, without an automatic discovery trigger.
-// Once seeded, user edits/deletion survive restarts; a pre-existing key is kept.
+// Seed metadata in storage order without executing tools or starting a trigger.
+// The storage method owns one transaction for the agent, prompt, and bindings.
 func (s *Server) seedFindingRetester() error {
-	for _, t := range s.findingRetestTools() {
-		schema, _ := json.Marshal(t.InputSchema())
-		bindings, _ := json.Marshal([]string{db.FindingRetestAgentKey})
-		if err := s.m.pg.SeedTool(t.Name(), t.Description(), schema, bindings); err != nil {
+	tools := make([]db.Tool, 0, 2)
+	for _, tool := range s.findingRetestTools() {
+		schema, err := json.Marshal(tool.InputSchema())
+		if err != nil {
 			return err
 		}
+		tools = append(tools, db.Tool{Key: tool.Name(), Description: tool.Description(), Schema: schema})
 	}
-	const flag = "finding_retester_seed_v1"
-	tx, err := s.m.pg.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	// Lock this migration, including concurrent server initialization.
-	if _, err = tx.Exec(`SELECT pg_advisory_xact_lock(7337741010)`); err != nil {
-		return err
-	}
-	var done string
-	err = tx.QueryRow(`SELECT value FROM settings WHERE key=$1`, flag).Scan(&done)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
-	}
-	if done == "true" {
-		return nil
-	}
-	var id int64
-	err = tx.QueryRow(`INSERT INTO agents(key,name,description,role,builtin,enabled)
-	VALUES ($1,'취약점 재검증','취약점 상세에서 직접 시작하여 기존 증거를 읽고 독립적인 재검증 결론을 저장합니다.','assistant',false,true)
-	ON CONFLICT (key) DO NOTHING RETURNING id`, db.FindingRetestAgentKey).Scan(&id)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
-	}
-	if id > 0 {
-		var pid int64
-		if err = tx.QueryRow(`INSERT INTO agent_prompts(agent_id,version,template_text,note,updated_by)
-		VALUES ($1,1,$2,'기본 제공 값','system') RETURNING id`, id, agent.RetesterDefaultPrompt).Scan(&pid); err != nil {
-			return err
-		}
-		if _, err = tx.Exec(`UPDATE agents SET current_prompt_id=$1 WHERE id=$2`, pid, id); err != nil {
-			return err
-		}
-	}
-	if _, err = tx.Exec(`INSERT INTO settings(key,value) VALUES ($1,'true') ON CONFLICT(key) DO UPDATE SET value='true'`, flag); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return s.m.pg.SeedFindingRetester(s.ctx, agent.RetesterDefaultPrompt, tools)
 }
 
 func (s *Server) finishRetest(id int64, status, reason string) {

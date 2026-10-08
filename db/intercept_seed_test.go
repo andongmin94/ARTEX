@@ -8,7 +8,12 @@ import (
 // 内置「删除类接口路径」规则匹配的是整个 tool_input JSON 串，因此用例直接以
 // JSON 形态给出，与 Interceptor 实际拿到的 subject 一致。
 func TestDeleteEndpointPathPattern(t *testing.T) {
-	re := regexp.MustCompile(deleteEndpointPathPattern)
+	d := openBusinessFixture(t, testDSN(t))
+	var pattern string
+	if err := d.QueryRow(`SELECT pattern FROM intercept_rules WHERE name='[기본] 삭제 API 경로'`).Scan(&pattern); err != nil {
+		t.Fatal(err)
+	}
+	re := regexp.MustCompile(pattern)
 
 	hit := []string{
 		`{"command":"curl -s 'http://t.com/api/user/delete?id=1'"}`,    // GET 打删除接口

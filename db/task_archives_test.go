@@ -126,12 +126,6 @@ func TestTaskArchiveDatabaseRoundTrip(t *testing.T) {
 		t.Skipf("postgres unavailable (%v) — skipping", err)
 	}
 	defer d.Close()
-	if err := d.EnsureLLMRecordsTable(); err != nil {
-		t.Fatal(err)
-	}
-	if err := d.EnsureLLMUsageTable(); err != nil {
-		t.Fatal(err)
-	}
 	task, err := d.CreateTaskWithOptions("archive database roundtrip", "restore exact graph", TaskCreateOptions{Name: "cold task"})
 	if err != nil {
 		t.Fatal(err)
