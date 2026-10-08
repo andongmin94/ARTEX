@@ -45,17 +45,29 @@ func fileURI(filename string) (string, error) {
 	return u.String(), nil
 }
 
-// Open opens a local file and verifies WAL before returning. The parent must
-// already exist. Each physical connection receives the fixed PRAGMAs through
-// the driver's DSN, including connections opened after pool replacement.
-// Cancellation or initialization failure closes the pool, never deletes data.
+// Open keeps the traffic store's transaction policy. The parent must exist.
 func Open(ctx context.Context, filename string) (*sql.DB, error) {
+	return open(ctx, filename, false)
+}
+
+// OpenImmediate is used by the business store. Every explicit transaction takes
+// the SQLite writer at BEGIN, before any read-modify-write snapshot is acquired.
+// The caller still owns pool limits and keeps transactions short.
+func OpenImmediate(ctx context.Context, filename string) (*sql.DB, error) {
+	return open(ctx, filename, true)
+}
+
+// Cancellation or initialization failure closes the pool, never deletes data.
+func open(ctx context.Context, filename string, immediate bool) (*sql.DB, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	dsn, err := fileURI(filename)
 	if err != nil {
 		return nil, err
+	}
+	if immediate {
+		dsn += "&_txlock=immediate"
 	}
 	// Fail before SQLite sees a directory, pipe or symlink; never truncate an
 	// existing file. The application controls the enclosing private directory.
