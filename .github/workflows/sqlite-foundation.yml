@@ -22,7 +22,6 @@ jobs:
     timeout-minutes: 15
     env:
       ARTEX_PG_DSN: ''
-      ARTEX_CONFIG: ${{ runner.temp }}/artex-sqlite-no-config.json
       ARTEX_HOME: ''
     steps:
       - uses: actions/checkout@v4
@@ -33,7 +32,13 @@ jobs:
       - name: Check SQLite connections with the race detector
         run: go test -race -count=1 -timeout 120s ./internal/sqlitedb
       - name: Test actual settings, auth handlers and traffic without PostgreSQL
-        run: go test -json -p 1 -count=1 -timeout 180s -run '^(TestSQLite|TestAuthSQLite|TestTrafficSQLite)' ./db ./server ./traffic > sqlite-results.jsonl
+        env:
+          ARTEX_CONFIG: ${{ runner.temp }}/artex-sqlite-no-config.json
+        run: |
+          status=0
+          go test -json -p 1 -count=1 -timeout 180s -run '^(TestSQLite|TestAuthSQLite|TestTrafficSQLite)' ./db ./server ./traffic > sqlite-results.jsonl || status=$?
+          cat sqlite-results.jsonl
+          exit "$status"
       - name: Require the SQLite scope to run without skips
         run: |
           python3 - <<'PY'
