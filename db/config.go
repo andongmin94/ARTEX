@@ -77,7 +77,7 @@ func (d *DB) GetAgentByKey(key string) (*Agent, error) {
 
 // AgentBindingCounts returns per-agent binding counts in a few grouped queries
 // (NO N+1): visible MCP servers and skills keyed by agent id, and bound tools
-// keyed by agent key (tools.agents is a JSONB array of agent keys). Missing keys
+// keyed by agent key (the tool_agents relation). Missing keys
 // mean zero. Used to show "MCP N · Skill N · 工具 N" on the agent cards.
 func (d *DB) AgentBindingCounts() (mcp map[int64]int, skill map[int64]int, tools map[string]int, err error) {
 	mcp, skill, tools = map[int64]int{}, map[int64]int{}, map[string]int{}
@@ -103,7 +103,7 @@ func (d *DB) AgentBindingCounts() (mcp map[int64]int, skill map[int64]int, tools
 	if err = byID(`SELECT agent_id, count(*) FROM agent_skill_visibility WHERE enabled GROUP BY agent_id`, skill); err != nil {
 		return
 	}
-	rows, e := d.Query(`SELECT elem, count(*) FROM tools, jsonb_array_elements_text(agents) AS elem GROUP BY elem`)
+	rows, e := d.Query(`SELECT agent_key, count(*) FROM tool_agents GROUP BY agent_key`)
 	if e != nil {
 		err = e
 		return
@@ -145,7 +145,7 @@ func (d *DB) UpdateAgentMeta(key, name, description string) error {
 
 // DeleteAgent removes a custom agent. Built-in agents are protected by the
 // builtin=false guard. agent_prompts / agent_prompt_vars / visibility rows cascade
-// via FK; tools.agents bindings for the key are cleaned by the caller.
+// and tool_agents bindings cascade via FK in the same DELETE statement.
 func (d *DB) DeleteAgent(key string) error {
 	_, err := d.Exec(`DELETE FROM agents WHERE key=$1 AND builtin=false`, key)
 	return err

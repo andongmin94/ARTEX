@@ -131,8 +131,8 @@ func (m *Manager) syncBrowserMCPProxy() error {
 	if err != nil {
 		return err
 	}
-	target.Args, target.Env = args, env
-	if _, err := m.pg.SaveMCP(target); err != nil {
+	// Preserve concurrent metadata edits and reject a stale args/env snapshot.
+	if err := m.pg.CompareAndSwapMCPProxySettings(context.Background(), target, args, env); err != nil {
 		return fmt.Errorf("browser MCP 설정 저장: %w", err)
 	}
 	log.Print("[mcp] browser MCP 프록시 설정을 동기화했습니다")
