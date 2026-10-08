@@ -6,7 +6,9 @@
 
 ## 현재 상태
 
-**설계와 데스크톱 실행 기반 구현을 시작했다. 주 DB는 아직 PostgreSQL이며 Electron 앱은 아직 없다.**
+**M0 문서화와 M1 데스크톱 실행 기반을 구현·검증했다. 주 DB는 아직 PostgreSQL이며 Electron 앱은 아직 없다.**
+구현 커밋: `4acff4563df22a2094b7adcc8e4fde7d05267a00`.
+해당 커밋의 `verify #55` 6개 job이 모두 성공했다. 다음 구현은 **M2.1 SQLite 이식 인벤토리**다.
 현재 README의 Docker/PG 실행 안내는 현 제품에 해당하며, 목표 아키텍처의 완료 증거가 아니다.
 이번 작업은 데이터 변환이 아니라 실행/저장 아키텍처 전환의 첫 단위다.
 
@@ -16,7 +18,7 @@
 - [x] UI·Go 재사용, SQLite 단일 지원, PG 자동 데이터 이전 제외 확정.
 - [x] 기존 트래픽 SQLite와 PG 업무 저장소/LLM 기록 구분.
 
-## M1. 데스크톱 실행 기반 — 구현 및 독립 검사 완료, 전체 CI 확인 필요
+## M1. 데스크톱 실행 기반 — 구현·전체 CI 검증 완료
 
 - [x] `ARTEX_HOME` 절대 경로 검증·쓰기 검사, 설정/기본 data/skills 루트 연결.
 - [x] 홈에 설정이 없을 때 CWD의 다른 DB 설정으로 넘어가지 않음.
@@ -26,13 +28,13 @@
 - [x] 시작/서빙 오류의 `log.Fatal` 제거, 종료 요청 뒤 manager 정리, HTTP timeout 후 연결 정리.
 - [x] 설정 7개 + HTTP/부모 파이프 6개 독립 테스트와 race 반복 검사.
 - [x] Windows/macOS/Linux 실행 기반 CI와 실제 백엔드 smoke 검사 연결.
-- [ ] 프로젝트 지정 Go 버전의 전체 CI/실제 백엔드 smoke 결과 확인. 실패하면 M2보다 먼저 수정.
+- [x] 프로젝트 지정 Go 1.26.3의 전체 테스트·빌드와 실제 백엔드 smoke 성공 확인. `verify #55`, run `37213127038`.
 
 Electron 창, 주 DB SQLite 교체, 도구 설치, 앱 업데이트, 패키징, 전체 자손 프로세스 정리는 M1 완료 범위가 아니다.
 
 ## M2. 업무 저장소 SQLite 이식 — 다음 구현 단위
 
-M1의 실제 CI 결과부터 확인하고, 다음 순서로 진행한다.
+작업 재개 시 최신 main과 CI를 확인한다. M1 검증 기준은 아래 기록이며, 다음 순서로 진행한다.
 
 - [ ] **M2.1 인벤토리:** 전체 `db/`, `server/`, `agent/`, `llmrec/`, `report/` 등의 raw SQL/PG 타입/트랜잭션 경계/테스트 헬퍼를 조사. `docs/sqlite-porting-map.md`에 실제 파일과 이식 단위를 기록한다. 이 문서는 목록의 근거이며 별도 진행표를 만들지 않는다.
 - [ ] **M2.2 실행 가능한 저장 기반:** 기존 modernc 드라이버로 업무 DB 스키마/연결 초기화, 연결별 PRAGMA, 쓰기 경로, 명시적 취소/닫기, Unicode/특수문자 경로 검사. 미사용 추상 저장소를 완료 결과로 제출하지 않는다.
@@ -70,9 +72,11 @@ M1의 실제 CI 결과부터 확인하고, 다음 순서로 진행한다.
 
 ## 검증 기록 — 2026-10-05
 
+### 로컬 독립 검사
+
 로컬 환경: Linux, Go 1.23.2, Node 22.16.0. 원격 소스는 GitHub 연결로 조회했다.
 로컬 git clone은 네트워크 DNS 제한으로 실패했고 프로젝트 Go 1.26.3/전체 의존성을 받지 못했다.
-`go.mod`는 변경하지 않았다.
+`go.mod`는 변경하지 않았다. 전체 프로젝트 검증은 아래 원격 CI에서 수행했다.
 
 실행 성공:
 
@@ -84,5 +88,27 @@ gofmt (변경 Go 파일)
 ```
 
 두 Go 검사 합계: 서로 다른 테스트 13개, 각각 20회 반복. 실제 HTTP loopback 연결과 EOF 동작을 검사했다.
-미검증: 전체 Go 컴파일/전체 suite, 실제 ARTEX+PG smoke, Windows/macOS 실행, Electron GUI, SQLite 업무 DB.
-원격 CI 결과가 나오면 이 항목을 실제 run과 결과로 갱신한다.
+
+### 원격 CI — 구현 커밋 검증 완료
+
+- 검증 커밋: `4acff4563df22a2094b7adcc8e4fde7d05267a00`.
+- 실행: [verify #55](https://github.com/andongmin94/ARTEX/actions/runs/37213127038), run ID `37213127038`.
+- 결과: `backend`, `frontend`, `deployment`, `desktop-foundation` 3개 OS를 포함한 **6개 job 모두 success**.
+- Go: `go.mod`의 1.26.3을 그대로 사용. Linux에서 `go test -p 1 -count=1 -timeout 180s ./...`와 `go build ./cmd/artex` 성공.
+- 실제 백엔드: 새 한글/공백 홈 + 폐기 가능한 PG DB로 실행, ready JSON의 PID/loopback/실제 포트 확인, `/api/health` 200, 부모 stdin EOF 뒤 exit 0 확인.
+- Windows/macOS/Linux: 설정 경로 및 HTTP/부모 파이프 독립 테스트가 각 OS의 race 검사에서 성공.
+- 프런트엔드: 한국어 문자열·IME 검사, TypeScript 검사, 정적 빌드 성공.
+- 현재 배포: 설치 스크립트 구문 및 Compose 설정 검사 성공. Docker 이미지 빌드나 새 데스크톱 설치 검증을 뜻하지 않는다.
+
+실제 백엔드 로그에서 확인한 성공 메시지:
+
+```text
+PASS real backend: isolated Unicode home → JSON ready → HTTP health → parent EOF → exit 0
+```
+
+PG 테스트 서비스 로그에는 스키마 적용과 런타임 조회 간 deadlock 기록도 관찰됐다.
+전체 테스트 명령은 성공했지만 이를 동시성 문제가 전혀 없다는 근거로 해석하지 않는다.
+M2/M5의 SQLite 동시 기록·취소·부하 검증은 별도로 수행한다.
+
+남은 미검증 범위: Windows/macOS의 전체 ARTEX 실행과 외부 도구, Electron GUI/패키지, SQLite 업무 DB, 부하·백업·복원.
+이 검증 결과를 기록한 후속 문서 전용 커밋은 코드 변경 없이 `[skip ci]`를 사용한다. 위 성공 결과는 명시한 구현 커밋의 결과다.
