@@ -1,0 +1,33 @@
+# One-use source-editing job for the isolated work branch. Removed before merge.
+# No application execution, repository secrets or writes to main.
+name: prepare-sqlite-foundation
+on:
+  push:
+    branches: [work/sqlite-storage-foundation]
+    paths: [.github/workflows/prepare-sqlite-foundation.yml]
+permissions:
+  contents: write
+jobs:
+  apply-reviewed-edits:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/sqlite-storage-foundation
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Apply exact source edits against inspected blobs
+        run: python3 scripts/prepare-sqlite-foundation.py
+      - name: Format and publish only the reviewed work-branch files
+        run: |
+          gofmt -w internal/sqlitedb/*.go db/settings.go db/settings_sqlite_test.go server/auth.go server/auth_sqlite_test.go traffic/traffic.go traffic/sqlite_path_test.go
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add internal/sqlitedb db/settings.go db/settings_sqlite_test.go server/auth.go server/auth_sqlite_test.go traffic/traffic.go traffic/sqlite_path_test.go docs/development-plan.md docs/architecture.md docs/sqlite-porting-map.md
+          git commit -m 'feat: connect SQLite file policy and atomic authentication storage'
+          git push origin HEAD:refs/heads/work/sqlite-storage-foundation
+          git rev-parse HEAD
