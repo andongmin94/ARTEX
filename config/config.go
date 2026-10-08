@@ -30,17 +30,43 @@ type Config struct {
 	SkillDir string   `json:"skill_dir"`
 }
 
-// BaseDir is the directory that anchors all runtime artifacts (config.json and
-// the data/ store). It is the directory the running binary lives in, so a
-// distributed executable keeps its files next to itself on any OS (Windows,
-// Linux, …) regardless of the working directory it is launched from.
-//
-// When launched via `go run`, the binary is throwaway: it sits either in a temp
-// build dir (cache miss → fresh link) OR straight inside the Go build cache
-// (cache hit → run from $GOCACHE/.../...-d). We detect both and fall back to the
-// current working directory so dev artifacts (data/, transcripts) and config
-// resolve against the project dir, not the throwaway binary's location.
+// InitHome validates the explicit writable runtime root before opening stores.
+// Electron will supply its userData directory as ARTEX_HOME. No files are moved
+// from an older installation, and an invalid path never falls back to the CWD.
+// Call this once at process startup, before starting any worker goroutines.
+func InitHome() error {
+	home := strings.TrimSpace(os.Getenv("ARTEX_HOME"))
+	if home == "" {
+		return nil
+	}
+	if !filepath.IsAbs(home) {
+		return fmt.Errorf("ARTEX_HOME must be an absolute path: %q", home)
+	}
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		return fmt.Errorf("create ARTEX_HOME: %w", err)
+	}
+	probe, err := os.CreateTemp(home, ".artex-write-check-*")
+	if err != nil {
+		return fmt.Errorf("ARTEX_HOME is not writable: %w", err)
+	}
+	closeErr := probe.Close()
+	removeErr := os.Remove(probe.Name())
+	if closeErr != nil {
+		return fmt.Errorf("check ARTEX_HOME: %w", closeErr)
+	}
+	if removeErr != nil {
+		return fmt.Errorf("clean ARTEX_HOME write check: %w", removeErr)
+	}
+	return nil
+}
+
+// BaseDir anchors writable runtime artifacts. An explicit ARTEX_HOME is
+// authoritative; it is validated by InitHome at startup. Without it, the current
+// standalone executable still uses its own directory (or CWD for go run).
 func BaseDir() string {
+	if home := strings.TrimSpace(os.Getenv("ARTEX_HOME")); home != "" {
+		return filepath.Clean(home)
+	}
 	exe, err := os.Executable()
 	if err != nil {
 		return "."
@@ -71,17 +97,15 @@ func isGoRunDir(dir string) bool {
 	return false
 }
 
-// Path returns the config file path. Resolution order:
-//  1. env ARTEX_CONFIG (explicit override)
-//  2. ./config.json in the current working directory (running from the project
-//     dir — robust no matter where `go run` placed the temp/cached binary)
-//  3. config.json next to the executable (a distributed binary keeps it beside)
-//
-// The first existing file wins. If none exist, the CWD path is returned so the
-// "not found" message points at the project dir the user most likely expected.
+// Path resolves an explicit ARTEX_CONFIG first, then ARTEX_HOME/config.json.
+// When ARTEX_HOME is set, a missing file must not select an unrelated CWD config.
+// Without either override, the standalone executable searches CWD and BaseDir.
 func Path() string {
 	if v := strings.TrimSpace(os.Getenv("ARTEX_CONFIG")); v != "" {
 		return v
+	}
+	if strings.TrimSpace(os.Getenv("ARTEX_HOME")) != "" {
+		return filepath.Join(BaseDir(), "config.json")
 	}
 	var candidates []string
 	if cwd, err := os.Getwd(); err == nil {
