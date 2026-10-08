@@ -1083,7 +1083,7 @@ function route(m: string, path: string, seg: string[], q: URLSearchParams, b: Re
   }
 
   // ── auth：让 demo 直接进主界面 ──
-  if (path === "/auth/status") return { initialized: true };
+  if (path === "/auth/status") return { initialized: true, mode: "standalone" };
   if (path === "/auth/login" || path === "/auth/init") return { token: "mock-demo" };
   if (path === "/auth/change-password") return { ok: true };
 

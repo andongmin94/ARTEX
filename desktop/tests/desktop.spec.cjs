@@ -50,7 +50,7 @@ async function captureLocalRequest(url) {
   });
 }
 
-test("실제 Electron setup·모델 저장·로그인·재시작·화면·격리", async ({}, testInfo) => {
+test("실제 Electron 자동 진입·모델 저장·재시작·화면·격리", async ({}, testInfo) => {
   test.setTimeout(300_000);
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "ARTEX 한글 #%-"));
   const desktop = path.resolve(__dirname, "..");
@@ -96,24 +96,44 @@ test("실제 Electron setup·모델 저장·로그인·재시작·화면·격리
     expect(startup).toMatchObject({ state: "ready" });
     await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//);
   }
-  async function login() {
-    await expect(page.getByRole("heading", { name: "로그인", exact: true })).toBeVisible();
-    await page.getByLabel("비밀번호", { exact: true }).fill(password);
-    await page.getByRole("button", { name: "이용 안내", exact: true }).click();
-    await page.locator('[data-slot="dialog-content"] .overflow-y-auto').evaluate((node) => { node.scrollTop = node.scrollHeight; node.dispatchEvent(new Event("scroll")); });
-    await page.getByRole("button", { name: "모든 조항을 읽었으며 동의합니다", exact: true }).click();
-    await page.getByRole("button", { name: "로그인", exact: true }).click();
+  async function enteredApp() {
     await page.waitForURL(/\/function\/tasks\/?$/);
+    await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
+    await expect(page.getByRole("heading", { name: "로그인", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "비밀번호 초기 설정", exact: true })).toHaveCount(0);
+    await expect(page.locator('input[type="password"]')).toHaveCount(0);
+    expect((await page.evaluate(() => localStorage.getItem("artex_token"))).split(".")).toHaveLength(3);
+    expect(await api("/auth/status")).toMatchObject({ mode: "desktop" });
     expect(await api("/runtime/tools")).toMatchObject({ ready: false, mode: "desktop", components: expect.arrayContaining([{ key: "shell", state: "not_prepared" }, { key: "browser", state: "not_prepared" }]) });
   }
   try {
     await launch();
-    await page.waitForURL(/\/setup\/?$/);
-    await expect(page.getByRole("heading", { name: "비밀번호 초기 설정" })).toBeVisible();
-    await page.getByLabel("새 비밀번호", { exact: true }).fill(password);
-    await page.getByLabel("비밀번호 확인", { exact: true }).fill(password);
-    await page.getByRole("button", { name: "비밀번호 설정 후 로그인" }).click();
-    await page.waitForURL(/\/function\/tasks\/?$/);
+    await enteredApp();
+    expect(await api("/auth/status")).toEqual({ initialized: false, mode: "desktop" });
+    for (const trigger of [page.locator('[data-slot="sidebar-footer"]').getByRole("button"), page.locator('header [aria-haspopup="menu"]').last()]) {
+      await trigger.click();
+      await expect(page.getByRole("menu")).toContainText("로컬 데스크톱");
+      await expect(page.getByRole("menuitem", { name: "비밀번호 변경", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("menuitem", { name: "로그아웃", exact: true })).toHaveCount(0);
+      await page.keyboard.press("Escape");
+    }
+    const initialOrigin = new URL(page.url()).origin;
+    await page.evaluate(() => { localStorage.setItem("artex_token", "invalid-old-token"); document.cookie = "artex_token=invalid-old-token; path=/"; });
+    await page.goto(`${initialOrigin}/login/`);
+    await enteredApp();
+    await page.evaluate(() => { localStorage.removeItem("artex_token"); document.cookie = "artex_token=; path=/; max-age=0"; });
+    await page.goto(`${initialOrigin}/setup/`);
+    await enteredApp();
+    await page.route("**/api/auth/desktop-session", (route) => route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "검사 전용 앱 인증 실패" }) }));
+    await page.goto(`${initialOrigin}/function/tasks/`);
+    await expect(page.getByRole("alert").filter({ hasText: "검사 전용 앱 인증 실패" })).toBeVisible();
+    await expect(page.locator('input[type="password"]')).toHaveCount(0);
+    await page.unroute("**/api/auth/desktop-session");
+    await page.getByRole("button", { name: "다시 시도", exact: true }).click();
+    await enteredApp();
+    const unauthenticated = await page.evaluate(async () => (await fetch("/api/stats", { credentials: "omit" })).status);
+    expect(unauthenticated).toBe(401);
+    await enteredApp();
     await page.getByRole("link", { name: "LLM", exact: true }).click();
     await page.getByRole("button", { name: "생성", exact: true }).click();
     const dialog = page.getByRole("dialog");
@@ -206,6 +226,10 @@ test("실제 Electron setup·모델 저장·로그인·재시작·화면·격리
 
     const status = await page.evaluate(() => window.artexDesktop.status());
     expect((await fetch(`${status.url}/api/health`)).status).toBe(403);
+    const token = await page.evaluate(() => localStorage.getItem("artex_token"));
+    expect((await fetch(`${status.url}/api/auth/desktop-session`, { method: "POST", headers: { Authorization: `Bearer ${token}` } })).status).toBe(403);
+    await api("/auth/init", "POST", { password });
+    expect(await api("/auth/status")).toEqual({ initialized: true, mode: "desktop" });
     const secondExit = await new Promise((resolve, reject) => {
       const second = spawn(require("electron"), [desktop, `--artex-home=${home}`], { env: isolatedEnvironment, stdio: "ignore", windowsHide: true });
       const timer = setTimeout(() => { second.kill(); reject(new Error("두 번째 앱 인스턴스가 종료되지 않았습니다")); }, 10_000);
@@ -219,8 +243,9 @@ test("실제 Electron setup·모델 저장·로그인·재시작·화면·격리
     electron = null;
     await expect.poll(async () => { try { await fetch(`${status.url}/api/health`, { signal: AbortSignal.timeout(500) }); return false; } catch { return true; } }).toBe(true);
     await launch();
-    await page.waitForURL(/\/login\/?$/);
-    await login();
+    await enteredApp();
+    expect(await api("/auth/status")).toEqual({ initialized: true, mode: "desktop" });
+    expect((await api("/auth/login", "POST", { username: "ARTEX", password })).token.split(".")).toHaveLength(3);
     await page.getByRole("link", { name: "LLM", exact: true }).click();
     await expect(page.getByText("로컬 저장 검증", { exact: true })).toBeVisible();
     expect((await api("/tasks")).tasks.find((item) => item.id === task.id)).toMatchObject({ paused: true });
@@ -316,9 +341,10 @@ test("프록시 포트 충돌은 시작 실패로 표시하고 실제 백엔드�
     await new Promise((resolve) => blocker.close(resolve));
     blocked = false;
     await page.getByRole("button", { name: "다시 시도", exact: true }).click();
-    await page.waitForURL(/\/setup\/?$/);
+    await page.waitForURL(/\/function\/tasks\/?$/);
     expect(await page.evaluate(() => window.artexDesktop.status())).toMatchObject({ state: "ready" });
-    await expect(page.getByRole("heading", { name: "비밀번호 초기 설정" })).toBeVisible();
+    await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
+    await expect(page.locator('input[type="password"]')).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath("retry-ready.png") });
     fs.writeFileSync(testInfo.outputPath("temporary-home.txt"), home);
   } finally {

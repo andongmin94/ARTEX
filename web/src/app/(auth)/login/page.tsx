@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { AlertTriangle, ShieldCheck } from "lucide-react";
 
+import { AuthSessionState } from "@/components/auth-session-state";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,13 +14,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { auth } from "@/lib/auth";
+import { useAuthSession } from "@/lib/auth-session";
 
 export default function LoginPage() {
   const router = useRouter();
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [checking, setChecking] = useState(true);
+  const { session, error: sessionError, retry } = useAuthSession();
   const [agreed, setAgreed] = useState(false);
   const [termsOpen, setTermsOpen] = useState(false);
   const [readToEnd, setReadToEnd] = useState(false);
@@ -41,23 +43,14 @@ export default function LoginPage() {
   }, [termsOpen]);
 
   useEffect(() => {
-    // 已로그인直接进主界面（静态导出下无 middleware 代劳这层跳转）。
-    const token = auth.getToken();
-    if (token) {
-      // localStorage 可能仍有凭据但 cookie 已丢失。先同步，再发起全新请求，
-      // 避免服务端守卫或路由缓存把跳转送回仍处于 checking 状态的로그인页。
-      auth.setToken(token);
+    if (session?.authenticated) {
+      const token = auth.getToken();
+      if (token) auth.setToken(token);
       window.location.replace("/function/tasks");
-      return;
+    } else if (session && !session.initialized) {
+      router.replace("/setup");
     }
-    api
-      .authStatus()
-      .then(({ initialized }) => {
-        if (!initialized) router.replace("/setup");
-      })
-      .catch(() => setError("백엔드 서비스에 연결할 수 없습니다"))
-      .finally(() => setChecking(false));
-  }, [router]);
+  }, [router, session]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -78,13 +71,8 @@ export default function LoginPage() {
     }
   }
 
-  if (checking) {
-    return (
-      <div role="status" className="flex min-h-dvh items-center justify-center text-muted-foreground">
-        로그인 상태를 확인하는 중…
-      </div>
-    );
-  }
+  if (!session || session.authenticated || !session.initialized)
+    return <AuthSessionState error={sessionError} onRetry={retry} />;
 
   return (
     <div className="flex h-dvh">

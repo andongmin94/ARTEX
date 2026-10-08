@@ -16,6 +16,14 @@ test("Windows 실행 패키지의 실제 Go·SQLite·UI 부팅 및 재시작", a
   for (const license of ["LICENSE", "LICENSES.chromium.html", "resources/artex/licenses/ARTEX-LICENSE.txt", "resources/artex/licenses/neobrutal-ui-MIT.txt", "resources/artex/licenses/OFL-NotoSansKR.txt"]) expect(fs.existsSync(path.join(bundle, license)), license).toBe(true);
   let electron;
   let page;
+  async function api(route, method = "GET", body) {
+    return page.evaluate(async ({ route, method, body }) => {
+      const response = await fetch(`/api${route}`, { method, headers: { Authorization: `Bearer ${localStorage.getItem("artex_token")}`, ...(body ? { "Content-Type": "application/json" } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(`${method} ${route}: ${response.status} ${JSON.stringify(data)}`);
+      return data;
+    }, { route, method, body });
+  }
   async function launch() {
     electron = await _electron.launch({ executablePath, args: [`--artex-home=${home}`], env: isolatedEnvironment, chromiumSandbox: true, timeout: 45_000 });
     page = await electron.firstWindow();
@@ -25,32 +33,28 @@ test("Windows 실행 패키지의 실제 Go·SQLite·UI 부팅 및 재시작", a
   }
   try {
     await launch();
-    await page.waitForURL(/\/setup\/?$/);
-    await page.getByLabel("새 비밀번호", { exact: true }).fill("패키지검증-12345678");
-    await page.getByLabel("비밀번호 확인", { exact: true }).fill("패키지검증-12345678");
-    await page.getByRole("button", { name: "비밀번호 설정 후 로그인" }).click();
     await page.waitForURL(/\/function\/tasks\/?$/);
     await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
     await expect(page.locator("main")).toBeVisible();
+    await expect(page.locator('input[type="password"]')).toHaveCount(0);
+    expect(await api("/auth/status")).toEqual({ initialized: false, mode: "desktop" });
     expect(fs.existsSync(path.join(home, "data/artex.sqlite"))).toBe(true);
     const customSkill = path.join(home, "skills", "package-inspection.txt");
     fs.writeFileSync(customSkill, "사용자 스킬 파일 보존 검증");
     const ready = await page.evaluate(() => window.artexDesktop.status());
     expect((await fetch(`${ready.url}/api/health`)).status).toBe(403);
     await page.screenshot({ path: testInfo.outputPath("portable-ready.png") });
+    await api("/auth/init", "POST", { password: "패키지검증-12345678" });
     await electron.close();
     electron = null;
     await expect.poll(async () => { try { await fetch(`${ready.url}/api/health`, { signal: AbortSignal.timeout(500) }); return false; } catch { return true; } }).toBe(true);
     await launch();
-    await page.waitForURL(/\/login\/?$/);
-    await expect(page.getByRole("heading", { name: "로그인", exact: true })).toBeVisible();
-    expect(fs.readFileSync(customSkill, "utf8")).toBe("사용자 스킬 파일 보존 검증");
-    await page.getByLabel("비밀번호", { exact: true }).fill("패키지검증-12345678");
-    await page.getByRole("button", { name: "이용 안내", exact: true }).click();
-    await page.locator('[data-slot="dialog-content"] .overflow-y-auto').evaluate((node) => { node.scrollTop = node.scrollHeight; node.dispatchEvent(new Event("scroll")); });
-    await page.getByRole("button", { name: "모든 조항을 읽었으며 동의합니다", exact: true }).click();
-    await page.getByRole("button", { name: "로그인", exact: true }).click();
     await page.waitForURL(/\/function\/tasks\/?$/);
+    await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
+    await expect(page.locator('input[type="password"]')).toHaveCount(0);
+    expect(fs.readFileSync(customSkill, "utf8")).toBe("사용자 스킬 파일 보존 검증");
+    expect(await api("/auth/status")).toEqual({ initialized: true, mode: "desktop" });
+    expect((await api("/auth/login", "POST", { username: "ARTEX", password: "패키지검증-12345678" })).token.split(".")).toHaveLength(3);
     await page.locator('a[href="/system/settings/"]').click();
     await expect(page.getByText("자동 업데이트 미구성", { exact: true })).toBeVisible();
     await expect(page.getByText("실행 환경 미준비", { exact: true })).toBeVisible();

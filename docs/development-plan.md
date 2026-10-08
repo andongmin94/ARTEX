@@ -4,7 +4,36 @@
 UI 기준: **[andongmin94/neobrutal-ui](https://github.com/andongmin94/neobrutal-ui)**. 기존 기능·한국어·화면 흐름을 유지하고 시각·상호작용을 통일한다.
 작업 기준: **main 단일 브랜치**. 최종 갱신: 2026-10-07.
 
-## 현재 상태 — 2026-10-07 실제 SQLite/Electron 연결
+## 현재 상태 — 2026-10-07 비밀번호 없는 Electron 진입
+
+사용자 요청으로 Electron의 비밀번호 설정/로그인 화면을 앱 세션 인증으로 교체했다.
+미커밋 변경이 없는 main/원격 `6c8183f8cf6a4e25697a7718e1b816882c290445`에서 시작했다.
+Go가 정확한 앱 세션 키·바인딩 Host·Origin을 검증한 요청에만 기존 형식의 JWT를 발급한다.
+업무 화면은 JWT 발급/저장 뒤 표시하며, 연결 실패는 한국어 오류와 재시도로 남긴다.
+새 데이터 홈과 기존 비밀번호 데이터 모두 바로 열리고 기존 비밀번호/작업/증거/스킬은 변경하지 않는다.
+Go 단독 브라우저 접속은 비밀번호 설정·로그인·이용 안내를 유지한다. 승인·차단·대상 범위와 일반 API JWT 검증도 유지한다.
+두 프로필 메뉴에서 Electron의 비밀번호 변경/로그아웃을 숨겼고 mock 실행 모드와 실행 안내를 함께 갱신했다.
+
+변경 파일: `server/{auth.go,desktop_session.go,server.go,auth_desktop_test.go}`, 웹의 공통 인증 준비/상태/모드 저장과 API/types/mock·layout·login/setup·두 프로필 메뉴,
+`desktop/tests/{desktop.spec.cjs,standalone.spec.cjs}`·`package-tests/portable.spec.cjs`, README 두 개·architecture·ui-design·이 계획.
+이 단위의 검증 결과는 아래에 기록한다. 다음 구현 시작점은 기존 M4의 앱 전용 도구 런타임이며 정식 릴리스 상태는 아니다.
+
+### 자동 진입 단위의 로컬 검증
+
+| 검사 | 실제 결과와 범위 |
+| --- | --- |
+| 지정 Go/modernc | 인증·앱 세션 집중 검사와 `go test -count=1 -timeout 180s ./server` 통과(전체 server 39.7초). 새 홈/정상·빈·잘못된 기존 비밀번호 보존, 실제 저장소 오류 전파, 앱 세션·Host/Origin·JWT와 standalone 차단 검사. |
+| 정적 검사/빌드 | gofmt·`go vet ./server`·diff 검사 통과. web 타입·한국어·입력 검사·unit8개·신규 인증 파일 Biome 통과. 최종 소스로 31개 페이지 정적 export와 실제 Windows Go/embedui·CSP·라이선스·실행 패키지 빌드 통과. |
+| 실제 Electron + 일반 Chrome | 최종 `npm run test:electron` 3개 통과43.4초·실패0·skip0. 자동 진입·두 프로필 메뉴·잘못된 토큰 교체·인증 실패 재시도·JWT 없는 API 거부·업무/증거/보관/복원/기존 데이터 재시작·21개 화면·격리·프록시 충돌 재시도, Go 단독 setup/비밀번호/약관/로그인/정상 종료 포함. 설치된 Chrome은 검사 도구이며 앱 런타임 준비 성공이 아니다. |
+| 실제 Windows 실행 패키지 | 최종 `npm run test:package` 1개 통과3.2초·실패0·skip0. `app.isPackaged`의 새 홈/기존 비밀번호 자동 진입, SQLite·사용자 스킬 보존·API 경계·Go 종료·라이선스·미준비 상태 검사. |
+| 로컬 증거 | 최종 결과106 PNG와 standalone trace·프로세스 기록·임시 SQLite를 로컬에 보존. 이전 패키지/검사 결과와 실패 trace도 별도 경로에 보존하며 커밋/원격 업로드하지 않는다. |
+
+초기 패키지 생성은 기존 출력 보호로 중단됐다. 기존 폴더를 보존한 뒤 재빌드했다.
+새 Playwright 검사의 헤더 메뉴 선택자·중복 trace 시작·Next route announcer와 오류 alert 선택 충돌을 수정한 뒤 최종 검사가 모두 통과했다. 실제 실패를 skip으로 바꾸지 않았다.
+이번 단위에서 전체 `./...`·Linux/macOS 교차 빌드는 반복하지 않았으며 아래 이전 단위 결과와 구분한다. race(C 컴파일러 없음)·다른 OS 실제 실행·물리 IME/OS DPI·M4 도구/백업/설치/서명/업데이트는 미실행이다.
+Actions 실행/재실행·새 자동 트리거·원격 artifact 업로드·태그·배포는 하지 않는다. 원격 반영 SHA는 완료 보고와 이 단위의 Git 커밋에서 확인한다.
+
+## 이전 단위 — 2026-10-07 실제 SQLite/Electron 연결
 
 이전 브랜치 통합은 main `93f2179928bf735e7ba3570d6a0662dabe7863ad`에 완료됐다. 과거의 미완성 전환 별도 브랜치 유지 지침은 종료한다.
 통합 전 main·업무 전환·foundation의 이력은 해당 커밋의 부모와 이전 기록에 보존돼 있다.
@@ -64,11 +93,11 @@ verify/sqlite-foundation은 수동 전용이다. 개발 커밋은 `[skip ci]`, �
 - [x] **M2.2g 재검증 시드:** FK 순서/단일 트랜잭션/사용자 편집·삭제 보존, 실제 시작 검사. reporter도 원자화.
 - [x] **M2.2h LLM 기록/사용량:** 실제 opener/Recorder·검색·UTC 집계·원장 보존 검사.
 - [x] **M2.2i 작업 모델 목록:** 기존 실제 SQLite 6개와 오류 주입 제어 검사를 지정 Go에서 실행.
-- [x] **M2.3 설정·인증 통합:** 실제 Electron setup/로그인/모델 저장·재실행, JWT 오류/정리/앱 세션 정책.
+- [x] **M2.3 설정·인증 통합:** 실제 Electron 앱 세션 자동 진입/모델 저장·재실행, Go 단독 브라우저 setup/로그인, JWT 오류/정리/앱 세션 정책.
 - [x] **M2.4 자산·범위:** 관계/DSL/net/netip, IPv4·IPv6 경계/기업 귀속/중복과 실제 다중 풀 경합 검사.
 - [x] **M2.5 작업·탐색:** native 작업/의도/대화/사실/취약점/승인/재검증/사용량/기록/취소 검사.
 - [x] **M2.6 증거·보관:** 형식4의 열·키·27개 테이블/행 수/JSON/stream 검증, 큰 ID와 공유 자산 병합, 오류 주입·rollback·재시도 및 실제 Electron 증거 보관/복원/재실행 통과.
-- [x] **M2.7 통합:** PG 없이 로컬 모델 fixture → 작업/기록/330KB 트래픽/취약점 증거 → 보관/복원 → 종료/로그인/재실행 보존. PG fixture/skip/driver/config/서비스/smoke/헬퍼/구 배포 도구 제거.
+- [x] **M2.7 통합:** PG 없이 로컬 모델 fixture → 작업/기록/330KB 트래픽/취약점 증거 → 보관/복원 → 종료/자동 진입/재실행 보존. PG fixture/skip/driver/config/서비스/smoke/헬퍼/구 배포 도구 제거.
 
 DB 선택 스위치/SQL 번역기/PG fallback/구 데이터 자동 이전기/임시 호환 계층은 추가하지 않는다.
 
@@ -94,7 +123,7 @@ UI 지침과 최신 지정 원본을 읽었고 원본 SHA b4da2463fe710a77bf464c
 - [x] README와 개발 안내를 현재 Electron/SQLite 빌드·검사·데이터 경로·미완료 상태로 교체.
 - [ ] Windows 설치/서명/업데이트, macOS/Linux 실제 지원 검증, 전체 스타일 확인.
 
-## 이번 로컬 검증 — 2026-10-07
+## 이전 단위의 로컬 검증 — 2026-10-07 SQLite/Electron 연결
 
 소스 기준은 main `93f2179928bf735e7ba3570d6a0662dabe7863ad`와 이번 변경이다. 지정 Go 1.26.3 Windows amd64 배포물을 공식 SHA256과 대조했고 modernc 1.52.0·norma 0.4.3을 유지했다.
 

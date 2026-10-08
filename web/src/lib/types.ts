@@ -1576,3 +1576,7 @@ export interface InterceptExecution {
   seq: number;
   items: Activity[];
 }
+export interface AuthStatus {
+  initialized: boolean;
+  mode: "desktop" | "standalone";
+}

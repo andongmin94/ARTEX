@@ -22,23 +22,19 @@ const (
 	jwtTTL         = 7 * 24 * time.Hour
 	keyChars       = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
-	// 최소 길이는 setup 화면의 검증과 같다. API 직접 호출도 서버에서 검증한다.
-	// bcrypt는 72바이트를 넘으면 ErrPasswordTooLong을 반환하므로 저장 전에 차단한다.
 	minPasswordRunes = 8
-	maxPasswordBytes = 72
+	maxPasswordBytes = 72 // bcrypt가 허용하는 UTF-8 바이트 길이 상한.
 )
 
-// 비밀번호 조회 실패는 설정이 없는 상태로 취급하지 않는다.
-// 저장소 오류에서 인증되지 않은 요청이 기존 관리자 비밀번호를 덮어쓰지 않게 한다.
-const errDataSourceUnavailable = "데이터 저장소를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도하세요"
+const errDataSourceUnavailable = "인증 저장소를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도하세요"
 
-// validatePassword는 검증에 통과하면 빈 문자열, 실패하면 표시할 한국어 이유를 반환한다.
+// 새 비밀번호를 저장할 때만 검사한다. 기존 비밀번호 로그인에는 적용하지 않는다.
 func validatePassword(pw string) string {
 	if utf8.RuneCountInString(pw) < minPasswordRunes {
 		return fmt.Sprintf("비밀번호는 %d자 이상이어야 합니다", minPasswordRunes)
 	}
 	if len(pw) > maxPasswordBytes {
-		return fmt.Sprintf("비밀번호는 %d바이트 이하여야 합니다", maxPasswordBytes)
+		return fmt.Sprintf("비밀번호는 UTF-8 기준 %d바이트를 초과할 수 없습니다", maxPasswordBytes)
 	}
 	return ""
 }
@@ -114,11 +110,12 @@ func extractToken(r *http.Request) string {
 }
 
 // requireAuth wraps h with JWT validation.
-// /api/auth/* and /api/health are exempt.
+// Only the registered auth paths and /api/health are exempt.
 func (s *Server) requireAuth(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := r.URL.Path
-		if strings.HasPrefix(p, "/api/auth/") || p == "/api/health" {
+		switch p {
+		case "/api/auth/status", "/api/auth/init", "/api/auth/login", "/api/auth/change-password", "/api/auth/desktop-session", "/api/health":
 			h.ServeHTTP(w, r)
 			return
 		}
@@ -135,24 +132,41 @@ func (s *Server) requireAuth(h http.Handler) http.Handler {
 	})
 }
 
-// GET /api/auth/status — reports whether the admin password has been initialised.
-// 조회 오류는 503으로 반환한다. initialized:false를 반환하면 기존 비밀번호가 있어도
-// 화면에서 사용자를 /setup으로 보내므로 데이터베이스 오류를 성공으로 처리하지 않는다.
+// GET /api/auth/status — reports the login mode and stored password state.
 func (s *Server) authStatus(w http.ResponseWriter, r *http.Request) {
 	pg := s.pg(w)
 	if pg == nil {
 		return
 	}
+	mode := "standalone"
+	if len(s.desktopSession) != 0 {
+		mode = "desktop"
+	}
 	hash, exists, err := pg.GetSetting(authPassKey)
 	if err != nil {
-		writeErr(w, 503, errDataSourceUnavailable)
+		writeErr(w, http.StatusServiceUnavailable, errDataSourceUnavailable)
 		return
 	}
-	if exists && hash == "" {
+	if mode == "standalone" && exists && hash == "" {
 		writeErr(w, 500, "인증 설정을 읽을 수 없습니다")
 		return
 	}
-	writeJSON(w, 200, map[string]any{"initialized": exists})
+	writeJSON(w, 200, map[string]any{"initialized": exists, "mode": mode})
+}
+
+// POST /api/auth/desktop-session — exchanges Electron's verified app session
+// for the existing API JWT without initializing or changing a password.
+func (s *Server) authDesktopSession(w http.ResponseWriter, r *http.Request) {
+	if !s.validDesktopSession(r) {
+		writeErr(w, http.StatusForbidden, "데스크톱 세션이 유효하지 않습니다")
+		return
+	}
+	tok, err := signJWT(s.jwtKey)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "token 생성 실패")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"token": tok})
 }
 
 // POST /api/auth/init — sets the password for the first time; rejected if already set.
@@ -163,7 +177,7 @@ func (s *Server) authInit(w http.ResponseWriter, r *http.Request) {
 	}
 	existing, exists, err := pg.GetSetting(authPassKey)
 	if err != nil {
-		writeErr(w, 503, errDataSourceUnavailable)
+		writeErr(w, http.StatusServiceUnavailable, errDataSourceUnavailable)
 		return
 	}
 	if exists && existing == "" {
@@ -182,7 +196,7 @@ func (s *Server) authInit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if msg := validatePassword(req.Password); msg != "" {
-		writeErr(w, 400, msg)
+		writeErr(w, http.StatusBadRequest, msg)
 		return
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
@@ -190,8 +204,6 @@ func (s *Server) authInit(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "비밀번호 암호화 실패")
 		return
 	}
-	// 최초 설정은 INSERT ... ON CONFLICT DO NOTHING과 기본 키 제약으로 보장한다.
-	// 앞선 조회 이후 bcrypt 처리 중에도 다른 요청이 먼저 설정할 수 있으므로 덮어쓰지 않는다.
 	created, err := pg.SetSettingIfAbsent(r.Context(), authPassKey, string(hash))
 	if err != nil {
 		writeErr(w, 500, "인증 설정을 저장할 수 없습니다")
@@ -234,12 +246,12 @@ func (s *Server) authChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if msg := validatePassword(req.NewPassword); msg != "" {
-		writeErr(w, 400, msg)
+		writeErr(w, http.StatusBadRequest, msg)
 		return
 	}
 	hash, ok, err := pg.GetSetting(authPassKey)
 	if err != nil {
-		writeErr(w, 503, errDataSourceUnavailable)
+		writeErr(w, http.StatusServiceUnavailable, errDataSourceUnavailable)
 		return
 	}
 	if ok && hash == "" {
@@ -291,7 +303,7 @@ func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	hash, ok, err := pg.GetSetting(authPassKey)
 	if err != nil {
-		writeErr(w, 503, errDataSourceUnavailable)
+		writeErr(w, http.StatusServiceUnavailable, errDataSourceUnavailable)
 		return
 	}
 	if ok && hash == "" {

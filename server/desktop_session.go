@@ -45,14 +45,21 @@ func (s *Server) requireDesktopSession(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		values := r.Header.Values(desktopSessionHeader)
-		valid := len(values) == 1 && subtle.ConstantTimeCompare([]byte(values[0]), s.desktopSession) == 1
-		origin := r.Header.Get("Origin")
-		if !valid || s.desktopHost == "" || r.Host != s.desktopHost ||
-			(origin != "" && origin != "http://"+s.desktopHost) || len(r.Header.Values("Origin")) > 1 {
+		if !s.validDesktopSession(r) {
 			writeErr(w, http.StatusForbidden, "데스크톱 세션이 유효하지 않습니다")
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (s *Server) validDesktopSession(r *http.Request) bool {
+	values := r.Header.Values(desktopSessionHeader)
+	if len(s.desktopSession) == 0 || len(values) != 1 ||
+		subtle.ConstantTimeCompare([]byte(values[0]), s.desktopSession) != 1 ||
+		s.desktopHost == "" || r.Host != s.desktopHost {
+		return false
+	}
+	origin := r.Header.Get("Origin")
+	return len(r.Header.Values("Origin")) <= 1 && (origin == "" || origin == "http://"+s.desktopHost)
 }

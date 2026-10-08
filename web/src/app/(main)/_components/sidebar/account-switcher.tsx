@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { auth } from "@/lib/auth";
 import { cn, getInitials } from "@/lib/utils";
+import { useAuthStore } from "@/stores/auth-store";
 
 import { ChangePasswordDialog } from "./change-password-dialog";
 
@@ -30,6 +31,7 @@ export function AccountSwitcher({
 }) {
   const [activeUser, setActiveUser] = useState(users[0]);
   const [pwOpen, setPwOpen] = useState(false);
+  const mode = useAuthStore((state) => state.mode);
 
   function handleLogout() {
     auth.clearToken();
@@ -64,7 +66,9 @@ export function AccountSwitcher({
                 </Avatar>
                 <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold">{user.name}</span>
-                  <span className="truncate text-xs capitalize">{user.role}</span>
+                  <span className="truncate text-xs capitalize">
+                    {mode === "desktop" ? "로컬 데스크톱" : user.role}
+                  </span>
                 </div>
                 <span
                   className={cn(
@@ -77,18 +81,22 @@ export function AccountSwitcher({
               </div>
             </DropdownMenuItem>
           ))}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => setPwOpen(true)}>
-            <KeyRound />
-            비밀번호 변경
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
-            <LogOut />
-            로그아웃
-          </DropdownMenuItem>
+          {mode === "standalone" && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setPwOpen(true)}>
+                <KeyRound />
+                비밀번호 변경
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
+                <LogOut />
+                로그아웃
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
-      <ChangePasswordDialog open={pwOpen} onOpenChange={setPwOpen} />
+      {mode === "standalone" && <ChangePasswordDialog open={pwOpen} onOpenChange={setPwOpen} />}
     </>
   );
 }

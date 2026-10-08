@@ -14,6 +14,7 @@ import type {
   AgentDetail,
   AgentTrigger,
   ArchiveBatchItem,
+  AuthStatus,
   Asset,
   AssetInterceptRule,
   AssetInterceptRuleInput,
@@ -238,7 +239,8 @@ export const api = {
   health: () => get<{ ok: boolean; service: string; version: string }>("/health"),
 
   // ---- auth ----
-  authStatus: () => get<{ initialized: boolean }>("/auth/status"),
+  authStatus: () => get<AuthStatus>("/auth/status"),
+  desktopSession: () => post<{ token: string }>("/auth/desktop-session"),
   login: (username: string, password: string) => post<{ token: string }>("/auth/login", { username, password }),
   initPassword: (password: string) => post<{ token: string }>("/auth/init", { password }),
   changePassword: (oldPassword: string, newPassword: string) =>

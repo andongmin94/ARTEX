@@ -16,6 +16,7 @@ import {
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
 import { auth } from "@/lib/auth";
 import { getInitials } from "@/lib/utils";
+import { useAuthStore } from "@/stores/auth-store";
 
 import { ChangePasswordDialog } from "./change-password-dialog";
 
@@ -30,6 +31,8 @@ export function NavUser({
 }) {
   const { isMobile } = useSidebar();
   const [pwOpen, setPwOpen] = React.useState(false);
+  const mode = useAuthStore((state) => state.mode);
+  const detail = mode === "desktop" ? "로컬 데스크톱" : user.email;
 
   function handleLogout() {
     auth.clearToken();
@@ -53,7 +56,7 @@ export function NavUser({
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">{user.name}</span>
-                <span className="truncate text-muted-foreground text-xs">{user.email}</span>
+                <span className="truncate text-muted-foreground text-xs">{detail}</span>
               </div>
               <EllipsisVertical className="ml-auto size-4" />
             </SidebarMenuButton>
@@ -72,24 +75,28 @@ export function NavUser({
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">{user.name}</span>
-                  <span className="truncate text-muted-foreground text-xs">{user.email}</span>
+                  <span className="truncate text-muted-foreground text-xs">{detail}</span>
                 </div>
               </div>
             </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setPwOpen(true)}>
-              <KeyRound />
-              비밀번호 변경
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
-              <LogOut />
-              로그아웃
-            </DropdownMenuItem>
+            {mode === "standalone" && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setPwOpen(true)}>
+                  <KeyRound />
+                  비밀번호 변경
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
+                  <LogOut />
+                  로그아웃
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
-      <ChangePasswordDialog open={pwOpen} onOpenChange={setPwOpen} />
+      {mode === "standalone" && <ChangePasswordDialog open={pwOpen} onOpenChange={setPwOpen} />}
     </SidebarMenu>
   );
 }
