@@ -70,9 +70,9 @@ type ErrDestinationChangedWithoutCredentials struct {
 }
 
 func (e *ErrDestinationChangedWithoutCredentials) Error() string {
-	return "目标地址（" + strings.Join(e.Changed, "、") + "）已变更，请同时重新填写凭据字段（" +
-		strings.Join(e.Missing, "、") + "）：填入新值，或显式留空表示不再需要凭据。" +
-		"原凭据只对旧地址有效，继续沿用等于把它交给新地址。"
+	return "대상 주소(" + strings.Join(e.Changed, "、") + ")가 변경되었습니다. 자격증명 필드도 다시 입력하세요(" +
+		strings.Join(e.Missing, "、") + "): 새 값을 넣거나 더 이상 필요하지 않으면 명시적으로 비워두세요." +
+		"기존 자격증명은 이전 주소에만 유효합니다. 유지하면 새 주소로 자격증명이 전송됩니다."
 }
 
 // PrepareConfigUpdate 合并渠道配置，并处理「目标地址变更」这一安全敏感情况。
@@ -101,7 +101,7 @@ func (e *ErrDestinationChangedWithoutCredentials) Error() string {
 func PrepareConfigUpdate(kind string, stored, incoming map[string]any) (map[string]any, error) {
 	channel, ok := Get(kind)
 	if !ok {
-		return nil, fmt.Errorf("渠道类型 %q 未注册", kind)
+		return nil, fmt.Errorf("등록되지 않은 채널 유형: %q", kind)
 	}
 	secrets := channel.SecretKeys()
 	destinations := channel.DestinationKeys()
@@ -174,7 +174,7 @@ func rejectMaskedInContainers(incoming map[string]any, secretKeys []string) erro
 			continue
 		}
 		if strings.Contains(string(encoded), MaskedPrefix) {
-			return fmt.Errorf("字段 %s 的内容里含掩码标记 %q：该字段只能整体留空表示沿用、或整体提交新值，不能在结构体内部夹带掩码占位",
+			return fmt.Errorf("필드 %s에 마스킹 표시 %q가 포함되어 있습니다. 전체를 비워 기존 값을 유지하거나 새 값을 전부 제출해야 합니다. 구조체 내부에 마스킹 자리표시자를 섞을 수 없습니다",
 				key, MaskedPrefix)
 		}
 	}

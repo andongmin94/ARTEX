@@ -182,11 +182,11 @@ func (s *Server) notifyCreateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	var req notifyChannelRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, 400, "请求体不是合法 JSON: "+err.Error())
+		writeErr(w, 400, "요청 본문이 유효한 JSON이 아닙니다: "+err.Error())
 		return
 	}
 	if req.Kind == nil || !notify.ValidKind(*req.Kind) {
-		writeErr(w, 400, fmt.Sprintf("渠道类型无效，可选：%s", strings.Join(notify.Kinds(), " / ")))
+		writeErr(w, 400, fmt.Sprintf("유효하지 않은 채널 유형입니다. 사용 가능: %s", strings.Join(notify.Kinds(), " / ")))
 		return
 	}
 	name := ""
@@ -194,7 +194,7 @@ func (s *Server) notifyCreateChannel(w http.ResponseWriter, r *http.Request) {
 		name = strings.TrimSpace(*req.Name)
 	}
 	if name == "" {
-		writeErr(w, 400, "缺少渠道名称")
+		writeErr(w, 400, "채널 이름이 없습니다")
 		return
 	}
 	channel, _ := notify.Get(*req.Kind)
@@ -211,7 +211,7 @@ func (s *Server) notifyCreateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Mode != nil {
 		if !db.ValidNotifyMode(*req.Mode) {
-			writeErr(w, 400, "推送模式无效，可选：realtime / digest")
+			writeErr(w, 400, "유효하지 않은 전송 모드입니다. realtime / digest를 사용하세요")
 			return
 		}
 		ch.Mode = *req.Mode
@@ -219,7 +219,7 @@ func (s *Server) notifyCreateChannel(w http.ResponseWriter, r *http.Request) {
 	if req.RatePerMin != nil {
 		// 显式给值就照用——包括 0，它表示「不限流」，是合法配置。
 		if *req.RatePerMin < 0 {
-			writeErr(w, 400, "限流值不能为负")
+			writeErr(w, 400, "속도 제한은 음수일 수 없습니다")
 			return
 		}
 		ch.RatePerMin = *req.RatePerMin
@@ -258,7 +258,7 @@ func (s *Server) notifyUpdateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	id, ok := pathInt(r, "id")
 	if !ok {
-		writeErr(w, 400, "渠道 id 无效")
+		writeErr(w, 400, "채널 ID가 유효하지 않습니다")
 		return
 	}
 	current, err := pg.NotificationChannelByID(r.Context(), id)
@@ -268,7 +268,7 @@ func (s *Server) notifyUpdateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	var req notifyChannelRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, 400, "请求体不是合法 JSON: "+err.Error())
+		writeErr(w, 400, "요청 본문이 유효한 JSON이 아닙니다: "+err.Error())
 		return
 	}
 
@@ -276,7 +276,7 @@ func (s *Server) notifyUpdateChannel(w http.ResponseWriter, r *http.Request) {
 	kind := current.Kind
 	if req.Kind != nil {
 		if !notify.ValidKind(*req.Kind) {
-			writeErr(w, 400, fmt.Sprintf("渠道类型无效，可选：%s", strings.Join(notify.Kinds(), " / ")))
+			writeErr(w, 400, fmt.Sprintf("유효하지 않은 채널 유형입니다. 사용 가능: %s", strings.Join(notify.Kinds(), " / ")))
 			return
 		}
 		kind = *req.Kind
@@ -317,7 +317,7 @@ func (s *Server) notifyUpdateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Name != nil {
 		if ch.Name = strings.TrimSpace(*req.Name); ch.Name == "" {
-			writeErr(w, 400, "渠道名称不能为空")
+			writeErr(w, 400, "채널 이름은 비워둘 수 없습니다")
 			return
 		}
 	}
@@ -326,14 +326,14 @@ func (s *Server) notifyUpdateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Mode != nil {
 		if !db.ValidNotifyMode(*req.Mode) {
-			writeErr(w, 400, "推送模式无效，可选：realtime / digest")
+			writeErr(w, 400, "유효하지 않은 전송 모드입니다. realtime / digest를 사용하세요")
 			return
 		}
 		ch.Mode = *req.Mode
 	}
 	if req.RatePerMin != nil {
 		if *req.RatePerMin < 0 {
-			writeErr(w, 400, "限流值不能为负")
+			writeErr(w, 400, "속도 제한은 음수일 수 없습니다")
 			return
 		}
 		ch.RatePerMin = *req.RatePerMin
@@ -381,7 +381,7 @@ func (s *Server) notifyDeleteChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	id, ok := pathInt(r, "id")
 	if !ok {
-		writeErr(w, 400, "渠道 id 无效")
+		writeErr(w, 400, "채널 ID가 유효하지 않습니다")
 		return
 	}
 	if err := pg.DeleteNotificationChannel(r.Context(), id); err != nil {
@@ -403,7 +403,7 @@ func (s *Server) notifyTestChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	id, ok := pathInt(r, "id")
 	if !ok {
-		writeErr(w, 400, "渠道 id 无效")
+		writeErr(w, 400, "채널 ID가 유효하지 않습니다")
 		return
 	}
 	ch, err := pg.NotificationChannelByID(r.Context(), id)
@@ -413,7 +413,7 @@ func (s *Server) notifyTestChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	channel, ok := notify.Get(ch.Kind)
 	if !ok {
-		writeErr(w, 400, fmt.Sprintf("渠道类型 %q 未注册", ch.Kind))
+		writeErr(w, 400, fmt.Sprintf("등록되지 않은 채널 유형: %q", ch.Kind))
 		return
 	}
 	var cfg map[string]any
@@ -445,10 +445,10 @@ func notifyTestMessage(baseURL string) notify.Message {
 	return notify.Message{
 		Items: []notify.Item{{
 			FindingID: 0,
-			Name:      "测试消息 · 渠道配置正常",
-			VulnClass: "连通性测试",
+			Name:      "테스트 메시지 · 채널 설정 정상",
+			VulnClass: "연결 테스트",
 			Severity:  "low",
-			Summary:   "这是 ARTEX 推送渠道的测试消息，收到即表示该渠道配置可用。",
+			Summary:   "ARTEX 알림 채널의 테스트 메시지입니다. 수신했다면 채널을 사용할 수 있습니다.",
 			Assets:    []string{"artex.example.com"},
 			DetailURL: baseURL,
 		}},
@@ -495,7 +495,7 @@ func (s *Server) notifyRetryDelivery(w http.ResponseWriter, r *http.Request) {
 	}
 	id, ok := pathInt(r, "id")
 	if !ok {
-		writeErr(w, 400, "投递 id 无效")
+		writeErr(w, 400, "전송 ID가 유효하지 않습니다")
 		return
 	}
 	if err := pg.RetryNotificationDelivery(r.Context(), id); err != nil {
@@ -508,7 +508,7 @@ func (s *Server) notifyRetryDelivery(w http.ResponseWriter, r *http.Request) {
 // notifyChannelLookupErr 把「渠道不存在」翻译成 404，其余错误 500。
 func notifyChannelLookupErr(w http.ResponseWriter, err error) {
 	if errors.Is(err, db.ErrNotificationChannelNotFound) {
-		writeErr(w, 404, "通知渠道不存在")
+		writeErr(w, 404, "알림 채널이 존재하지 않습니다")
 		return
 	}
 	writeErr(w, 500, err.Error())

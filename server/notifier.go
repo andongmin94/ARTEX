@@ -123,12 +123,12 @@ func (n *Notifier) step(ctx context.Context) {
 		return
 	}
 	if _, _, err := n.pg.FanOutPendingEvents(ctx, notifyFanOutPerTick); err != nil {
-		log.Printf("[notify] 分派事件失败: %v", err)
+		log.Printf("[notify] 이벤트 배정 실패: %v", err)
 		return
 	}
 	channels, err := n.pg.ListNotificationChannels(ctx)
 	if err != nil {
-		log.Printf("[notify] 读取渠道失败: %v", err)
+		log.Printf("[notify] 채널 읽기 실패: %v", err)
 		return
 	}
 	baseURL := n.publicBaseURL()
@@ -184,7 +184,7 @@ func digestTickPlan() (tokens, claimLimit int) {
 func (n *Notifier) stepRealtime(ctx context.Context, ch *db.NotificationChannel, allow int, baseURL string) {
 	deliveries, err := n.pg.ClaimRealtimeDeliveries(ctx, ch.ID, allow, notifyLease)
 	if err != nil {
-		log.Printf("[notify] 领取实时投递失败 channel=%d: %v", ch.ID, err)
+		log.Printf("[notify] 실시간 전송 배정 실패 channel=%d: %v", ch.ID, err)
 		return
 	}
 	if len(deliveries) == 0 {
@@ -192,7 +192,7 @@ func (n *Notifier) stepRealtime(ctx context.Context, ch *db.NotificationChannel,
 	}
 	channel, cfg, ok := n.adapt(ch)
 	if !ok {
-		_ = n.pg.FailDeliveries(ctx, deliveryIDs(deliveries), fmt.Sprintf("渠道类型 %q 未注册", ch.Kind))
+		_ = n.pg.FailDeliveries(ctx, deliveryIDs(deliveries), fmt.Sprintf("등록되지 않은 채널 유형: %q", ch.Kind))
 		return
 	}
 	for _, dl := range deliveries {
@@ -211,7 +211,7 @@ func (n *Notifier) stepDigest(ctx context.Context, ch *db.NotificationChannel, a
 	window := n.digestInterval()
 	due, err := n.pg.DigestBatchDue(ctx, ch.ID, window)
 	if err != nil {
-		log.Printf("[notify] 判断汇总批次失败 channel=%d: %v", ch.ID, err)
+		log.Printf("[notify] 요약 묶음 판정 실패 channel=%d: %v", ch.ID, err)
 		return
 	}
 	if !due {
@@ -219,7 +219,7 @@ func (n *Notifier) stepDigest(ctx context.Context, ch *db.NotificationChannel, a
 	}
 	deliveries, err := n.pg.ClaimDigestBatch(ctx, ch.ID, allow, notifyLease)
 	if err != nil {
-		log.Printf("[notify] 领取汇总批次失败 channel=%d: %v", ch.ID, err)
+		log.Printf("[notify] 요약 묶음 배정 실패 channel=%d: %v", ch.ID, err)
 		return
 	}
 	if len(deliveries) == 0 {
@@ -227,7 +227,7 @@ func (n *Notifier) stepDigest(ctx context.Context, ch *db.NotificationChannel, a
 	}
 	channel, cfg, ok := n.adapt(ch)
 	if !ok {
-		_ = n.pg.FailDeliveries(ctx, deliveryIDs(deliveries), fmt.Sprintf("渠道类型 %q 未注册", ch.Kind))
+		_ = n.pg.FailDeliveries(ctx, deliveryIDs(deliveries), fmt.Sprintf("등록되지 않은 채널 유형: %q", ch.Kind))
 		return
 	}
 	msg, included, err := n.renderBatch(ctx, deliveries, baseURL, int(window.Minutes()))
@@ -239,11 +239,11 @@ func (n *Notifier) stepDigest(ctx context.Context, ch *db.NotificationChannel, a
 	// included 之外、既不进消息也不进失败列表——发送成功时它们的状态会被
 	// 之后的批量标记漏掉，永远停在 sending 直到租约过期被反复领取。
 	if skipped := excludeDeliveries(deliveries, included); len(skipped) > 0 {
-		reason := "事件快照无法解析，本条漏洞无法渲染成消息"
+		reason := "이벤트 스냅샷을 해석할 수 없어 해당 취약점의 메시지를 생성할 수 없습니다"
 		if fErr := n.pg.FailDeliveries(ctx, deliveryIDs(skipped), reason); fErr != nil {
-			log.Printf("[notify] 标记坏快照投递失败 channel=%s ids=%v: %v", ch.Kind, deliveryIDs(skipped), fErr)
+			log.Printf("[notify] 손상된 스냅샷 전송 상태 표시 실패 channel=%s ids=%v: %v", ch.Kind, deliveryIDs(skipped), fErr)
 		}
-		log.Printf("[notify] 跳过 %d 条快照无法解析的投递 channel=%d", len(skipped), ch.ID)
+		log.Printf("[notify] 해석할 수 없는 스냅샷 %d건 건너뜀 channel=%d", len(skipped), ch.ID)
 	}
 	// 只把进了消息的那些交给 send：included[i] 与 msg.Items[i] 严格对应，
 	// send 依赖这个对应关系把「渠道回报装下了前 K 条」落到正确的投递行上。
@@ -267,21 +267,21 @@ func (n *Notifier) send(ctx context.Context, channel notify.Channel, cfg map[str
 		if delivered > len(deliveries) {
 			// 渠道回报的条数不可能超过投递数；真发生了说明渲染层算错了，
 			// 按全部送达处理并把问题记下来，总好过把记录写乱。
-			log.Printf("[notify] 渠道回报送达条数 %d 超过投递数 %d channel=%s，按全部送达处理",
+			log.Printf("[notify] 보고된 전송 완료 수 %d가 요청 수 %d를 초과함 channel=%s, 전체 완료 처리",
 				delivered, len(deliveries), channel.Kind())
 			delivered = len(deliveries)
 		}
 		sent, rest := deliveries[:delivered], deliveries[delivered:]
 		if err := n.pg.MarkDeliveriesSent(ctx, deliveryIDs(sent)); err != nil {
-			log.Printf("[notify] 标记已送达失败 channel=%s ids=%v: %v", channel.Kind(), deliveryIDs(sent), err)
+			log.Printf("[notify] 전송 완료 상태 저장 실패 channel=%s ids=%v: %v", channel.Kind(), deliveryIDs(sent), err)
 		}
 		if len(rest) > 0 {
 			// 本条消息已达渠道长度上限：剩下的立刻回队，由下一个 tick 续发。
 			// 用 DeferDeliveries 而非 RescheduleDeliveries —— 这不是失败，
 			// 不该消耗重试预算（领取时已经乐观 +1 了，那里会减回去）。
 			if err := n.pg.DeferDeliveries(ctx, deliveryIDs(rest),
-				fmt.Sprintf("本条消息已达渠道长度上限，仅送达前 %d 条，其余留待下一批", delivered)); err != nil {
-				log.Printf("[notify] 分段续发排队失败 channel=%s ids=%v: %v", channel.Kind(), deliveryIDs(rest), err)
+				fmt.Sprintf("메시지 길이 상한에 도달하여 처음 %d건만 전송했습니다. 나머지는 다음 묶음에서 전송합니다", delivered)); err != nil {
+				log.Printf("[notify] 분할 전송 대기열 추가 실패 channel=%s ids=%v: %v", channel.Kind(), deliveryIDs(rest), err)
 			}
 		}
 		return
@@ -289,7 +289,7 @@ func (n *Notifier) send(ctx context.Context, channel notify.Channel, cfg map[str
 	if err == nil {
 		// 渠道既没报错也没说送达了多少条。按失败处理（走退避），
 		// 免得这条投递被反复领取却永远标记不掉。
-		err = fmt.Errorf("渠道未报告送达条数（delivered=%d）", delivered)
+		err = fmt.Errorf("채널이 전송 완료 수를 보고하지 않았습니다(delivered=%d)", delivered)
 	}
 
 	// 失败处置**逐条**决定，而不是拿整批的最大尝试次数做判断。
@@ -315,24 +315,24 @@ func (n *Notifier) send(ctx context.Context, channel notify.Channel, cfg map[str
 
 	if len(failIDs) > 0 {
 		if fErr := n.pg.FailDeliveries(ctx, failIDs, err.Error()); fErr != nil {
-			log.Printf("[notify] 标记失败状态出错 channel=%s ids=%v: %v", channel.Kind(), failIDs, fErr)
+			log.Printf("[notify] 실패 상태 기록 오류 channel=%s ids=%v: %v", channel.Kind(), failIDs, fErr)
 		}
 	}
 	if len(exhaustedIDs) > 0 {
-		reason := fmt.Sprintf("重试 %d 次后仍失败: %s", db.MaxNotifyAttempts, err)
+		reason := fmt.Sprintf("%d회 재시도 후에도 실패: %s", db.MaxNotifyAttempts, err)
 		if fErr := n.pg.FailDeliveries(ctx, exhaustedIDs, reason); fErr != nil {
-			log.Printf("[notify] 标记失败状态出错 channel=%s ids=%v: %v", channel.Kind(), exhaustedIDs, fErr)
+			log.Printf("[notify] 실패 상태 기록 오류 channel=%s ids=%v: %v", channel.Kind(), exhaustedIDs, fErr)
 		}
 	}
 	// 按延迟分组重排：只有 3 档退避，分组数天然很小，不必为每条单独发一次
 	// UPDATE（那会让一个 500 条的批次产生 500 次往返）。
 	for delay, group := range byDelay {
 		if rErr := n.pg.RescheduleDeliveries(ctx, group, delay, err.Error()); rErr != nil {
-			log.Printf("[notify] 重排投递失败 channel=%s ids=%v: %v", channel.Kind(), group, rErr)
+			log.Printf("[notify] 전송 대기열 재배정 실패 channel=%s ids=%v: %v", channel.Kind(), group, rErr)
 		}
 	}
 	if len(failIDs)+len(exhaustedIDs) > 0 {
-		log.Printf("[notify] 投递失败 channel=%d kind=%s 永久失败=%d 重试耗尽=%d 待重试=%d: %s",
+		log.Printf("[notify] 전송 실패 channel=%d kind=%s 영구 실패=%d 재시도 소진=%d 재시도 대기=%d: %s",
 			deliveries[0].ChannelID, channel.Kind(), len(failIDs), len(exhaustedIDs), len(byDelay), err)
 	}
 }
@@ -401,7 +401,7 @@ func (n *Notifier) renderBatch(ctx context.Context, deliveries []*db.Notificatio
 		if err != nil {
 			// 坏快照不进消息，也不进 included——它的处置由调用方负责
 			// （显式标记失败，而不是混在「已送达」里蒙混过关）。
-			log.Printf("[notify] 汇总批次中跳过无法解析的快照 delivery=%d: %v", dl.ID, err)
+			log.Printf("[notify] 요약 묶음의 해석 불가 스냅샷 건너뜀 delivery=%d: %v", dl.ID, err)
 			continue
 		}
 		item, err := n.itemFor(ctx, snap, baseURL)
@@ -412,7 +412,7 @@ func (n *Notifier) renderBatch(ctx context.Context, deliveries []*db.Notificatio
 		included = append(included, dl)
 	}
 	if len(items) == 0 {
-		return notify.Message{}, nil, fmt.Errorf("汇总批次 %d 条投递全部无法解析", len(deliveries))
+		return notify.Message{}, nil, fmt.Errorf("요약 묶음의 전송 %d건 모두 해석할 수 없습니다", len(deliveries))
 	}
 	return notify.Message{
 		Items:         items,
@@ -428,7 +428,7 @@ func (n *Notifier) itemFor(ctx context.Context, snap notify.Snapshot, baseURL st
 	if err != nil {
 		// 资产名解析失败不该阻止推送：读不到名字比收不到通知轻得多，
 		// 消息里少一行资产而已。
-		log.Printf("[notify] 解析资产名失败 finding=%d: %v", snap.FindingID, err)
+		log.Printf("[notify] 자산 이름 해석 실패 finding=%d: %v", snap.FindingID, err)
 	}
 	item := notify.Item{
 		FindingID:  snap.FindingID,
@@ -520,10 +520,10 @@ func (n *Notifier) digestInterval() time.Duration {
 func parseSnapshot(dl *db.NotificationDelivery) (notify.Snapshot, error) {
 	var snap notify.Snapshot
 	if len(dl.Snapshot) == 0 {
-		return snap, fmt.Errorf("投递 %d 的事件快照为空", dl.ID)
+		return snap, fmt.Errorf("전송 %d의 이벤트 스냅샷이 비어 있습니다", dl.ID)
 	}
 	if err := json.Unmarshal(dl.Snapshot, &snap); err != nil {
-		return snap, fmt.Errorf("解析投递 %d 的事件快照失败: %w", dl.ID, err)
+		return snap, fmt.Errorf("전송 %d의 이벤트 스냅샷 해석 실패: %w", dl.ID, err)
 	}
 	if snap.Kind == "" {
 		// 事件类型以事件行为准，快照里那份可能由旧版本写过。

@@ -46,14 +46,14 @@ var zipMethodNames = map[uint16]string{
 	zipMethodJPEG:      "JPEG",
 	zipMethodWavPack:   "WavPack",
 	zipMethodPPMd:      "PPMd",
-	zipMethodAES:       "AES 加密",
+	zipMethodAES:       "AES 암호화",
 }
 
 func zipMethodName(m uint16) string {
 	if n, ok := zipMethodNames[m]; ok {
 		return n
 	}
-	return "未知"
+	return "알 수 없음"
 }
 
 // newSkillZipReader parses an uploaded archive and registers the extra decompressors
@@ -61,7 +61,7 @@ func zipMethodName(m uint16) string {
 func newSkillZipReader(buf []byte) (*zip.Reader, error) {
 	zr, err := zip.NewReader(bytes.NewReader(buf), int64(len(buf)))
 	if err != nil {
-		return nil, fmt.Errorf("无法解析压缩包(需为 zip 格式)：%w", err)
+		return nil, fmt.Errorf("압축 파일을 해석할 수 없습니다(zip 형식 필요): %w", err)
 	}
 	zr.RegisterDecompressor(zipMethodBzip2, func(r io.Reader) io.ReadCloser {
 		return io.NopCloser(bzip2.NewReader(r))
@@ -115,14 +115,14 @@ func zipEntryName(f *zip.File) string {
 func checkSkillZipMethods(entries []skillZipEntry) error {
 	for _, e := range entries {
 		if e.f.Flags&0x1 != 0 || e.f.Method == zipMethodAES {
-			return fmt.Errorf("压缩包已加密(%s)，请上传未加密的 zip", e.name)
+			return fmt.Errorf("암호화된 압축 파일(%s)입니다. 암호화되지 않은 zip을 업로드하세요", e.name)
 		}
 		switch e.f.Method {
 		case zipMethodStore, zipMethodDeflate, zipMethodBzip2, zipMethodZstd, zipMethodZstdPKW:
 		default:
-			return fmt.Errorf("压缩包使用了不支持的压缩方式 %s(method %d)：%s。"+
-				"请改用「存储」或「Deflate」重新打包(7-Zip/WinRAR 的压缩方式选 Deflate，"+
-				"或直接用系统自带的“压缩/发送到压缩文件夹”、命令行 zip -r)",
+			return fmt.Errorf("지원하지 않는 압축 방식 %s(method %d): %s."+
+				"「저장」 또는 「Deflate」 방식으로 다시 압축하세요(7-Zip/WinRAR에서 Deflate를 선택하거나,"+
+				"운영체제의 기본 압축 기능 또는 zip -r 명령 사용)",
 				zipMethodName(e.f.Method), e.f.Method, e.name)
 		}
 	}

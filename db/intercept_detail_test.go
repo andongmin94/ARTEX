@@ -16,7 +16,7 @@ func TestInterceptDetails(t *testing.T) {
 	t.Cleanup(func() { _ = d.Close() })
 	create := func(t *testing.T, audit *InterceptAudit) int64 {
 		t.Helper()
-		id, err := d.CreateInterceptPending(0, 0, "approval-detail-test", "test", "Write", []byte(`{"path":"report.md"}`), "[模型] 请确认", audit)
+		id, err := d.CreateInterceptPending(0, 0, "approval-detail-test", "test", "Write", []byte(`{"path":"report.md"}`), "[모델] 请确认", audit)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -49,7 +49,7 @@ func TestInterceptDetails(t *testing.T) {
 		var wg sync.WaitGroup
 		for range 8 {
 			wg.Go(func() {
-				ok, err := d.ResolveIntercept(id, "allowed", "allow", "人工允许执行")
+				ok, err := d.ResolveIntercept(id, "allowed", "allow", "사용자가 실행을 허용했습니다")
 				if err != nil {
 					t.Error(err)
 				}

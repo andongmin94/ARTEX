@@ -838,7 +838,7 @@ func TestFinishFindingRetestEmitsStatusChange(t *testing.T) {
 	if ok, err := d.StartFindingRetest(ctx, rt.ID); err != nil || !ok {
 		t.Fatalf("启动复测失败: ok=%v err=%v", ok, err)
 	}
-	if err := d.RecordFindingRetestResult(ctx, *rt.ConversationID, "fixed", "已修复", "证据"); err != nil {
+	if err := d.RecordFindingRetestResult(ctx, *rt.ConversationID, "fixed", "수정됨", "证据"); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.FinishFindingRetest(rt.ID, "completed", ""); err != nil {

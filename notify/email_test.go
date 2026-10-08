@@ -310,7 +310,7 @@ func TestFilterValidateRejectsTypo(t *testing.T) {
 		}
 	}
 	// 这些是真实会发生的笔误——全部必须被拒。
-	for _, s := range []string{"hgih", "HIGH", "严重", "high ", "crit"} {
+	for _, s := range []string{"hgih", "HIGH", "치명적", "high ", "crit"} {
 		err := (Filter{MinSeverity: s}).Validate()
 		if err == nil {
 			t.Errorf("非法门槛 %q 应被拒绝（否则过滤器静默失效、变成全推）", s)
