@@ -330,7 +330,7 @@ function LLMProfileRow({
             <span className="text-sm">기본값{activeDefault ? `（${activeDefault.name}）` : ""}</span>
             {activeDefault && (
               <span className="text-muted-foreground text-[11px]">
-                {activeDefault.format} · {activeDefault.model}
+                {activeDefault.auth_method === "chatgpt" ? "ChatGPT 구독" : activeDefault.format} · {activeDefault.model}
               </span>
             )}
           </button>
@@ -349,7 +349,7 @@ function LLMProfileRow({
             >
               <span className="text-sm">{p.name}</span>
               <span className="text-muted-foreground text-[11px]">
-                {p.format} · {p.model}
+                {p.auth_method === "chatgpt" ? "ChatGPT 구독" : p.format} · {p.model}
               </span>
             </button>
           ))}

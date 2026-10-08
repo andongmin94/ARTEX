@@ -27,6 +27,11 @@ Go
 ```
 
 Go만 DB에 접근한다. Electron/렌더러가 별도의 SQLite 연결을 열지 않는다.
+ChatGPT 구독 연결도 Go가 공식 OAuth·PKCE/ID 토큰 검증·보호된 토큰 저장/갱신·모델 목록·Responses 호출을 소유한다.
+Electron은 준비된 앱의 main frame 요청에서 공식 로그인 URL과 고정 사용량 URL만 기본 브라우저로 연다.
+렌더러에는 공개 연결 상태와 모델만 제공하며 API 프로필/SQLite/화면 저장소에 OAuth 토큰을 넣지 않는다.
+구독 HTTP 호출은 전체 입력 이력·namespace 도구·스트리밍·store:false를 사용하고 response.completed를 받기 전에 끝난 스트림을 실패로 처리한다.
+구독 모델의 전역 자동 폴백은 API 비용으로 전환하지 않는다. 명시적으로 선택한 작업 모델 체인의 전환 정책은 별개다.
 내부 기존 API 계약과 화면은 유지하되, 제거되는 배포/DB 경로의 호환 모드는 만들지 않는다.
 Electron 앱 자원(읽기 전용 Go 바이너리·기본 스킬·도구 배포물)과 쓰기 가능한 사용자 데이터는 분리한다.
 

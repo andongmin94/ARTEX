@@ -22,6 +22,7 @@ import (
 	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/intercept"
+	"github.com/Autumn-27/artex/internal/chatgpt"
 	"github.com/Autumn-27/artex/llmpool"
 	"github.com/Autumn-27/artex/llmrec"
 	"github.com/Autumn-27/artex/report"
@@ -50,6 +51,7 @@ type Server struct {
 	jwtKey         []byte // HS256 signing key loaded from / generated into dataDir/jwt.key
 	desktopSession []byte
 	desktopHost    string
+	chatGPT        *chatgpt.Client
 
 	// concMu serializes concurrency-cap decisions (admission + reconcile) so a
 	// scheduler tick and an HTTP settings change / task creation can't both count
@@ -173,6 +175,10 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 			err = errors.Join(err, s.Close(closeCtx))
 		}
 	}()
+	s.chatGPT, err = chatgpt.New(keyDir)
+	if err != nil {
+		return nil, fmt.Errorf("ChatGPT 연결 저장소 초기화: %w", err)
+	}
 	if err := s.initSideQuestions(); err != nil {
 		return nil, err
 	}
@@ -306,6 +312,11 @@ func (s *Server) runBackground(fn func()) {
 // Close cancels and drains owned background services before the caller closes
 // the Manager's stores. A bounded parent shutdown must not hang indefinitely.
 func (s *Server) Close(ctx context.Context) error {
+	if s.chatGPT != nil {
+		if err := s.chatGPT.Close(); err != nil {
+			return err
+		}
+	}
 	if s.cancel != nil {
 		s.cancel(agent.AbortShutdown)
 	}
@@ -441,7 +452,7 @@ func (s *Server) loadLLMConfig() (agent.Config, bool, error) {
 	cfg.MaxTokens, cfg.MaxTokensField = p.MaxTokens, p.MaxTokensField
 	cfg.SessionHeaderKey = p.SessionHeaderKey
 	s.applyProfileRetry(&cfg, p)
-	if cfg.APIKey == "" {
+	if !s.configureProfileAuth(&cfg, p) {
 		return cfg, false, nil
 	}
 	s.cfgMu.Lock()
@@ -501,6 +512,10 @@ func (s *Server) reapplyActiveProfile() {
 		return
 	}
 	if !ok {
+		s.cfgMu.Lock()
+		s.llmOn, s.chatAgent, s.llmProv, s.llmDirect = false, nil, nil, nil
+		s.cfgMu.Unlock()
+		s.invalidateTaskAgents()
 		return
 	}
 	if err := s.applyLLM(cfg); err != nil {
@@ -616,7 +631,7 @@ func (s *Server) loadProfileConfig(id int64) (agent.Config, bool) {
 	cfg.MaxTokens, cfg.MaxTokensField = p.MaxTokens, p.MaxTokensField
 	cfg.SessionHeaderKey = p.SessionHeaderKey
 	s.applyProfileRetry(&cfg, p)
-	if cfg.APIKey == "" {
+	if !s.configureProfileAuth(&cfg, p) {
 		return cfg, false
 	}
 	return cfg, true
@@ -647,6 +662,8 @@ func (s *Server) resolveChatAgent(c *db.Conversation) *agent.ChatAgent {
 	if eff := s.effectiveProfileForAgent(c.AgentKey, c.LLMProfileID); eff != nil {
 		if pa := s.chatAgentForProfile(*eff); pa != nil {
 			ca = pa
+		} else if subscription, err := s.subscriptionProfile(*eff); err != nil || subscription {
+			return nil
 		}
 	}
 	return ca
@@ -843,6 +860,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/llm", s.getLLM)
 	mux.HandleFunc("POST /api/llm", s.setLLM)
 	mux.HandleFunc("POST /api/llm/test", s.testLLM)
+	mux.HandleFunc("GET /api/chatgpt/status", s.chatGPTStatus)
+	mux.HandleFunc("POST /api/chatgpt/login", s.chatGPTLogin)
+	mux.HandleFunc("POST /api/chatgpt/cancel", s.chatGPTCancel)
+	mux.HandleFunc("POST /api/chatgpt/logout", s.chatGPTLogout)
+	mux.HandleFunc("GET /api/chatgpt/models", s.chatGPTModels)
+	mux.HandleFunc("POST /api/chatgpt/profile", s.chatGPTProfile)
 
 	// asset system
 	mux.HandleFunc("GET /api/assets", s.listAssets)
@@ -1397,6 +1420,7 @@ func (s *Server) getLLM(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{
 		"configured":       s.llmOn,
 		"provider":         s.llmCfg.Provider(),
+		"auth_method":      s.activeAuthMethod(),
 		"model":            s.llmCfg.Model,
 		"base_url":         s.llmCfg.BaseURL,
 		"proxy":            s.llmCfg.Proxy,
@@ -1485,6 +1509,22 @@ func (s *Server) testLLM(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, 400, err.Error())
 		return
+	}
+	if req.ProfileID != nil {
+		if p, err := s.m.pg.ProfileByID(*req.ProfileID); err == nil && p != nil && p.AuthMethod == "chatgpt" {
+			cfg, ok := s.loadProfileConfig(p.ID)
+			if !ok {
+				writeJSON(w, 200, map[string]any{"ok": false, "error": "ChatGPT 로그인과 구독 사용 동의를 확인하세요"})
+				return
+			}
+			lat, reply, err := agent.TestConnection(r.Context(), cfg)
+			if err != nil {
+				writeJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
+				return
+			}
+			writeJSON(w, 200, map[string]any{"ok": true, "latency_ms": lat.Milliseconds(), "model": cfg.Model, "reply": truncateReply(reply)})
+			return
+		}
 	}
 	cfg := agent.ConfigFrom(req.Provider, req.Model, req.BaseURL, req.APIKey, req.Proxy)
 	// mirror production: send the SAME thinking params so a provider that rejects the

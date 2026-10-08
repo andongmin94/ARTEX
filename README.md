@@ -85,10 +85,26 @@ Go만 로컬 DB 연결을 소유합니다. DB 선택 옵션이나 PG 병행 지�
 
 ### LLM
 
-웹 화면의 LLM 설정을 사용하거나 `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`를 지정할 수 있습니다. 선택 환경 변수는 `ARTEX_LLM_PROVIDER`, `ARTEX_LLM_MODEL`, `ARTEX_LLM_BASE_URL`, `ARTEX_LLM_PROXY`입니다.
+**ChatGPT 구독으로 사용하기**
+
+1. **시스템 → LLM → ChatGPT 구독 → Continue with ChatGPT**를 누릅니다.
+2. 기본 브라우저에서 ChatGPT 계정으로 로그인하고 ARTEX의 구독 사용에 동의합니다. 현재 공식 공개 연결은 Plus·Pro 계정을 대상으로 하며 실제 계정에서 제공하는 모델을 사용합니다. 앱 비밀번호나 API 키를 입력하지 않습니다.
+3. ARTEX로 돌아와 첫 연결 안내를 확인하고, **ChatGPT 구독 모델 → 선택 모델 활성화**를 누릅니다. 작업·대화·목표 분해는 이 활성 모델을 사용하며, 작업이나 에이전트에 별도 모델을 지정했다면 그 설정이 우선합니다.
+4. 사용량은 구독 카드의 **사용량 관리**에서 확인합니다. ChatGPT 구독 한도는 다른 연결 앱과 공유합니다. 한도 소진 시 자동으로 유료 API 설정으로 전환하지 않습니다. 직접 지정한 작업의 모델 체인은 기존 전환 정책을 따릅니다.
+
+브라우저 로그인은 5분 안에 완료해야 하며 **연결 취소**로 중단할 수 있습니다. Go 서버를 일반 브라우저에서 사용할 때는 카드에 나타나는 인증 링크를 직접 여세요. 해당 ARTEX 서버와 로그인 브라우저는 같은 PC에서 실행해야 loopback callback이 돌아옵니다.
+**로그아웃**은 ARTEX의 구독 토큰을 지우며 앱의 작업·증거·로그인은 유지합니다. 원격 동의 해제가 확인되지 않으면 앱이 오류를 표시하므로 ChatGPT의 연결/사용량 설정에서도 확인하세요. 하나의 앱 데이터 홈에는 한 계정의 등록 정보를 유지합니다.
+
+Go가 공식 OAuth·PKCE 로그인, ID 토큰 검증과 토큰 갱신을 담당합니다. 토큰은 앱 데이터 홈의 `chatgpt/credentials`에 저장하며 Windows에서는 현재 사용자 DPAPI와 전용 파일 권한으로 보호합니다. Linux/macOS 코드는 전용 디렉터리/파일 권한을 적용하지만 해당 OS의 실제 실행은 미검증입니다. 토큰을 SQLite 프로필·화면 저장소·API Key 입력란에 넣거나 다른 앱의 로그인 파일을 가져오지 않습니다.
+구독 연결은 공식 공개 Responses 엔드포인트의 스트리밍·`store:false` 계약을 사용합니다. 모델에 보낸 검토 소스는 외부 모델 입력이므로 실제 비밀번호·개인정보가 없는 복사본을 사용하세요.
+공식 연결 조건과 한도는 [Sign in with ChatGPT 안내](https://developers.openai.com/siwc/quickstart)와 [구독 세션·사용량](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions)을 확인하세요.
+
+**API 키로 사용하기**
+
+웹 화면의 API 설정을 사용하거나 `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`를 지정할 수 있습니다. 선택 환경 변수는 `ARTEX_LLM_PROVIDER`, `ARTEX_LLM_MODEL`, `ARTEX_LLM_BASE_URL`, `ARTEX_LLM_PROXY`입니다.
 
 **시스템 → LLM → 생성**에서 이름, 형식, 모델, API Key를 입력합니다. 형식은 사용하는 API에 맞춰 Anthropic, OpenAI (Chat Completions), OpenAI (Responses API) 중 선택하고, 별도 게이트웨이나 로컬 모델 서버를 사용하면 실제 Base URL도 입력하세요.
-**연결 테스트 → 생성 → 카드의 활성으로 설정** 순서로 진행합니다. 새 프로필은 생성만으로 활성화되지 않습니다. 현재 작업 모델은 API Key가 비어 있으면 사용할 수 없으므로, 키가 필요 없는 로컬 서버도 이 입력 조건을 확인하세요.
+**연결 테스트 → 생성 → 카드의 활성으로 설정** 순서로 진행합니다. 새 API 프로필은 생성만으로 활성화되지 않습니다. API 키 방식의 프로필은 키가 비어 있으면 사용할 수 없으므로, 키가 필요 없는 로컬 서버도 이 입력 조건을 확인하세요.
 여기서 API Key는 모델 호출용 키이며 앱 로그인 비밀번호가 아닙니다.
 입력·출력 상한, 컨텍스트 윈도우, 재시도, 장애 조치는 서로 다른 설정입니다. 화면의 한국어 도움말을 확인하세요.
 

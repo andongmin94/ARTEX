@@ -126,6 +126,11 @@ func (r *taskLLMRuntime) current() (taskLLMSelection, error) {
 		sel.provider, sel.retry = prov, cfg.Retry
 		return sel, nil
 	}
+	if subscription, err := r.s.subscriptionBinding(r.agentKey); err != nil {
+		return sel, err
+	} else if subscription {
+		return sel, errors.New("지정한 ChatGPT 구독 모델의 로그인과 사용 동의를 확인하세요")
+	}
 	if len(pt.LLMProfileIDs) > 0 {
 		if pt.ActiveLLMProfileID == nil {
 			return sel, &taskLLMError{taskID: r.taskID, chainExhausted: true, cause: errors.New("all selected profiles are quota exhausted")}
@@ -162,6 +167,9 @@ func (r *taskLLMRuntime) activeCfg() (agent.Config, bool) {
 	}
 	if _, cfg, ok := r.s.agentBindingProvider(r.agentKey); ok {
 		return cfg, true
+	}
+	if subscription, err := r.s.subscriptionBinding(r.agentKey); err != nil || subscription {
+		return agent.Config{}, false
 	}
 	if len(pt.LLMProfileIDs) > 0 && pt.ActiveLLMProfileID != nil {
 		if _, cfg, ok := r.s.providerForProfile(*pt.ActiveLLMProfileID); ok {
@@ -536,6 +544,9 @@ func (s *Server) taskRuntimeAvailable(t *Task, agentKeys ...string) bool {
 		if _, _, ok := s.agentBindingProvider(key); ok {
 			continue
 		}
+		if subscription, err := s.subscriptionBinding(key); err != nil || subscription {
+			return false
+		}
 		if !unboundReady {
 			return false
 		}
@@ -572,6 +583,7 @@ func (s *Server) agentsForTask(t *Task) *taskAgentBundle {
 	wk.SetWebSearch(s.webSearchFor("worker"))
 	wk.SetConstraintInject(s.constraintInjectWorker) // 操作约束注入 worker(可配置,默认开)
 	pl := agent.NewPlanner(plannerRuntime, "task-router", s.m.dir, tx, plannerRuntime.CompactionWindow(), s.agentMaxTurns("planner"))
+	pl.SetGuard(t.Guard)
 	pl.SetFindingRecorder(s.evidenceStore())
 	pl.SetCompactionWindowResolver(plannerRuntime.CompactionWindow)
 	pl.SetNonStreaming(plannerRuntime.nonStreaming)
@@ -587,6 +599,7 @@ func (s *Server) agentsForTask(t *Task) *taskAgentBundle {
 	// 同模型,随任务 LLM 链解析),压缩用 Complete 一次性生成 body。
 	pl.SetCompactor(agent.NewCompactor(plannerRuntime, "task-router"))
 	main := agent.NewMainAgent(mainRuntime, "task-router", s.m.dir, tx, mainRuntime.CompactionWindow(), s.agentMaxTurns("mainagent"))
+	main.SetGuard(t.Guard)
 	main.SetFindingRecorder(s.evidenceStore())
 	main.SetCompactionWindowResolver(mainRuntime.CompactionWindow)
 	main.SetNonStreaming(mainRuntime.nonStreaming)

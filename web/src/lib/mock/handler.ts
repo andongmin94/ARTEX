@@ -1084,6 +1084,10 @@ function route(m: string, path: string, seg: string[], q: URLSearchParams, b: Re
 
   // ── auth：让 demo 直接进主界面 ──
   if (path === "/auth/status") return { initialized: true, mode: "standalone" };
+  if (path === "/chatgpt/status" && m === "GET") return { connected: false, pending: false, sharing: false };
+  if (path.startsWith("/chatgpt/")) {
+    throw new ApiError(501, "데모에서는 ChatGPT 구독을 연결할 수 없습니다. 실제 ARTEX 앱에서 연결하세요.");
+  }
   if (path === "/auth/login" || path === "/auth/init") return { token: "mock-demo" };
   if (path === "/auth/change-password") return { ok: true };
 

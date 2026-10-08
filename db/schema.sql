@@ -180,6 +180,7 @@ CREATE TABLE llm_profiles (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     name             TEXT NOT NULL UNIQUE,
     format           TEXT NOT NULL CHECK (format IN ('openai','anthropic','openai-responses')),
+	 auth_method      TEXT NOT NULL DEFAULT 'api-key' CHECK (auth_method IN ('api-key','chatgpt')),
     base_url         TEXT,
     proxy            TEXT,
     model            TEXT NOT NULL,

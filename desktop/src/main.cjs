@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, protocol, session } = require("electron");
+const { app, BrowserWindow, ipcMain, protocol, session, shell } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 const { randomBytes } = require("node:crypto");
@@ -72,6 +72,21 @@ function validateSender(event) {
   if (event.sender !== window?.webContents || event.senderFrame !== window.webContents.mainFrame || !trusted(event.senderFrame.url)) throw new Error("허용되지 않은 IPC 호출자입니다");
 }
 
+function validateReadySender(event) {
+  validateSender(event);
+  if (quitting || status.state !== "ready" || !origin || new URL(event.senderFrame.url).origin !== origin) throw new Error("앱이 준비된 뒤 다시 시도하세요");
+}
+
+function validateChatGPTLoginURL(value) {
+  if (typeof value !== "string") throw new Error("허용되지 않은 ChatGPT 인증 주소입니다");
+  let url;
+  try { url = new URL(value); }
+  catch { throw new Error("허용되지 않은 ChatGPT 인증 주소입니다"); }
+  const prohibited = [...url.searchParams.keys()].some((key) => ["access_token", "refresh_token", "id_token", "id_token_hint"].includes(key.toLowerCase()));
+  if (url.origin !== "https://auth.openai.com" || url.pathname !== "/api/accounts/authorize" || url.username || url.password || url.hash || prohibited) throw new Error("허용되지 않은 ChatGPT 인증 주소입니다");
+  return url.href;
+}
+
 app.on("second-instance", () => { if (window) { if (window.isMinimized()) window.restore(); window.focus(); } });
 app.on("window-all-closed", () => app.quit());
 app.on("before-quit", (event) => {
@@ -118,6 +133,16 @@ if (locked) app.whenReady().then(async () => {
   ipcMain.handle("desktop:status", (event) => { validateSender(event); return status; });
   ipcMain.handle("desktop:retry", async (event) => { validateSender(event); if (status.state === "failed") await startBackend(); });
   ipcMain.handle("desktop:quit", (event) => { validateSender(event); app.quit(); });
+  ipcMain.handle("desktop:chatgpt-login", async (event, url) => {
+    validateReadySender(event);
+    try { await shell.openExternal(validateChatGPTLoginURL(url)); }
+    catch { throw new Error("ChatGPT 인증 브라우저를 열 수 없습니다. 다시 시도하세요"); }
+  });
+  ipcMain.handle("desktop:chatgpt-usage", async (event) => {
+    validateReadySender(event);
+    try { await shell.openExternal("https://chatgpt.com/#settings/Usage"); }
+    catch { throw new Error("ChatGPT 사용량 화면을 열 수 없습니다. 다시 시도하세요"); }
+  });
   await window.loadURL("artex://startup/");
   await startBackend();
 }).catch((error) => { process.stderr.write(error.stack + "\n"); app.exit(1); });

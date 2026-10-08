@@ -21,6 +21,7 @@ const configSQLiteFixtureSchema = `
 CREATE TABLE IF NOT EXISTS llm_profiles (
  id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE,
  format TEXT NOT NULL CHECK(format IN ('anthropic','openai','openai-responses')),
+	 auth_method TEXT NOT NULL DEFAULT 'api-key' CHECK(auth_method IN ('api-key','chatgpt')),
  base_url TEXT, proxy TEXT, model TEXT NOT NULL, api_key TEXT, api_key_hint TEXT,
  rate_per_second REAL NOT NULL DEFAULT 0, rate_per_minute REAL NOT NULL DEFAULT 0,
  context_window_k INTEGER NOT NULL DEFAULT 0, reasoning_effort TEXT,

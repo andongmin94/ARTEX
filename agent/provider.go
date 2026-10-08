@@ -30,6 +30,9 @@ import (
 
 // Config describes the LLM backend resolved from the environment.
 type Config struct {
+	// ChatGPT uses the official subscription OAuth connection, independently of
+	// the Responses wire format. Credentials never enter an LLM profile.
+	ChatGPT ChatGPTTokenSource
 	Format  llm.Format
 	BaseURL string
 	APIKey  string
@@ -254,6 +257,9 @@ func (c Config) Provider() string {
 // limiter lives on the single provider instance — so planner + all workers +
 // main agent (which share this provider) are bounded by one shared rate limit.
 func (c Config) NewProvider() (llm.Provider, error) {
+	if c.ChatGPT != nil {
+		return newChatGPTProvider(c)
+	}
 	client, err := quotaAwareHTTPClient(c.Proxy, c.SessionHeaderKey)
 	if err != nil {
 		return nil, err

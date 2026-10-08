@@ -89,3 +89,13 @@ Mono 라이트/다크 역할 색상, 2px 테두리·4px 하드 섀도·5px 모�
 Playwright는 실제 Electron/Go에서 주요 21개 화면을 라이트/다크·1280/1440으로 열고 캡처한다.
 125/150% Electron zoom 검사는 실제 Windows 디스플레이 배율 검사와 다르다. DOM composition 검사도 OS 네이티브 한글 IME의 완전한 대체가 아니다.
 최종 실행 결과·업무 fixture 검증과 미실행 범위는 development-plan.md만 현재 목록으로 관리한다.
+
+## ChatGPT 구독 연결 버튼 자산
+
+OpenAI의 [Sign in with ChatGPT UI 지침](https://developers.openai.com/siwc/token-sharing-open-source/ui-ux-guidelines)에 따라 `Continue with ChatGPT` 버튼과 최초 연결 안내를 제공한다.
+OpenAI의 공식 로고 두 개를 변형 없이 로컬 파일로 포함한다. 이 자산을 neobrutal-ui의 MIT 자산으로 재표기하지 않는다.
+
+- `web/public/icons/chatgpt-logo-white.svg`: [OpenAI 공식 white 원본](https://developers.openai.com/assets/siwc/sign-in-buttons/chatgpt-logo-white.svg).
+- `web/public/icons/chatgpt-logo-black.svg`: [OpenAI 공식 black 원본](https://developers.openai.com/assets/siwc/sign-in-buttons/chatgpt-logo-black.svg).
+
+라이트 화면의 검정 버튼에는 white, 다크 화면의 흰 버튼에는 black을 사용한다. 연결·동의·오류·모델 선택 화면은 기존 한국어·Pretendard와 공통 컨트롤을 사용한다.

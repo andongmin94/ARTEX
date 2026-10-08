@@ -22,6 +22,8 @@ import type {
   BatchCategoryItem,
   BatchControlItem,
   ChatAttachment,
+  ChatGPTModel,
+  ChatGPTStatus,
   CommandRecord,
   Company,
   CompanyScopeMutation,
@@ -960,6 +962,12 @@ export const api = {
       session_header_key,
     }),
   llmProfiles: () => get<{ profiles: LLMProfile[] }>("/llm/profiles").then((r) => arr(r.profiles)),
+  chatGPTStatus: () => get<ChatGPTStatus>("/chatgpt/status"),
+  chatGPTLogin: () => post<{ authorization_url: string }>("/chatgpt/login", {}),
+  chatGPTCancel: () => post<{ ok: boolean }>("/chatgpt/cancel", {}),
+  chatGPTLogout: () => post<{ ok: boolean }>("/chatgpt/logout", {}),
+  chatGPTModels: () => get<{ models: ChatGPTModel[] }>("/chatgpt/models").then((r) => arr(r.models)),
+  activateChatGPTModel: (model: string) => post<{ id: number; ok: true }>("/chatgpt/profile", { model }),
   saveLLMProfile: (p: {
     id?: number; // omit/0 = create; set = update that profile
     name: string;

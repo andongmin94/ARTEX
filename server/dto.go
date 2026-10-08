@@ -589,6 +589,7 @@ type LLMProfileDTO struct {
 	ID              string  `json:"id"`
 	Name            string  `json:"name"`
 	Format          string  `json:"format"`
+	AuthMethod      string  `json:"auth_method"`
 	BaseURL         string  `json:"base_url,omitempty"`
 	Proxy           string  `json:"proxy,omitempty"`
 	Model           string  `json:"model"`
@@ -624,6 +625,7 @@ func llmProfileDTO(p *db.LLMProfile) LLMProfileDTO {
 		ID:               i64s(p.ID),
 		Name:             p.Name,
 		Format:           p.Format,
+		AuthMethod:       p.AuthMethod,
 		BaseURL:          p.BaseURL,
 		Proxy:            p.Proxy,
 		Model:            p.Model,

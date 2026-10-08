@@ -1807,6 +1807,21 @@ func (s *Server) pgSaveProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := body.LLMProfile
+	if p.AuthMethod == "chatgpt" {
+		writeErr(w, 400, "ChatGPT 구독 카드에서 모델을 선택하세요")
+		return
+	}
+	if p.ID != 0 {
+		old, err := pg.ProfileByID(p.ID)
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		if old != nil && old.AuthMethod == "chatgpt" {
+			writeErr(w, 400, "ChatGPT 구독 프로필은 전용 카드에서 변경하세요")
+			return
+		}
+	}
 	p.APIKey = body.APIKey
 	p.Streaming = body.Streaming == nil || *body.Streaming
 	// 输出上限:负数无意义,归零(= 不发送该字段)。字段名开关只有 Chat Completions

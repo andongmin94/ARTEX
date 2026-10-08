@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Autumn-27/artex/db"
+	"github.com/Autumn-27/artex/guard"
 	"github.com/Autumn-27/artex/intercept"
 	"github.com/Autumn-27/norma/agentcore"
 	"github.com/Autumn-27/norma/llm"
@@ -19,6 +20,7 @@ import (
 // autonomous intent-generation loop (that is the planner's job).
 type MainAgent struct {
 	findingRecorder FindingRecorder
+	guard           *guard.Guard
 	prov            llm.Provider
 	model           string
 	tx              *transcript.Store                      // raw LLM conversation persistence (nil = off)
@@ -60,6 +62,9 @@ func (m *MainAgent) maxTokens() int {
 func NewMainAgent(prov llm.Provider, model, workDir string, tx *transcript.Store, window, maxTurns int) *MainAgent {
 	return &MainAgent{prov: prov, model: model, workDir: workDir, tx: tx, window: window, maxTurns: maxTurns}
 }
+
+// SetGuard connects the task's approval policy to every main-agent tool call.
+func (m *MainAgent) SetGuard(g *guard.Guard) { m.guard = g }
 
 func (m *MainAgent) SetCompactionWindowResolver(fn func() int) { m.windowFn = fn }
 
@@ -125,6 +130,13 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 	// 资产覆盖度功能关闭时剔除 add_task_scope/list_untested_assets（不入 prompt）。
 	base := append(tsx.DropCoverageTools(tsx.MainAgentTools()), actool.DefaultTools()...)
 	ctx = WithRunInfo(ctx, RunInfo{TaskID: taskID, ExplorationID: explorationID(ts)})
+	captureEmit := func(r db.Activity) {
+		if emit != nil {
+			r.Worker = "mainagent"
+			emit(r)
+		}
+	}
+	ctx = intercept.WithTaskContext(ctx, fmt.Sprint(taskID), "mainagent", captureEmit)
 	tools, def, cleanup := AugmentTools(ctx, "mainagent", base)
 	defer cleanup()
 	// 本任务的工作目录 <workDir>/tasks/<taskID>，先建好。
@@ -163,6 +175,9 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 		NonStreaming: m.nonStreaming(), // 该 profile 选非流式时走 Provider.Complete
 		MaxTokens:    m.maxTokens(),    // 0 = 不发上限,由服务端默认值决定
 	}
+	if m.guard != nil {
+		opts.Hooks = m.guard.Hooks()
+	}
 	if m.tx != nil { // persist raw human↔AI conversation; one accumulating file per segment
 		opts.Transcript = m.tx
 		// Segment 0 keeps the legacy "exp%d-main" name so existing transcripts still
@@ -191,11 +206,6 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 	// C2: this session is fresh each turn; re-unlock skill-gated MCPs from prior
 	// Skill() calls in the reloaded history so revealed tools stay callable.
 	seedUnlockFromHistory(s.Messages(), def.UnlockSkill)
-	text, _, err := captureRunSession(ctx, s, message, func(r db.Activity) {
-		if emit != nil {
-			r.Worker = "mainagent"
-			emit(r)
-		}
-	})
+	text, _, err := captureRunSession(ctx, s, message, captureEmit)
 	return text, err
 }

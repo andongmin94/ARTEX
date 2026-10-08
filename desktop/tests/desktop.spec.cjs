@@ -229,6 +229,7 @@ test("실제 Electron 자동 진입·모델 저장·재시작·화면·격리", 
     expect(prematurePosts).toEqual([]);
 
     expect(await page.evaluate(() => ({ require: typeof window.require, process: typeof window.process }))).toEqual({ require: "undefined", process: "undefined" });
+    expect(await page.evaluate(() => Object.keys(window.artexDesktop).sort())).toEqual(["openChatGPTLogin", "openChatGPTUsage", "quit", "retry", "status"]);
     const preferences = await electron.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences());
     expect(preferences).toMatchObject({ sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, webviewTag: false });
     expect(await page.evaluate(() => window.open("https://example.com") === null)).toBe(true);

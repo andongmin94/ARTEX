@@ -1034,6 +1034,7 @@ export interface LLMProfile {
   id: string;
   name: string;
   format: "openai" | "anthropic" | "openai-responses";
+  auth_method?: "api-key" | "chatgpt";
   base_url?: string;
   proxy?: string;
   model: string;
@@ -1579,4 +1580,19 @@ export interface InterceptExecution {
 export interface AuthStatus {
   initialized: boolean;
   mode: "desktop" | "standalone";
+}
+
+export interface ChatGPTStatus {
+  connected: boolean;
+  pending: boolean;
+  sharing: boolean;
+  email?: string;
+  name?: string;
+  expires_at?: string;
+  last_error?: string;
+}
+
+export interface ChatGPTModel {
+  slug: string;
+  display_name: string;
 }

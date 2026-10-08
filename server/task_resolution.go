@@ -29,7 +29,11 @@ func (s *Server) resolutionFromProfile(p *db.LLMProfile, source string) taskLLMR
 		Model:     p.Model,
 		Source:    source,
 	}
-	if p.APIKey == "" {
+	if p.AuthMethod == "chatgpt" && (s.chatGPT == nil || !s.chatGPT.Status().Connected || !s.chatGPT.Status().Sharing) {
+		result.Reason = "ChatGPT 로그인과 구독 사용 동의가 필요합니다"
+		return result
+	}
+	if p.AuthMethod != "chatgpt" && p.APIKey == "" {
 		result.Reason = "LLM 설정에 API Key가 없습니다"
 		return result
 	}
@@ -59,7 +63,7 @@ func (s *Server) resolveTaskRoleLLM(t *Task, agentKey string) (taskLLMResolution
 		}
 		if p != nil {
 			resolved := s.resolutionFromProfile(p, "agent_binding")
-			if resolved.Available {
+			if resolved.Available || p.AuthMethod == "chatgpt" {
 				return resolved, nil
 			}
 		}
@@ -81,7 +85,7 @@ func (s *Server) resolveTaskRoleLLM(t *Task, agentKey string) (taskLLMResolution
 	}
 	if p != nil {
 		resolved := s.resolutionFromProfile(p, "global_profile")
-		if resolved.Available {
+		if resolved.Available || p.AuthMethod == "chatgpt" {
 			return resolved, nil
 		}
 	}

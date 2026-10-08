@@ -27,9 +27,10 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
-import type { LLMPoolMember, LLMPoolStatus, LLMProfile, LLMRetryOverride } from "@/lib/types";
+import type { ChatGPTStatus, LLMPoolMember, LLMPoolStatus, LLMProfile, LLMRetryOverride } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+import { ChatGPTSubscriptionCard } from "./_components/chatgpt-subscription-card";
 import { ProfileRetryFields, RetryPolicyPanel, ZERO_OVERRIDE } from "./_components/retry";
 
 // 思考开끔(thinking.type)与思考强度(reasoning_effort)是两个【互相独立】的字段，
@@ -74,8 +75,16 @@ function cooldownText(secs: number) {
 // 一个配置在卡片上显示的「是否정상」。没填 Key 的配置根本发不出请求，比熔断更该先说；
 // 其余状态来自轮询的熔断记录（轮询끔着时不会产生新记录，此时「정상」= 没有已知故障）。
 type Health = { label: string; cls: string; hint?: string };
-function healthOf(p: LLMProfile, m?: LLMPoolMember): Health {
-  if (!p.api_key_hint) {
+function healthOf(p: LLMProfile, m?: LLMPoolMember, subscription?: ChatGPTStatus | null): Health {
+  if (p.auth_method === "chatgpt") {
+    if (!subscription?.connected || !subscription.sharing) {
+      return {
+        label: !subscription ? "연결 미확인" : "구독 연결 필요",
+        cls: "border-muted-foreground/40 text-muted-foreground",
+        hint: "ChatGPT 구독 카드에서 연결 상태와 모델 사용 권한을 확인하세요",
+      };
+    }
+  } else if (!p.api_key_hint) {
     return {
       label: "Key 미설정",
       cls: "border-muted-foreground/40 text-muted-foreground",
@@ -96,7 +105,10 @@ function healthOf(p: LLMProfile, m?: LLMPoolMember): Health {
       hint: m.last_error,
     };
   }
-  return { label: "정상", cls: "border-emerald-500/50 text-emerald-600 dark:text-emerald-400" };
+  return {
+    label: p.auth_method === "chatgpt" ? "구독 연결됨" : "정상",
+    cls: "border-emerald-500/50 text-emerald-600 dark:text-emerald-400",
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -777,6 +789,7 @@ function ProfileSheet({
 
 export default function LLMPage() {
   const [profiles, setProfiles] = React.useState<LLMProfile[]>([]);
+  const [chatGPTStatus, setChatGPTStatus] = React.useState<ChatGPTStatus | null>(null);
   const [pool, setPool] = React.useState<LLMPoolStatus | null>(null);
   const [poolOpen, setPoolOpen] = React.useState(false);
   // 抽屉的开끔和内容分开存：끄기时 editing 保持不变，否则끄기动画期间标题会从
@@ -784,6 +797,12 @@ export default function LLMPage() {
   const [editOpen, setEditOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<LLMProfile | null>(null);
   const openEditor = React.useCallback((p: LLMProfile | null) => {
+    if (p?.auth_method === "chatgpt") {
+      const card = document.getElementById("chatgpt-subscription");
+      card?.scrollIntoView({ block: "start" });
+      card?.focus({ preventScroll: true });
+      return;
+    }
     setEditing(p);
     setEditOpen(true);
   }, []);
@@ -816,10 +835,14 @@ export default function LLMPage() {
     return m;
   }, [pool]);
 
-  async function activate(id: string, name: string) {
+  async function activate(profile: LLMProfile) {
     try {
-      await api.activateLLMProfile(id);
-      toast.success(`활성화됨:${name}`);
+      if (profile.auth_method === "chatgpt") {
+        await api.activateChatGPTModel(profile.model);
+      } else {
+        await api.activateLLMProfile(profile.id);
+      }
+      toast.success(`활성화됨:${profile.name}`);
       await load();
     } catch (e) {
       toast.error(`활성화 실패:${(e as Error).message}`);
@@ -848,7 +871,8 @@ export default function LLMPage() {
         <div>
           <h1 className="font-semibold text-xl tracking-tight">LLM</h1>
           <p className="text-muted-foreground text-sm">
-            모든 에이전트가 공유하는 형식·모델·속도 제한 설정입니다. 카드를 클릭하여 편집하세요. 별표는 현재 활성 설정입니다.
+            모든 에이전트가 공유하는 모델 설정입니다. API 설정은 카드를 눌러 편집하고, ChatGPT 구독은 아래에서 연결하세요.
+            별표는 현재 활성 설정입니다.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -873,9 +897,11 @@ export default function LLMPage() {
         </TabsList>
 
         <TabsContent value="profiles" className="mt-4">
+          <ChatGPTSubscriptionCard profiles={profiles} onProfileActivated={load} onStatusChange={setChatGPTStatus} />
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {profiles.map((p) => {
-              const h = healthOf(p, health.get(p.id));
+              const h = healthOf(p, health.get(p.id), chatGPTStatus);
+              const subscription = p.auth_method === "chatgpt";
               return (
                 // biome-ignore lint/a11y/useSemanticElements: 卡片内含自己的操作按钮，用原生 <button> 会造成按钮嵌套（非法 HTML）
                 <Card
@@ -905,8 +931,8 @@ export default function LLMPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="truncate font-medium text-sm">{p.name}</span>
-                          <Badge variant="outline" className="uppercase">
-                            {p.format}
+                          <Badge variant="outline" className={subscription ? undefined : "uppercase"}>
+                            {subscription ? "ChatGPT 구독" : p.format}
                           </Badge>
                           <Badge variant="outline" className={cn("ml-auto", h.cls)} title={h.hint}>
                             {h.label}
@@ -916,30 +942,34 @@ export default function LLMPage() {
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 pl-6 text-muted-foreground text-xs">
-                      {p.api_key_hint && <span>{p.api_key_hint}</span>}
-                      <span>
-                        {p.rate_per_second}/s · {p.rate_per_minute}/min
-                      </span>
-                      {p.proxy && <span className="truncate">프록시 {p.proxy}</span>}
-                      {p.reasoning_effort && (
-                        <span>reasoning {p.reasoning_effort === "off" ? "끔" : p.reasoning_effort}</span>
-                      )}
-                      {/* 轮询相끔的两个字段只在轮询开着时才有意义，끔着时不占版面 */}
-                      {poolOn &&
-                        !p.is_default &&
-                        (p.pool_exclude ? <span>폴백 제외</span> : <span>우선순위 {p.priority ?? 0}</span>)}
-                    </div>
+                    {subscription ? (
+                      <p className="pl-6 text-muted-foreground text-xs">모델 변경은 ChatGPT 구독 카드에서 진행하세요.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 pl-6 text-muted-foreground text-xs">
+                        {p.api_key_hint && <span>{p.api_key_hint}</span>}
+                        <span>
+                          {p.rate_per_second}/s · {p.rate_per_minute}/min
+                        </span>
+                        {p.proxy && <span className="truncate">프록시 {p.proxy}</span>}
+                        {p.reasoning_effort && (
+                          <span>reasoning {p.reasoning_effort === "off" ? "끔" : p.reasoning_effort}</span>
+                        )}
+                        {/* 轮询相끔的两个字段只在轮询开着时才有意义，끔着时不占版面 */}
+                        {poolOn &&
+                          !p.is_default &&
+                          (p.pool_exclude ? <span>폴백 제외</span> : <span>우선순위 {p.priority ?? 0}</span>)}
+                      </div>
+                    )}
 
                     <div className="mt-1 flex gap-2">
                       <Button
                         size="sm"
                         variant="outline"
                         className="flex-1"
-                        disabled={p.is_default}
+                        disabled={p.is_default || (subscription && !(chatGPTStatus?.connected && chatGPTStatus.sharing))}
                         onClick={(e) => {
                           e.stopPropagation();
-                          void activate(p.id, p.name);
+                          void activate(p);
                         }}
                       >
                         {p.is_default ? "활성화됨" : "활성으로 설정"}
@@ -962,7 +992,7 @@ export default function LLMPage() {
             })}
             {profiles.length === 0 && (
               <div className="col-span-full rounded-lg border border-dashed p-10 text-center text-muted-foreground text-sm">
-                모델 설정이 없습니다. 오른쪽 위 「생성」을 눌러 첫 설정을 만드세요.
+                모델 설정이 없습니다. ChatGPT 구독을 연결하거나 오른쪽 위 「생성」으로 API 설정을 만드세요.
               </div>
             )}
           </div>

@@ -177,6 +177,31 @@ func TestBusinessSchemaControlEveryFailureRollsBack(t *testing.T) {
 		})
 	}
 }
+
+func TestSubscriptionSchemaControlUpgradeFailuresRollBack(t *testing.T) {
+	steps := []schemaStep{
+		{query: `PRAGMA application_id`, rows: []driver.Value{int64(businessApplicationID)}},
+		{query: `PRAGMA user_version`, rows: []driver.Value{int64(1)}},
+		manifestStep(),
+		{query: `ALTER TABLE llm_profiles ADD COLUMN auth_method TEXT NOT NULL DEFAULT 'api-key' CHECK (auth_method IN ('api-key','chatgpt'))`},
+		{query: `PRAGMA user_version=2`},
+		manifestStep(),
+	}
+	injected := errors.New("injected subscription schema persistence failure")
+	for i := range steps {
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			attempt := append([]schemaStep(nil), steps[:i+1]...)
+			attempt[i].err = injected
+			script := &schemaScript{steps: attempt}
+			if err := runSchemaScript(t, script); !errors.Is(err, injected) {
+				t.Fatalf("error=%v", err)
+			}
+			if script.commits != 0 || script.rollbacks != 1 {
+				t.Fatalf("partial upgrade committed: %+v", script)
+			}
+		})
+	}
+}
 func TestBusinessSchemaControlRejectsIdentityAndVersion(t *testing.T) {
 	cases := []struct {
 		name                  string

@@ -19,7 +19,7 @@ var seedSQL string
 
 const (
 	businessApplicationID = 0x41525458 // ARTX; PRAGMA application_id is signed int32.
-	businessSchemaVersion = 1
+	businessSchemaVersion = 2
 )
 
 var (
@@ -69,6 +69,18 @@ func initializeBusinessSchema(ctx context.Context, pool *sql.DB) error {
 		}
 	case appID != businessApplicationID:
 		return ErrBusinessStoreIdentity
+	case version == 1:
+		// This additive product schema change preserves existing profiles and all
+		// their references. OAuth secrets are stored separately, never in SQLite.
+		if err := checkBusinessTables(ctx, tx); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `ALTER TABLE llm_profiles ADD COLUMN auth_method TEXT NOT NULL DEFAULT 'api-key' CHECK (auth_method IN ('api-key','chatgpt'))`); err != nil {
+			return fmt.Errorf("LLM 인증 방식 추가: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `PRAGMA user_version=2`); err != nil {
+			return fmt.Errorf("업무 SQLite 버전 저장: %w", err)
+		}
 	case version != businessSchemaVersion:
 		return fmt.Errorf("%w: %d", ErrBusinessSchemaVersion, version)
 	}
