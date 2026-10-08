@@ -8,25 +8,27 @@ UI 기준: **[andongmin94/neobrutal-ui](https://github.com/andongmin94/neobrutal
 ## 현재 상태
 
 **M0/M1, M2.1, M2.2a 공통 SQLite 연결/트래픽, M2.3a 설정/인증 저장 검증을 완료했다.**
-이전 구현은 PR #2로 squash 병합했다. 구현 main SHA `81757868533bcb7b4ba15186bfc326d6ffc8f898`, 기록 SHA `4d0deedcfaf1041538416fcd5fd652a1218bbeb5`.
-이전 PR HEAD `4460f0f32790bbf4fb14c8d3837e48f3f7875fcc`의 `verify #59` 7개 job과 `sqlite-foundation #4` 3개 OS job이 성공했다.
-이 성공 기록은 아래 새 변경의 전체 회귀 성공을 뜻하지 않는다.
+그 뒤 모델/프롬프트 저장과 이번 부팅/설정 묶음 저장을 구현했다. 새 단위는 로컬 부분 검사만 수행했으며 전체 통합 완료가 아니다.
 
-**이번 단위:** 실제 초기 프롬프트 시드/버전 저장을 하나의 쓰기 트랜잭션으로 묶고, 모델 프로필의 없는 행 수정·조회 오류 처리를 고쳤다.
-`db/config.go`에서 모델 저장은 `db/llm_profiles.go`, 프롬프트 버전은 `db/prompts.go`로 분리했다. 기존 호출자가 같은 메서드를 사용한다.
-Go 제어 흐름 격리 검사와 Python SQLite SQL 검사는 통과했지만, 새 modernc 통합 테스트 7개와 프로젝트 전체 빌드/회귀는 **미실행**이다.
+**이번 단위 — 기준 main `0545731a1a0f6ab222304df73c9e1cd04df83dc0`:**
+`NewManager`의 저장소 열기와 서비스 초기화를 분리했다. LLM 기록/사용량 저장소 생성, 설정 조회, 요청한 트래픽 저장소 열기, browser MCP 동기화 실패를 반환하고 열린 자원을 정리한다.
+설정은 한 SELECT의 snapshot으로 복원한다. 웹 검색 설정과 동시 작업 제한은 관련 필드를 한 트랜잭션으로 저장한다. 웹 검색 설정은 커밋 성공 뒤에만 메모리에 게시하며 병렬 저장의 게시 순서를 직렬화한다.
+단순히 새 helper를 추가한 것이 아니라 기존 `NewManager`/`SetWebSearch`/`SetConcurrency`가 실제로 사용한다.
 
-**주 업무 DB는 아직 PostgreSQL이다. 전체 업무 SQLite 부팅, 모델 참조 삭제/바인딩 이식, Electron 앱과 neobrutal-ui 적용 화면은 아직 없다.**
-최소 SQLite fixture의 성공을 전체 `NewManager/New` 부팅 완료로 해석하지 않는다. README의 Docker/PG 안내는 현재 제품에 해당한다.
+**주 업무 DB는 여전히 PostgreSQL이다.** `NewManager`의 opener는 아직 `pgdb.DSN/Open`이며 전체 SQLite 스키마/시드/업무 쿼리 이식은 남아 있다.
+`server.New`의 JWT `log.Fatalf`, 모델 조회 오류 무시, 다른 startup 오류 경로도 남아 있다.
+트래픽 소켓 바인딩은 여전히 `Traffic.Start`의 비동기 경로다. 이번 변경을 프록시 준비 완료 보장이나 전체 앱 SQLite 부팅으로 표시하지 않는다.
+Electron 앱과 neobrutal-ui 적용 화면은 아직 없다. README의 Docker/PG 안내는 현재 제품에 해당한다.
 
-**검증 정책:** 사용자 요청에 따라 Actions 실행·재실행 없이 로컬 검사로 진행한다.
-`verify`/`sqlite-foundation`은 수동 실행 전용으로 바꾸며, 사용자 명시 요청 없이 실행하지 않는다. 개발 커밋은 `[skip ci]`를 사용한다.
-원격 runner로 소스를 편집하거나 로컬 네트워크 제한을 우회하지 않는다. 기존 artifact/cache/사용자 데이터는 임의 삭제하지 않는다.
+**검증 정책:** Actions 실행·재실행 없이 로컬 검사로 진행한다.
+`verify`/`sqlite-foundation`은 수동 실행 전용이며 명시 요청 없이 실행하지 않는다. 개발 커밋은 `[skip ci]`를 사용한다.
+로컬 제약을 원격 runner/편집 workflow/artifact 업로드로 우회하지 않는다. 기존 artifact/cache/사용자 데이터는 임의 삭제하지 않는다.
+이번에는 workflow와 릴리스 태그를 변경하지 않는다.
 
-**즉시 다음 작업:** 아래 M2.2/M2.3의 전체 업무 스키마·시드·쓰기 연결 정책과 실제 부팅/모델 저장 연결을 이어간다.
-새 Go 모델/프롬프트 테스트는 의존성을 갖춘 로컬 환경에서 실행하고, 미실행 상태를 지우기 위해 CI를 켜지 않는다.
-`docs/sqlite-porting-map.md`의 51개 업무 테이블/startup 의존을 기준으로 실제 호출자를 이식한다. 조사 도구나 이미 끝난 연결 fixture를 반복 구현하지 않는다.
-`server.New`의 JWT `log.Fatalf`, `loadLLMConfig`의 조회 오류 무시, 기타 startup 실패 전파는 아직 남아 있다. 초기화 실패를 무시하고 ready를 내보내지 않는다.
+**즉시 다음 작업:** M2.2/M2.3의 실제 업무 SQLite 스키마·시드·쓰기 연결 정책과 전체 부팅/모델 저장 연결을 이어간다.
+`docs/sqlite-porting-map.md`의 51개 업무 테이블/startup 의존을 기준으로 한다. 조사 도구나 완료된 경로 fixture를 반복 구현하지 않는다.
+새 Go 통합 테스트와 이전 모델/프롬프트 7개 테스트는 의존성을 갖춘 로컬 환경에서 실행한다. 미실행 상태를 지우려고 CI를 켜지 않는다.
+전체 부팅 전환에서 `server.New`의 오류 반환과 모든 호출부/종료 정리, 프록시 바인딩 실패 전파를 함께 완성한다.
 
 ## M0. 방향과 작업 기준
 
@@ -53,7 +55,8 @@ Electron 창, 주 DB SQLite, 도구 설치/자손 프로세스 정리, 패키징
 - [ ] **M2.2 실행 가능한 업무 저장 기반:** 전체 SQLite 스키마/시드/쓰기 경로/취소/닫기 구현. `NewManager/New`의 부팅 의존과 오류 반환을 함께 연결. 미사용 저장소를 완료 결과로 제출하지 않음.
 - [x] **M2.2a 공통 연결/트래픽:** `internal/sqlitedb.Open`을 실제 `traffic.Open`에 연결. URI 특수문자/연결별 PRAGMA/WAL/취소/파일 보존/재열기/FTS 검증. 전체 업무 스키마와 writer/read pool은 남음.
 - [x] **M2.3a 설정/인증 저장:** 실제 설정 메서드와 HTTP fixture의 재열기, 동시 최초 설정/변경 단일 승자, 조회 오류 fail-closed 검증. 전체 앱 부팅은 아님.
-- [ ] **M2.2b/M2.3b 프롬프트·모델 저장:** 원자적 초기 프롬프트/연속 버전, 모델 수정·조회 오류 처리 구현. 로컬 부분 검증만 완료. 새 modernc Go 테스트 7개 및 기존 PG 회귀/전체 빌드 미실행. 활성 모델·참조 삭제/바인딩 전체 이식 완료가 아님.
+- [ ] **M2.2b/M2.3b 프롬프트·모델 저장:** 원자적 초기 프롬프트/연속 버전, 모델 수정·조회 오류 처리 구현. 로컬 부분 검증만 완료. modernc Go 테스트 7개 및 기존 PG 회귀/전체 빌드 미실행. 모델 참조 삭제/바인딩 전체 이식 완료가 아님.
+- [ ] **M2.2c 부팅 오류/설정 일관성:** 실제 manager 초기화의 동기 오류 전파/실패 정리, snapshot 복원과 설정 묶음 저장 구현. 로컬 독립 Go 11개 및 SQL 수준 검사 7개 통과. 신규 프로젝트 통합 테스트 10개/전체 빌드 미실행. 아래 검증 기록 참조.
 - [ ] **M2.3 설정·인증 통합:** setup/로그인/설정/모델 프로필 저장·복원을 실제 앱 부팅에 연결. API/인증 정책 유지. JWT 작업 공간 분리와 초기화 실패 전파 검사.
 - [ ] **M2.4 자산·범위:** 관계 정규화/자산 DSL/IP·CIDR·IPv6 검색/기업 범위 재계산/중복 처리의 실제 fixture 검증.
 - [ ] **M2.5 작업·탐색:** 작업/세션/의도/대화/사실/취약점/승인/재검증/사용량/LLM 기록 이식. 다중 에이전트 저장과 취소 검증.
@@ -112,30 +115,52 @@ DB 동등성 검증과 UI 스타일 변경은 별도 단위로 수행한다.
 - 연결마다 FK/busy_timeout/synchronous 적용 및 WAL 확인. 손상 데이터 삭제/우회 없음. 인증 bcrypt는 쓰기 구간 밖, 최초 INSERT/조건부 UPDATE 및 조회 실패 전파 적용.
 - 위 CI artifact는 당시 14일 보관 설정이다. 새 코드를 검증하기 위해 재실행하지 않는다.
 
-## 검증 기록 — 이번 모델/프롬프트 단위
+### M2.2b/M2.3b — 모델/프롬프트
 
-기준 main `4d0deedcfaf1041538416fcd5fd652a1218bbeb5`. 사용자 요청에 따라 Actions는 실행하지 않았다.
+- 구현 `0545731a1a0f6ab222304df73c9e1cd04df83dc0`, 기준 `4d0deedcfaf1041538416fcd5fd652a1218bbeb5`. Actions 미사용.
+- `SeedPromptIfEmpty`/`SavePrompt`를 단일 트랜잭션으로 변경. 사용자 편집 보존과 버전/현재 포인터 동시 저장, 오류 반환. 모델 없는 ID 수정/조회 오류 처리 개선.
+- `db/config.go`의 모델/프롬프트를 `llm_profiles.go`/`prompts.go`로 분리. 원본 63개 선언 누락/중복 없음, 메서드 6개 변경과 helper 2개 추가.
+- Go 1.23.2의 실제 prompts 소스 + 동일 DB 래핑 타입 + scripted driver로 트랜잭션 제어 8개 사례 × race 20회 통과.
+- Python SQLite 3.46.1의 실제 SQL 수준 13개 검사 통과. 동시 seed/편집/활성화 각 12개, 재열기/키 보존/교체/없는 ID/풀 순서/롤백/무결성 포함.
+- `verify`/`sqlite-foundation` trigger만 수동으로 변경. 기존 검사 내용 보존.
+- `config_sqlite_test.go`의 modernc Go 통합 테스트 **7개 미실행**. Go 1.26.3 전체 빌드/기존 PG 회귀/전체 앱/Windows/macOS도 미실행.
+- 당시 DNS 제한으로 소스 clone/의존성 확보 불가. `go.mod` 하향이나 원격 runner 우회 없음. 부분 검사 성공은 통합 성공이 아니다.
 
-구현:
+## 검증 기록 — M2.2c 부팅 오류/설정 일관성
 
-- `SeedPromptIfEmpty`와 `SavePrompt`가 agent 쓰기를 먼저 수행한 뒤 같은 트랜잭션에서 현재값/버전/본문/포인터를 처리한다. 동시 seed가 사용자 편집을 덮어쓰지 않는다.
-- 트랜잭션 도중 parent pool로 재진입하지 않는다. 쓰기·조회·포인터·commit 실패를 반환하고 실패한 버전을 성공으로 알리지 않는다.
-- `SaveProfile`의 두 UPDATE는 `RETURNING id`로 실제 수정 행을 확인한다. 없는 ID는 `ErrLLMProfileNotFound`, nil 입력은 오류다. 빈 키 업데이트의 기존 키 보존 의미는 유지한다.
-- `ActiveProfile`/`ProfileByID` 조회 실패는 부분적으로 채운 프로필을 반환하지 않는다. `SetActiveProfile`은 RowsAffected 오류도 반환한다.
-- 기존 프로필 참조 삭제/에이전트 바인딩의 PG 잠금 로직은 변경하지 않았다. SQLite용 신규 호환 계층을 추가하지 않았다.
+기준 main `0545731a1a0f6ab222304df73c9e1cd04df83dc0`. Actions 실행/재실행/업로드 없음.
 
-실행한 검사:
+### 실제 구현 경계
 
-- `gofmt` 및 Go AST 대조: 원본 63개 선언 누락/중복 없음. 메서드 6개만 변경, 트랜잭션 내부 helper 2개 추가. 그 외 선언은 동일.
-- 실제 새 `prompts.go`/`prompts_control_test.go`를 동일한 DB 래핑 타입과 격리해 Go 1.23.2에서 `GO111MODULE=off go test -race -count=20 -timeout 60s -v .` 실행. **트랜잭션 제어 8개 하위 사례 × 20회 통과**. SQL driver는 의도적으로 실패를 주입하는 scripted driver다.
-- Python SQLite **3.46.1**에서 새 소스의 SQL과 테스트용 스키마를 그대로 실행: **13개 SQL 수준 검사 통과**. 동시 seed 12개/편집 12개/활성화 12개, 사용자 편집 보존, 포인터·활성화 실패 롤백, 모델 필드 재열기/키 보존/교체/없는 ID/풀 순서 포함. FK/integrity 확인 성공.
-- 두 workflow의 YAML 및 원본 blob 대조: trigger만 수동으로 변경했고 기존 job/검사 명령은 동일.
+- `db/settings_batch.go`: 단일 SELECT `SettingsSnapshot`, 정렬된 키를 한 트랜잭션에 쓰는 `SetSettingsContext`. 조회/Scan/iteration/close/취소 오류에서 부분 map을 반환하지 않는다.
+- `db/settings.go`: 단건·묶음 쓰기가 같은 명시적 upsert SQL을 사용한다. DB 종류 분기나 SQL 변환은 없다.
+- `server/manager_startup.go`: 기존 `NewManager`가 저장소를 연 뒤 실제 `newManagerFromDB`로 초기화한다. 실패 시 소유한 DB/트래픽 자원을 닫고 원인과 정리 오류를 함께 반환한다. 미사용/가짜 setup 서버가 아니다.
+- `server/manager_startup_state.go`: 기존 설정 키와 부팅 상태 해석, 절대 데이터 경로 준비, browser MCP JSON 검증. 기존 사용자 파일을 삭제/덮어쓰지 않는다.
+- 깨진 JSON을 빈 배열/객체로 바꿔 저장하지 않는다. MCP의 다른 옵션은 보존하며 proxy/CA 옵션만 동기화한다. 프록시 인증정보/설정값을 새 오류·로그에 넣지 않는다.
+- `server/manager.go`: `SetWebSearch`/`SetConcurrency`의 관련 설정을 원자적으로 저장. 웹 검색은 DB 성공 뒤에만 메모리를 갱신하고 동시 요청의 commit/publication 순서를 고정한다. MCP 동기화 오류는 기존 두 setter에서 반환한다.
+- **범위 제한:** `SetTrafficEnabled`/`SetGlobalProxy`의 설정 저장과 MCP 저장 전체를 하나의 트랜잭션으로 만든 것은 아니다. 프록시 비동기 bind, server.New, 전체 스키마와 작업 복원 검증은 남아 있다.
 
-실행하지 못한 검사:
+### 실행한 로컬 검사
 
-- 새 `config_sqlite_test.go`의 Go modernc 통합 테스트 **7개**. 모델 재열기/키 비노출/활성화 롤백/동시성, 프롬프트 재열기/동시 seed·편집/롤백/닫힌 DB를 검사하도록 추가했지만 실행 결과는 아직 없다.
-- Go 1.26.3 전체 빌드/기존 PG 회귀, 실제 전체 앱 부팅, Windows/macOS native 검사.
-- 로컬 DNS 제한으로 GitHub clone 및 Go 1.26.3 의존성 다운로드 실패. 프로젝트 `go.mod`는 바꾸지 않았고 원격 runner로 우회하지 않았다.
+환경: Linux, Go 1.23.2, Python SQLite 3.46.1. 프로젝트 지정 버전은 변경하지 않았다.
 
-이번 검사는 모델 API/외부 대상/사용자 DB를 사용하지 않았다. SQL 수준 검사와 scripted-driver 성공을 modernc 또는 전체 앱 성공으로 표시하지 않는다.
-M2.2/M2.3 전체 및 새 하위 단위의 통합 검증 체크박스는 미완료로 유지한다.
+- `manager_startup_state.go`와 해당 테스트를 직접 지정해 `GO111MODULE=off go test -race -count=20 -timeout 60s -v ...` 실행. **최상위 7개 테스트 각각 20회 통과**, skip 없음. 기본/저장값 해석, 손상 불리언, 한글/특수문자 경로, 기존 파일 보존, MCP 옵션 보존/멱등성/잘못된 JSON 및 null 값을 검사했다.
+- 실제 `settings.go`/`settings_batch.go`/`settings_batch_control_test.go`를 동일한 `type DB struct{ *sql.DB }`와 격리해 같은 Go/race/count=20으로 실행. **최상위 4개 테스트 각각 20회 통과**, skip 없음. begin/중간 쓰기/commit 실패, 안정된 키 순서, 롤백, 빈 변경/취소, query/Scan/iteration/rows-close 실패를 검사했다. 이 driver는 제어 흐름용이며 modernc가 아니다.
+- Python SQLite에서 새 소스의 upsert/SELECT를 그대로 실행. **SQL 수준 7개 검사 통과:** 빈 snapshot, 한글 파일 재열기, 뒤 필드 실패 시 앞 필드 롤백, WAL 이전/커밋 snapshot, 12개 동시 writer + 12개 reader, FK/integrity 확인. Go 드라이버 검사와 구분한다.
+- `gofmt`, 모든 새 Go 파일 구문 검사, manager 선언의 AST/토큰 대조. 원본 **97개 선언 모두 보존**, 중복 없음. Manager 타입/기존 함수 7개를 변경하고 상태 타입 1개와 함수 4개를 추가했으며, 나머지 선언은 동일하다.
+
+### 미실행 검사와 로컬 재현 명령
+
+- 신규 `db/settings_batch_sqlite_test.go` **4개**, `server/manager_startup_sqlite_test.go` **6개**의 프로젝트 통합 테스트는 **미실행**이다. 미완성 업무 SQLite의 부팅 거부/실패 후 DB 닫기, 실제 setter 저장·롤백·동시 게시·옵션 보존 등을 검사하도록 추가했다.
+- 이전 모델/프롬프트 modernc **7개도 여전히 미실행**이다.
+- Go 1.26.3 전체 빌드/PG 회귀, 실제 backend smoke, native Windows/macOS, Electron/화면/도구/전체 부하·백업은 미실행.
+- 로컬 DNS/의존성 제약으로 전체 소스 clone과 지정 Go/modernc 확보가 불가능했다. Actions를 우회 수단으로 쓰지 않았다.
+
+의존성을 갖춘 로컬 저장소에서는 다음 명령으로 새 범위를 실행한다. 운영 DB/외부 모델/테스트 대상은 필요하지 않다.
+
+```sh
+go test -race -count=1 -timeout 120s -run '^(TestSettingsBatch|TestSettingsSnapshot|TestSQLiteSettingsBatch)' ./db
+go test -race -count=1 -timeout 120s -run '^(TestManagerRuntimeSettings|TestManagerDirectory|TestBrowserProxySettings|TestManagerStartup|TestManagerWebSearch|TestManagerConcurrencySettings)' ./server
+```
+
+M2.2c와 M2.2/M2.3 전체의 통합 완료 체크박스는 미완료로 유지한다. 새 검사 성공을 이전 커밋의 CI 결과로 대신하지 않는다.

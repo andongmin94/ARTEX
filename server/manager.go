@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -228,6 +229,7 @@ type Manager struct {
 	// their in-memory mirrors. lifecycleMu makes snapshots race-free, but without
 	// this outer write lock an older request could commit first and publish last.
 	taskStateMu sync.Mutex
+	settingsMu  sync.Mutex // orders runtime settings commits with their in-memory publication
 	mu          sync.RWMutex
 	tasks       map[string]*Task
 	active      string
@@ -246,46 +248,6 @@ type Manager struct {
 	// injected into agent bash env / WebFetch directly. See ProxyAddr.
 	globalProxy string
 }
-
-// Settings keys the UI toggles at runtime.
-const (
-	settingTrafficCapture      = "traffic_capture"
-	settingAgentTrafficBinding = "agent_traffic_binding"
-	settingWebSearchOn         = "web_search_enabled"
-	settingWebSearchBackend    = "web_search_backend"
-	settingBraveKey            = "brave_search_api_key"
-	settingTavilyKey           = "tavily_search_api_key"
-	settingWebSearchProxy      = "web_search_proxy"
-	// settingGlobalProxy is the global egress proxy for all target traffic
-	// (http/https/socks5). Empty = direct. Distinct from web_search_proxy (which
-	// only routes the search backend) and the per-profile LLM proxy.
-	settingGlobalProxy = "global_proxy"
-	settingWorkers     = "workers"
-	settingLLMRecord   = "llm_record"
-	// LLM 轮询(故障转移)。默认关闭——开启后走「全局激活配置」的 agent 在当前配置
-	// 不可用(余额不足/key 失效/限流/服务异常)时自动切到下一个配置。
-	// settingLLMPoolBindFallback 仅在轮询开启时有意义:默认关闭,即 agent/任务显式
-	// 绑定了某个配置就只用它、失败即失败;开启后绑定的配置失败也会回落到轮询链。
-	settingLLMPoolOn           = "llm_pool_enabled"
-	settingLLMPoolBindFallback = "llm_pool_bind_fallback"
-	// 任务并发上限:开关 + 上限数。默认关闭;开启后默认上限 5(见 defaultConcurrencyLimit)。
-	settingConcurrencyOn    = "task_concurrency_enabled"
-	settingConcurrencyLimit = "task_concurrency_limit"
-	// 实验功能:noa 模型驱动上下文压缩(norma v0.4.0)。默认关闭——开启后平台接入的四类
-	// agent(planner/worker/主 agent/对话)由 noa 接管上下文压缩,取代内置 compaction。
-	// 每 run 读一次,切换只影响之后启动的 run。
-	settingNoaCompaction = "noa_compaction"
-	// defaultWebSearchBackend is used when web search is on but no backend was picked.
-	defaultWebSearchBackend = "ddgs"
-	// deepSeekWebSearchBackend borrows the active LLM profile instead of its own
-	// key, so it only works on an anthropic-format profile pointed at DeepSeek.
-	deepSeekWebSearchBackend = "deepseek"
-	// defaultWorkers is the concurrent work-agent count when the setting is unset.
-	defaultWorkers = 3
-	// defaultConcurrencyLimit is the simultaneous-running-task cap when the feature
-	// is enabled but no explicit limit was saved.
-	defaultConcurrencyLimit = 5
-)
 
 // ConcurrencyLimit returns whether the simultaneous-running-task cap is enabled and
 // its limit (default 5 when enabled but unset). limit is always >=1 when enabled.
@@ -308,10 +270,10 @@ func (m *Manager) SetConcurrency(enabled bool, limit int) error {
 	if limit < 1 {
 		limit = defaultConcurrencyLimit
 	}
-	if err := m.pg.SetSetting(settingConcurrencyLimit, strconv.Itoa(limit)); err != nil {
-		return err
-	}
-	return m.pg.SetSetting(settingConcurrencyOn, strconv.FormatBool(enabled))
+	return m.pg.SetSettingsContext(context.Background(), map[string]string{
+		settingConcurrencyLimit: strconv.Itoa(limit),
+		settingConcurrencyOn:    strconv.FormatBool(enabled),
+	})
 }
 
 // Workers returns the configured concurrent work-agent count (default 3). Read
@@ -339,113 +301,6 @@ func (m *Manager) SetWorkers(n int) error {
 // Enrich returns the asset auto-completion engine (may be nil if init failed).
 func (m *Manager) Enrich() *enrich.Engine { return m.enrich }
 
-// NewManager connects to PostgreSQL and, if proxyAddr is non-empty, starts the
-// traffic-recording proxy. PostgreSQL is required (it is the single data source).
-func NewManager(dir, proxyAddr string) (*Manager, error) {
-	// Resolve the data dir to an ABSOLUTE path up front. Every data path derives
-	// from it — notably the MITM CA cert, whose path is injected into worker shells
-	// (SSL_CERT_FILE/CURL_CA_BUNDLE) and read by WebFetch. A relative path (the
-	// default is "./data" under `go run`) only resolves when the current working
-	// directory happens to match, so curl/WebFetch in a different CWD fail to load
-	// the CA → TLS to the proxy breaks (curl 000 / EOF). Absolute makes it CWD-proof.
-	if abs, err := filepath.Abs(dir); err == nil {
-		dir = abs
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, err
-	}
-	dsn, source, err := pgdb.DSN()
-	if err != nil {
-		return nil, err
-	}
-	log.Printf("[pg] DB 설정 출처: %s", source)
-	pg, err := pgdb.Open(dsn)
-	if err != nil {
-		return nil, err
-	}
-	if err := pg.RecoverFindingRetests(); err != nil {
-		pg.Close()
-		return nil, fmt.Errorf("recover finding retests: %w", err)
-	}
-	if err := pg.EnsureLLMRecordsTable(); err != nil {
-		log.Printf("[llmrec] create table: %v", err)
-	}
-	if err := pg.EnsureLLMUsageTable(); err != nil {
-		log.Printf("[llmusage] create table: %v", err)
-	}
-	m := &Manager{dir: dir, pg: pg, assets: pg.Assets(), tasks: map[string]*Task{}, interceptor: intercept.New(pg)}
-	if proxyAddr != "" {
-		tr, err := traffic.Open(filepath.Join(dir, "traffic"), proxyAddr)
-		if err != nil {
-			log.Printf("[traffic] disabled: %v", err)
-		} else {
-			err = tr.RecoverHostDeleteStages(func(_ int64, taskID int64) (bool, error) {
-				if taskID <= 0 {
-					return false, errors.New("보관 트래픽 임시 기록에 작업 ID가 없습니다")
-				}
-				task, taskErr := pg.GetTask(taskID)
-				if taskErr != nil {
-					return false, taskErr
-				}
-				// Archived/permanently deleted tasks are hidden from GetTask. A
-				// restored task is visible and needs the staged traffic put back.
-				return task == nil, nil
-			})
-			if err != nil {
-				_ = tr.Close()
-				_ = pg.Close()
-				return nil, fmt.Errorf("recover traffic delete staging: %w", err)
-			}
-		}
-		if tr != nil {
-			m.traffic = tr
-			go func() {
-				log.Printf("[traffic] recording proxy on %s (set HTTP_PROXY=%s + trust _ca CA)", proxyAddr, tr.ProxyAddr())
-				if err := tr.Start(); err != nil {
-					log.Printf("[traffic] proxy stopped: %v", err)
-				}
-			}()
-		}
-	}
-	// Asset auto-completion engine (§5): HTTP probes routed through the recording
-	// proxy (via m.ProxyAddr, which honors the traffic-capture toggle).
-	m.trafficOn = pg.GetBool(settingTrafficCapture, false)
-	// LLM 录制开关（默认关）。录制器每次调用时读取此标志。
-	m.llmRecOn = pg.GetBool(settingLLMRecord, false)
-	// Load persisted web-search config (default: off, ddgs).
-	m.webSearchOn = pg.GetBool(settingWebSearchOn, false)
-	if v, ok, _ := pg.GetSetting(settingWebSearchBackend); ok && v != "" {
-		m.webSearchBackend = v
-	} else {
-		m.webSearchBackend = defaultWebSearchBackend
-	}
-	if v, ok, _ := pg.GetSetting(settingBraveKey); ok {
-		m.braveKey = v
-	}
-	if v, ok, _ := pg.GetSetting(settingTavilyKey); ok {
-		m.tavilyKey = v
-	}
-	if v, ok, _ := pg.GetSetting(settingWebSearchProxy); ok {
-		m.webSearchProxy = v
-	}
-	// Global egress proxy (default: direct). When capture is on, feed it to the
-	// MITM as its upstream so recorded traffic exits through it; when capture is
-	// off, ProxyAddr hands it to agents directly (bash env / WebFetch).
-	if v, ok, _ := pg.GetSetting(settingGlobalProxy); ok {
-		m.globalProxy = strings.TrimSpace(v)
-	}
-	if m.traffic != nil {
-		if err := m.traffic.SetUpstreamProxy(m.globalProxy); err != nil {
-			log.Printf("[proxy] 전역 프록시 %q가 유효하지 않아 무시했습니다: %v", m.globalProxy, err)
-		}
-	}
-	m.enrich = enrich.New(m.assets, m.ProxyAddr, 4)
-	// Reconcile the seeded browser MCP with the persisted capture state, so a
-	// restart with capture already on keeps Playwright routed through the proxy.
-	m.syncBrowserMCPProxy()
-	return m, nil
-}
-
 // TrafficEnabled reports whether traffic capture is on (default off). When off,
 // no proxy/traffic tools/prompt are injected into agents (nothing is recorded).
 func (m *Manager) TrafficEnabled() bool {
@@ -467,8 +322,7 @@ func (m *Manager) SetTrafficEnabled(on bool) error {
 	// Playwright routes through the MITM. Must run after the flag flip above, since
 	// ProxyAddr/ProxyCACert honor it. putSettings rebuilds agents next (applyLLM),
 	// which re-spawns the MCP with the new args/env.
-	m.syncBrowserMCPProxy()
-	return nil
+	return m.syncBrowserMCPProxy()
 }
 
 // LLMRecordEnabled reports whether LLM request/response recording is on
@@ -586,44 +440,42 @@ func (m *Manager) deepSeekSearchCreds() (baseURL, apiKey, model string) {
 // key/proxy; pass a pointer to "" to clear). Callers must rebuild agents (applyLLM)
 // afterwards so the settings take effect.
 func (m *Manager) SetWebSearch(on bool, backend string, braveKey, tavilyKey, proxy *string) error {
+	m.settingsMu.Lock()
+	defer m.settingsMu.Unlock()
 	backend = strings.TrimSpace(backend)
 	if backend == "" {
 		backend = defaultWebSearchBackend
 	}
-	if err := m.pg.SetBool(settingWebSearchOn, on); err != nil {
-		return err
+	values := map[string]string{
+		settingWebSearchOn:      strconv.FormatBool(on),
+		settingWebSearchBackend: backend,
 	}
-	if err := m.pg.SetSetting(settingWebSearchBackend, backend); err != nil {
-		return err
-	}
-	m.mu.Lock()
-	m.webSearchOn = on
-	m.webSearchBackend = backend
-	m.mu.Unlock()
 	if braveKey != nil {
-		if err := m.pg.SetSetting(settingBraveKey, *braveKey); err != nil {
-			return err
-		}
-		m.mu.Lock()
-		m.braveKey = *braveKey
-		m.mu.Unlock()
+		values[settingBraveKey] = *braveKey
 	}
 	if tavilyKey != nil {
-		if err := m.pg.SetSetting(settingTavilyKey, *tavilyKey); err != nil {
-			return err
-		}
-		m.mu.Lock()
-		m.tavilyKey = *tavilyKey
-		m.mu.Unlock()
+		values[settingTavilyKey] = *tavilyKey
 	}
 	if proxy != nil {
-		p := strings.TrimSpace(*proxy)
-		if err := m.pg.SetSetting(settingWebSearchProxy, p); err != nil {
-			return err
-		}
-		m.mu.Lock()
-		m.webSearchProxy = p
-		m.mu.Unlock()
+		values[settingWebSearchProxy] = strings.TrimSpace(*proxy)
+	}
+	if err := m.pg.SetSettingsContext(context.Background(), values); err != nil {
+		return err
+	}
+	// Publish only the successfully committed snapshot. Readers never observe
+	// a new backend with an old key, and failed writes leave the cache untouched.
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.webSearchOn = on
+	m.webSearchBackend = backend
+	if braveKey != nil {
+		m.braveKey = values[settingBraveKey]
+	}
+	if tavilyKey != nil {
+		m.tavilyKey = values[settingTavilyKey]
+	}
+	if proxy != nil {
+		m.webSearchProxy = values[settingWebSearchProxy]
 	}
 	return nil
 }
@@ -631,72 +483,6 @@ func (m *Manager) SetWebSearch(on bool, backend string, braveKey, tavilyKey, pro
 // browserMCPName is the seeded Playwright MCP whose proxy args + CA env are kept
 // in sync with the traffic-capture toggle.
 const browserMCPName = "browser"
-
-// syncBrowserMCPProxy reconciles the seeded browser MCP's proxy args + CA env with
-// the current traffic-capture state: capture on → route Playwright through the
-// recording proxy (--proxy-server) and trust its MITM CA (NODE_EXTRA_CA_CERTS);
-// capture off → strip both. Idempotent, and a no-op if the user deleted/renamed the
-// MCP. Must be called WITHOUT m.mu held (ProxyAddr/ProxyCACert take the lock).
-func (m *Manager) syncBrowserMCPProxy() {
-	servers, err := m.pg.ListMCP()
-	if err != nil {
-		log.Printf("[mcp] browser 프록시 동기화: MCP 목록 읽기 실패: %v", err)
-		return
-	}
-	var srv *pgdb.MCPServer
-	for _, s := range servers {
-		if s.Name == browserMCPName {
-			srv = s
-			break
-		}
-	}
-	if srv == nil {
-		return // user removed/renamed it — leave it alone
-	}
-
-	proxy := m.ProxyAddr()  // "" when capture off
-	cert := m.ProxyCACert() // "" when capture off
-
-	args := stripProxyArgs(decodeStrSlice(srv.Args))
-	env := decodeStrMap(srv.Env)
-	delete(env, "NODE_EXTRA_CA_CERTS")
-	if proxy != "" {
-		args = append(args, "--proxy-server", proxy)
-		if cert != "" {
-			env["NODE_EXTRA_CA_CERTS"] = cert
-		}
-	}
-	srv.Args = encodeJSON(args)
-	srv.Env = encodeJSON(env)
-	if _, err := m.pg.SaveMCP(srv); err != nil {
-		log.Printf("[mcp] browser 프록시 동기화 실패: %v", err)
-		return
-	}
-	if proxy != "" {
-		log.Printf("[mcp] browser MCP에 캡처 프록시 %s 적용(CA %s)", proxy, cert)
-	} else {
-		log.Printf("[mcp] browser MCP에서 캡처 프록시 설정 제거")
-	}
-}
-
-// stripProxyArgs removes any --proxy-server/--proxy-bypass flags (both "--flag val"
-// and "--flag=val" forms) so they can be re-added cleanly from current state,
-// without mutating the input slice.
-func stripProxyArgs(args []string) []string {
-	out := make([]string, 0, len(args))
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		if a == "--proxy-server" || a == "--proxy-bypass" {
-			i++ // skip the following value too
-			continue
-		}
-		if strings.HasPrefix(a, "--proxy-server=") || strings.HasPrefix(a, "--proxy-bypass=") {
-			continue
-		}
-		out = append(out, a)
-	}
-	return out
-}
 
 func decodeStrSlice(raw json.RawMessage) []string {
 	var out []string
@@ -796,17 +582,20 @@ func (m *Manager) SetGlobalProxy(raw string) error {
 		}
 	}
 	// Keep the browser MCP's egress in sync with the new global proxy too.
-	m.syncBrowserMCPProxy()
-	return nil
+	return m.syncBrowserMCPProxy()
 }
 
 func (m *Manager) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	var trafficErr, dbErr error
 	if m.traffic != nil {
-		m.traffic.Close()
+		trafficErr = m.traffic.Close()
 	}
-	return m.pg.Close()
+	if m.pg != nil && m.pg.DB != nil {
+		dbErr = m.pg.Close()
+	}
+	return errors.Join(trafficErr, dbErr)
 }
 
 // isTerminalStatus reports whether a task status is terminal (done/failed/timeout).

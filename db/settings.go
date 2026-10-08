@@ -20,11 +20,13 @@ func (d *DB) GetSetting(key string) (value string, ok bool, err error) {
 	return value, true, nil
 }
 
+const settingUpsertSQL = `
+INSERT INTO settings(key, value) VALUES ($1, $2)
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`
+
 // SetSetting upserts a setting value.
 func (d *DB) SetSetting(key, value string) error {
-	_, err := d.Exec(`
-INSERT INTO settings(key, value) VALUES ($1, $2)
-ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`, key, value)
+	_, err := d.Exec(settingUpsertSQL, key, value)
 	return err
 }
 
