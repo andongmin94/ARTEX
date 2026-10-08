@@ -6,28 +6,26 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Autumn-27/artex/agent"
+	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/llmrec"
 	"github.com/Autumn-27/norma/llm"
 	"github.com/Autumn-27/norma/transcript"
 )
 
-// Full chain against a real PG: Recorder → norma provider → capturing transport
+// Full chain against the real business SQLite store: Recorder → norma provider → capturing transport
 // → llm_records. The unit tests cover each hop; this proves the raw bodies
 // actually survive all the way into the row an operator opens when debugging.
 func TestRecorderPersistsRawWireBodies(t *testing.T) {
-	m, err := NewManager(t.TempDir(), "")
+	pg, err := db.Open(filepath.Join(t.TempDir(), "artex.sqlite"))
 	if err != nil {
-		t.Skipf("postgres unavailable (%v) — skipping", err)
+		t.Fatal(err)
 	}
-	defer m.Close()
-	pg := m.PG()
-	if err := pg.EnsureLLMRecordsTable(); err != nil {
-		t.Fatalf("ensure table: %v", err)
-	}
+	defer pg.Close()
 
 	sse := strings.Join([]string{
 		`event: message_start`,
@@ -65,15 +63,6 @@ func TestRecorderPersistsRawWireBodies(t *testing.T) {
 	}
 	const session = "exp999999-rawtest"
 	rec := llmrec.Wrap(inner, pg, cfg.Model, "raw-test-profile", "", "", func() bool { return true })
-
-	// Clean up whatever this test writes, whether or not it passes. Must be a
-	// defer registered after `defer m.Close()` (LIFO puts it first) — a
-	// t.Cleanup would run after the manager already closed the pool.
-	defer func() {
-		if _, err := pg.Exec(`DELETE FROM llm_records WHERE session_id = $1`, session); err != nil {
-			t.Logf("cleanup: %v", err)
-		}
-	}()
 
 	ctx := transcript.WithSessionID(context.Background(), session)
 	for _, err := range rec.Stream(ctx, llm.CompletionRequest{
@@ -121,7 +110,7 @@ func TestRecorderPersistsRawWireBodies(t *testing.T) {
 	}
 	tools, _ := body["tools"].([]any)
 	if len(tools) != 1 {
-		t.Fatalf("raw_request tools=%v", body["tools"])
+		t.Fatalf("raw_request tools=%v", tools)
 	}
 	if tool, _ := tools[0].(map[string]any); tool["input_schema"] == nil {
 		t.Errorf("raw_request lost the tool schema: %v", tool)

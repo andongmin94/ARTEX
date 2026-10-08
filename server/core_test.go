@@ -130,9 +130,6 @@ func TestCoreTaskLifecyclePG(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := m.pg.EnsureLLMRecordsTable(); err != nil {
-		t.Fatal(err)
-	}
 	if err := m.pg.InsertLLMRecord(&db.LLMRecord{TaskID: id, SessionID: "delete-test", Status: "ok", RequestBody: "secret"}); err != nil {
 		t.Fatal(err)
 	}
