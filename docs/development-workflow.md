@@ -8,10 +8,19 @@
 작동하지 않는 브랜치를 배포하지 않으며, 이를 이유로 PG fallback이나 이중 저장을 만들지 않는다.
 
 전환 순서는 `실행 기반 → SQLite 저장소와 실제 기능 동등성 → Electron 연결 → 도구 환경 → 배포 정리`다.
-첫 단계를 실행 기반으로 잡은 이유는 설치 폴더 밖 데이터와 부모/자식 종료 계약이 이후 저장소 및 Electron 작업의 공통 전제이기 때문이다.
 주 DB 이식이 끝나기 전에 Electron 포장만 완료했다고 보고하지 않는다.
 
-## 기본 검사
+## 검증 자원 정책
+
+2026-10-05 사용자 요청으로 GitHub Actions 자동 실행을 사용하지 않는다.
+`verify.yml`과 `sqlite-foundation.yml`은 `workflow_dispatch`만 허용한다.
+수동 실행·재실행도 사용자가 명시적으로 요청한 경우에만 수행한다.
+로컬에서 불가능한 검사를 원격 runner로 우회하거나, 일회성 소스 편집 workflow를 만들지 않는다.
+커밋에는 `[skip ci]`를 사용하고 검사 실패·미실행을 그대로 보고한다.
+기존 테스트 명령과 수동 workflow는 보존한다. 검증 생략을 테스트 성공으로 바꾸지 않는다.
+태그 릴리스 workflow는 이번 정책 변경에서 수정하지 않았으며, 별도 요청 없이 태그를 만들지 않는다.
+
+## 기본 로컬 검사
 
 ```sh
 go test -p 1 -count=1 -timeout 180s ./...
@@ -34,6 +43,13 @@ go test -race -count=1 -timeout 60s cmd/artex/http_lifecycle.go cmd/artex/http_l
 node --check scripts/check-backend-lifecycle.mjs
 ```
 
+모델/프롬프트 저장의 새 Go 검사에는 프로젝트 지정 Go와 기존 modernc 의존성이 필요하다.
+폐기 가능한 SQLite 파일만 사용하며 모델 API나 외부 대상에 연결하지 않는다.
+
+```sh
+go test -race -count=1 -timeout 120s -run '^(TestSQLiteProfile|TestSQLitePrompt|TestPromptTransactionControl)' ./db
+```
+
 실제 백엔드의 준비/종료 검사는 `ARTEX_SMOKE_PG_DSN`으로 **이름이 `artex_desktop_smoke`인 폐기 가능한 DB**를 명시하고 실행한다.
 일반 `ARTEX_PG_DSN`을 암묵적으로 재사용하지 않는다. 운영 DB나 기존 사용자 데이터로 실행하지 않는다.
 
@@ -48,12 +64,14 @@ ARTEX_SMOKE_PG_DSN='postgres://artex:TEST_PASSWORD@127.0.0.1:5432/artex_desktop_
 ## 환경 제약 기록
 
 프로젝트 지정 Go 버전이나 의존성을 사용할 수 없으면 `go.mod` 버전을 임의로 낮추지 않는다.
-표준 라이브러리만 사용하는 위 두 검사에 한해 `GO111MODULE=off`로 독립 검증할 수 있다.
-이는 전체 프로젝트 컴파일/통합 검증이 아니다. 실제 Go 버전과 명령을 검증 기록에 적는다.
-전체 빌드와 native OS 검증은 해당 환경 또는 CI에서 별도로 확인한다.
+표준 라이브러리만 사용하는 독립 범위에 한해 `GO111MODULE=off`로 격리 검증할 수 있다.
+대체 SQL 드라이버를 쓴 제어 흐름 검사와 Python SQLite 실행은 Go modernc 통합 검사가 아니다.
+실제 Go/SQLite 버전, 가져온 소스, 명령, 실행하지 못한 범위를 계획에 적는다.
+전체 빌드와 native OS 검증은 해당 환경에서 수행한다. CI 사용에는 위 사용자 승인 조건을 적용한다.
 
 ## 원격 반영
 
 최신 ref를 다시 확인하고 정상 fast-forward 또는 PR로 반영한다. 동시 변경은 먼저 병합/재검토한다.
-워크플로를 추가한 것과 성공한 것은 다르다. 실행 번호·커밋·각 job 결과를 확인하고 기록한다.
-CI가 대기/실패/미실행이면 그대로 표시한다. 계획의 다음 단위와 남은 위험도 함께 남긴다.
+함수 이동처럼 함께 적용해야 컴파일되는 변경은 하나의 tree/commit으로 반영한다.
+원격 blob SHA가 검사한 파일과 일치하는지 확인한다.
+이번에 수행한 로컬 검사와 이전 커밋의 CI 성공 기록을 구분하고, 다음 단위와 남은 위험을 함께 남긴다.
