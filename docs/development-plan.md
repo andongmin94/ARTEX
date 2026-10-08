@@ -11,7 +11,7 @@ UI 기준: **[andongmin94/neobrutal-ui](https://github.com/andongmin94/neobrutal
 M1 구현 커밋 `4acff4563df22a2094b7adcc8e4fde7d05267a00`의 `verify #55` 6개 job은 모두 성공했다.
 M2.1 구현 커밋 `a99972d4e8ff1eaec333aad05874374ef7c95510`의 `verify #56` 7개 job도 모두 성공했다.
 전체 Go/SQL 332개 조사 결과와 핵심 부팅/스키마/직접 SQL을 검토해 `docs/sqlite-porting-map.md`에 이식 묶음을 확정했다.
-다음 구현은 **M2.2 SQLite 저장 기반과 M2.3 실제 부팅/설정 경로 연결**이다.
+M2.2/M2.3을 작은 검증 단위로 진행한다. 이번 단위는 **공통 SQLite 연결을 기존 트래픽에 적용하고 설정/인증의 실제 저장 경로를 SQLite fixture로 검증**하는 것이다. 전체 업무 스키마와 NewManager/New 부팅 전환은 아직 남아 있다.
 **주 DB는 아직 PostgreSQL이고 Electron 앱과 neobrutal-ui 적용 화면은 아직 없다.**
 README의 Docker/PG 실행 안내는 현 제품에 해당하며 목표 아키텍처의 완료 증거가 아니다.
 
@@ -42,6 +42,8 @@ Electron 창, 주 DB SQLite 교체, 도구 설치, 앱 업데이트, 패키징, 
 
 - [x] **M2.1 인벤토리:** 전체 Go/SQL 332개 조사 및 후보 214개 분류. `verify #56` 보고서와 핵심 코드 검토로 `docs/sqlite-porting-map.md`의 51개 업무 테이블/부팅 경계/직접 SQL/트랜잭션/테스트 fixture 이식 지도를 확정했다. 후보 수는 수정 파일 수나 기능 동등성 증명이 아니다.
 - [ ] **M2.2 실행 가능한 저장 기반:** 기존 modernc 드라이버로 업무 DB 스키마/연결 초기화, 연결별 PRAGMA, 쓰기 경로, 명시적 취소/닫기, Unicode/특수문자 경로 검사. `server.NewManager/New`의 전체 부팅 의존과 생성 오류 반환을 함께 연결한다. 미사용 추상 저장소를 완료 결과로 제출하지 않는다.
+- [ ] **M2.2a 공통 연결/트래픽:** `internal/sqlitedb.Open`을 실제 `traffic.Open`에 연결. URI 특수문자, 연결별 PRAGMA, WAL, 취소, 파일 보존, 재실행/FTS 검사. 코드 반영 후 원격 CI 확인 필요. M2.2 전체 완료가 아니다.
+- [ ] **M2.3a 설정/인증 저장:** 실제 설정 메서드의 SQLite 저장/재실행, 동시 최초 설정/비밀번호 변경의 단일 승자, 조회 오류 fail-closed를 HTTP fixture로 검사. 전체 NewManager/New 부팅이나 LLM 프로필 이식 완료가 아니다.
 - [ ] **M2.3 설정·인증:** 최초 setup/로그인/설정/LLM 프로필 저장·재실행 복원 경로 이식. 기존 인증 정책과 API 필드 유지. 인증 설정 조회 오류/동시 초기화/JWT 키의 작업 공간 분리를 검사한다.
 - [ ] **M2.4 자산·범위:** 관계 테이블, 자산 DSL, IP/CIDR/IPv6 포함 검색, 기업 범위 재계산/중복 처리를 실제 fixture로 검증.
 - [ ] **M2.5 작업·탐색:** 작업/세션/의도/대화/사실/취약점/승인/재검증/사용량/LLM 기록 이식. 다중 에이전트 저장과 취소 검증.
@@ -130,3 +132,17 @@ M1 결과 기록 커밋 `babea04074a090ae66953c43f335a8580ddaa27c`는 문서 전
 남은 미검증 범위: SQLite 업무 DB, Electron GUI/패키지, Windows/macOS 전체 ARTEX/도구, neobrutal-ui 실제 화면, 부하·백업·복원.
 
 이 검증 결과와 확정 이식 지도를 기록하는 후속 커밋은 문서만 변경하고 `[skip ci]`를 사용한다. 위 성공 결과는 명시한 구현 커밋의 결과다.
+
+
+### M2.2a/M2.3a — SQLite 연결 및 인증 저장 구현
+
+- 공통 파일 연결 `internal/sqlitedb.Open`을 기존 트래픽의 실제 생성 경로에서 사용한다. URI 인코딩 없는 DSN과 `?` bare-path 분기를 제거한다.
+- 연결마다 foreign_keys=1, busy_timeout=5000, synchronous=FULL을 적용하고, 파일의 WAL 적용 결과를 확인한다. 손상/취소/경로 오류는 데이터를 지우거나 다른 DB로 넘어가지 않고 실패한다.
+- 연결 함수는 스키마·쓰기 큐·SQL 호환 계층이 아니다. 트래픽의 기존 쓰기 조정과 트랜잭션은 유지하며, 업무 DB의 쓰기 연결/전체 스키마 초기화는 M2.2에 남아 있다.
+- 설정의 CURRENT_TIMESTAMP/원자적 최초 삽입/조건부 변경을 실제 인증 핸들러에 연결한다. 기존 PG 업무 DB를 계속 사용하는 main에서도 이 인증 수정은 실제 사용된다. DB 종류 선택, 이중 기록, PG→SQLite 자동 데이터 변환은 추가하지 않는다.
+- 설정/인증 테스트는 최소 settings 테이블을 가진 폐기 가능한 SQLite 파일에서 실행한다. 실제 HTTP 요청 → 비밀번호 설정/로그인/변경 → 파일 닫기/다시 열기를 검증하지만, server.NewManager/New 부팅 테스트는 아니다.
+- `sqlite-foundation` CI는 PG 서비스 없이 세 OS에서 연결 race 검사와 settings/auth/traffic 테스트를 실행하고 테스트 skip을 실패로 처리한다.
+- 로컬은 여전히 네트워크 DNS 제한으로 저장소 clone/Go 1.26.3 의존성 다운로드가 불가능하다. Go 소스 형식/구문을 확인했고 전체 Go 검사는 원격 CI에서 확인한다.
+- 원격 검증 결과: 아직 확인 전. 성공 결과와 커밋/run ID를 확인한 뒤 위 하위 항목만 완료로 바꾼다.
+- 다음 단위: 업무 SQLite의 전체 스키마/시드와 startup 호출 의존 이식, NewManager/New 오류 반환, 모델 프로필 저장/재실행. 초기화 오류를 무시하고 ready를 내보내지 않는다.
+- neobrutal-ui는 필수 UI 기준으로 그대로 유지한다. 이번에는 UI/에이전트 기능/외부 테스트 대상/사용자 데이터는 변경하지 않는다.

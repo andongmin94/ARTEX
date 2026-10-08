@@ -31,10 +31,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/Autumn-27/artex/db"
+	"github.com/Autumn-27/artex/internal/sqlitedb"
 	"github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
 	mproxy "github.com/lqqyt2423/go-mitmproxy/proxy"
-	_ "modernc.org/sqlite"
 )
 
 const indexSchema = `
@@ -174,24 +174,18 @@ type Traffic struct {
 
 // Open initializes the traffic tree, blob store and SQLite index under dir.
 func Open(dir, addr string) (*Traffic, error) {
+	root, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
+	dir = root
 	for _, d := range []string{dir, filepath.Join(dir, "_index"), filepath.Join(dir, "_blobs"), filepath.Join(dir, "_ca")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			return nil, err
 		}
 	}
-	// busy_timeout is a per-connection setting, so it belongs in the DSN rather
-	// than in a one-off Exec: the pool opens connections on demand, and an Exec
-	// only configures whichever one happened to serve it — leaving every other
-	// connection to fail instantly the moment a writer holds the database.
-	// The driver splits the DSN at the first '?', so a data directory containing
-	// one would silently name a different file; that path falls back to a bare
-	// DSN, where initIndex still applies the pragmas to its own connection.
 	index := filepath.Join(dir, "_index", "index.sqlite")
-	dsn := index
-	if !strings.ContainsRune(index, '?') {
-		dsn = "file:" + index + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
-	}
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sqlitedb.Open(context.Background(), index)
 	if err != nil {
 		return nil, err
 	}
@@ -253,14 +247,6 @@ func (t *Traffic) initIndex() error {
 		return err
 	}
 	defer conn.Close()
-	// Re-applied rather than left to the DSN so the bare-DSN fallback in Open is
-	// still correct: journal_mode persists in the file header, which is what every
-	// later connection reads.
-	for _, p := range []string{`PRAGMA journal_mode=WAL`, `PRAGMA busy_timeout=5000`} {
-		if _, err := conn.ExecContext(ctx, p); err != nil {
-			return err
-		}
-	}
 	var tables int
 	if err := conn.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type='table'`).Scan(&tables); err != nil {
 		return err

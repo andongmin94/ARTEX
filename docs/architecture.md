@@ -127,3 +127,14 @@ Windows의 셸/PTY/프로세스 트리와 Linux 명령 의존을 별도 검증�
 - Go SQLite driver: https://pkg.go.dev/modernc.org/sqlite
 - Electron security: https://www.electronjs.org/docs/latest/tutorial/security
 - Electron userData: https://www.electronjs.org/docs/latest/api/app#appgetpathname
+
+
+## 현재 구현된 SQLite 연결 경계
+
+`internal/sqlitedb.Open(ctx, absolutePath)`은 기존 `traffic.Open`에서 사용한다.
+파일 경로만 입력받고, URL의 Path와 고정 Query를 분리해 한글/공백/#/%/?를 처리한다.
+Windows 드라이브 경로는 file URI로 바꾸며 UNC/장치 경로를 허용하지 않는다. 다른 OS의 네트워크 마운트를 자동 판별한다는 뜻은 아니다.
+연결별 PRAGMA는 드라이버 DSN에 있고 WAL 전환은 열린 파일에서 확인한다. 부모 폴더는 소유자가 준비한다.
+새 파일은 0600으로 만들고 기존 파일을 자르거나 손상 데이터를 초기화하지 않는다. Windows ACL이나 악성 로컬 사용자의 경로 경합까지 격리하는 API는 아니다.
+호출자가 풀/트랜잭션/쓰기 조정/스키마를 소유한다. 현재 트래픽의 wmu와 트랜잭션 경계를 유지한다.
+업무 SQLite 부팅과 writer/read pool 정책은 이 연결 함수를 사용하는 후속 M2.2에서 실제 호출자와 함께 검증해야 한다.

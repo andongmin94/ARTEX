@@ -37,9 +37,9 @@ func fileURI(filename string) (string, error) {
 	}
 	u := url.URL{Scheme: "file", Path: path}
 	u.RawQuery = url.Values{
-		"mode": {"rwc"},
-		"cache": {"private"},
-		"_pragma": {"busy_timeout(5000)", "foreign_keys(1)", "synchronous(FULL)"},
+		"mode":         {"rwc"},
+		"cache":        {"private"},
+		"_pragma":      {"busy_timeout(5000)", "foreign_keys(1)", "synchronous(FULL)"},
 		"_time_format": {"sqlite"},
 	}.Encode()
 	return u.String(), nil
