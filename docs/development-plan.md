@@ -7,9 +7,11 @@ UI 기준: **[andongmin94/neobrutal-ui](https://github.com/andongmin94/neobrutal
 
 ## 현재 상태
 
-**M0/M1은 구현·검증 완료. UI 기준을 확정하고 M2.1 전체 소스 인벤토리 도구와 검사를 추가했다.**
+**M0/M1과 M2.1 소스 인벤토리를 완료했다. neobrutal-ui를 필수 UI 기준으로 확정했다.**
 M1 구현 커밋 `4acff4563df22a2094b7adcc8e4fde7d05267a00`의 `verify #55` 6개 job은 모두 성공했다.
-이번 인벤토리의 전체 저장소 실행/원격 CI 결과는 아직 확인 전이며, 결과를 검토한 뒤 M2.1을 완료 처리한다.
+M2.1 구현 커밋 `a99972d4e8ff1eaec333aad05874374ef7c95510`의 `verify #56` 7개 job도 모두 성공했다.
+전체 Go/SQL 332개 조사 결과와 핵심 부팅/스키마/직접 SQL을 검토해 `docs/sqlite-porting-map.md`에 이식 묶음을 확정했다.
+다음 구현은 **M2.2 SQLite 저장 기반과 M2.3 실제 부팅/설정 경로 연결**이다.
 **주 DB는 아직 PostgreSQL이고 Electron 앱과 neobrutal-ui 적용 화면은 아직 없다.**
 README의 Docker/PG 실행 안내는 현 제품에 해당하며 목표 아키텍처의 완료 증거가 아니다.
 
@@ -27,7 +29,7 @@ README의 Docker/PG 실행 안내는 현 제품에 해당하며 목표 아키텍
 - [x] 기본 HTTP 주소를 loopback으로 제한. `-addr 127.0.0.1:0`의 실제 포트 사용.
 - [x] `-ready-stdout`으로 저장소/HTTP 준비 후 ready JSON 출력.
 - [x] `-parent-stdin`으로 부모 EOF/파이프 오류 시 정상 종료 경로 실행.
-- [x] 시작/서빙 오류의 `log.Fatal` 제거, 종료 요청 뒤 manager 정리, HTTP timeout 후 연결 정리.
+- [x] `cmd/artex` 시작/서빙 오류의 `log.Fatal` 제거, 종료 요청 뒤 manager 정리, HTTP timeout 후 연결 정리. `server.New`의 JWT 오류 종료는 아직 남아 있어 M2에서 함께 정리한다.
 - [x] 설정 7개 + HTTP/부모 파이프 6개 독립 테스트와 race 반복 검사.
 - [x] Windows/macOS/Linux 실행 기반 CI와 실제 백엔드 smoke 검사 연결.
 - [x] Go 1.26.3의 전체 테스트·빌드와 실제 백엔드 smoke 확인. `verify #55`, run `37213127038`.
@@ -38,9 +40,9 @@ Electron 창, 주 DB SQLite 교체, 도구 설치, 앱 업데이트, 패키징, 
 
 작업 재개 시 최신 main과 CI를 확인한다. 아래 순서로 진행한다.
 
-- [ ] **M2.1 인벤토리:** 전체 Go/SQL 소스의 SQL·PG 타입·트랜잭션·테스트 헬퍼 조사. `scripts/sqlite-inventory`의 전체 실행 결과를 검토해 `docs/sqlite-porting-map.md`에 실제 이식 단위/위험/다음 호출 경로를 확정한다. 도구만 작성한 것을 전체 이식 조사 완료로 간주하지 않는다.
-- [ ] **M2.2 실행 가능한 저장 기반:** 기존 modernc 드라이버로 업무 DB 스키마/연결 초기화, 연결별 PRAGMA, 쓰기 경로, 명시적 취소/닫기, Unicode/특수문자 경로 검사. 미사용 추상 저장소를 완료 결과로 제출하지 않는다.
-- [ ] **M2.3 설정·인증:** 최초 setup/로그인/설정/LLM 프로필 저장·재실행 복원 경로 이식. 기존 인증 정책과 API 필드 유지.
+- [x] **M2.1 인벤토리:** 전체 Go/SQL 332개 조사 및 후보 214개 분류. `verify #56` 보고서와 핵심 코드 검토로 `docs/sqlite-porting-map.md`의 51개 업무 테이블/부팅 경계/직접 SQL/트랜잭션/테스트 fixture 이식 지도를 확정했다. 후보 수는 수정 파일 수나 기능 동등성 증명이 아니다.
+- [ ] **M2.2 실행 가능한 저장 기반:** 기존 modernc 드라이버로 업무 DB 스키마/연결 초기화, 연결별 PRAGMA, 쓰기 경로, 명시적 취소/닫기, Unicode/특수문자 경로 검사. `server.NewManager/New`의 전체 부팅 의존과 생성 오류 반환을 함께 연결한다. 미사용 추상 저장소를 완료 결과로 제출하지 않는다.
+- [ ] **M2.3 설정·인증:** 최초 setup/로그인/설정/LLM 프로필 저장·재실행 복원 경로 이식. 기존 인증 정책과 API 필드 유지. 인증 설정 조회 오류/동시 초기화/JWT 키의 작업 공간 분리를 검사한다.
 - [ ] **M2.4 자산·범위:** 관계 테이블, 자산 DSL, IP/CIDR/IPv6 포함 검색, 기업 범위 재계산/중복 처리를 실제 fixture로 검증.
 - [ ] **M2.5 작업·탐색:** 작업/세션/의도/대화/사실/취약점/승인/재검증/사용량/LLM 기록 이식. 다중 에이전트 저장과 취소 검증.
 - [ ] **M2.6 증거·보관:** 업무 DB와 기존 트래픽 인덱스/본문/보관 패키지 연결, 삭제/재검증/증거 보존 동등성 검증.
@@ -118,7 +120,13 @@ M1 결과 기록 커밋 `babea04074a090ae66953c43f335a8580ddaa27c`는 문서 전
 - 기준: ARTEX `babea04074a090ae66953c43f335a8580ddaa27c`, neobrutal-ui `b4da2463fe710a77bf464c65125a1a7f40424722`.
 - Go AST 기반 읽기 전용 인벤토리, 독립 테스트 8개 추가. SQL 자동 변환이나 DB 실행 기능이 아니다.
 - 로컬: `GO111MODULE=off go test -race -count=20 -timeout 60s ./scripts/sqlite-inventory` 성공. `gofmt` 적용.
-- CI: DB 서비스 없는 storage-inventory job과 보고서 artifact 추가. 전체 저장소 실행 및 기존 회귀 job 결과 확인 전.
+- 원격: [verify #56](https://github.com/andongmin94/ARTEX/actions/runs/37214597987), 커밋 `a99972d4e8ff1eaec333aad05874374ef7c95510`. backend/frontend/deployment/storage-inventory 및 desktop-foundation 3개 OS를 포함한 **7개 job 모두 success**.
+- Go 1.26.3: 전체 테스트 명령·백엔드 빌드·실제 백엔드 준비/EOF smoke와 인벤토리 독립 race 검사 성공. UI 한국어/IME/TypeScript/정적 빌드도 성공.
+- 전체 인벤토리: Go/SQL 332개 → 후보 파일 214개. `storage-inventory` job `111472435421`, artifact `11308130499`(14일 보관). DB 서비스 없이 생성했으며 원본 값/DSN/키는 출력하지 않는다.
+- 검토 결과: schema.sql의 49개 테이블 외에 llm_records/llm_usage 2개가 런타임 생성됨을 확인. server/증거 저장소 직접 SQL, pgconn 오류 분류, 부팅 의존, PG 테스트 skip과 경쟁 경계를 이식 지도에 기록.
+- 수동 검토: `server/manager.go:NewManager`, `server/server.go:New`, `server/auth.go`, `server/engine.go`, `server/finding_retests.go:seedFindingRetester`, `db/commands.go`, `db/llm_usage.go`, `db/task_archives_restore.go`의 핵심 구간. 정적 분석이 놓친 같은 패키지의 인증 호출도 포함.
 - UI: 원본 소스/토큰/버튼 조합 API를 검토했다. 화면 변경, GUI 실행, 스크린샷 검수는 미실행.
 
 남은 미검증 범위: SQLite 업무 DB, Electron GUI/패키지, Windows/macOS 전체 ARTEX/도구, neobrutal-ui 실제 화면, 부하·백업·복원.
+
+이 검증 결과와 확정 이식 지도를 기록하는 후속 커밋은 문서만 변경하고 `[skip ci]`를 사용한다. 위 성공 결과는 명시한 구현 커밋의 결과다.
