@@ -2,7 +2,6 @@ package server
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,6 +10,21 @@ import (
 	"strings"
 	"testing"
 )
+
+// These are HTTP metadata tests, not application-boot tests. New would restore
+// unrelated tasks from the shared test database and start workers with a context
+// that outlives the fixture. Exercise the real router, auth and storage without
+// starting schedulers, MCP discovery or external model calls.
+func metadataHTTPServer(t *testing.T, m *Manager) *Server {
+	t.Helper()
+	return &Server{
+		m:      m,
+		engine: NewEngine(m),
+		ctx:    t.Context(),
+		jwtKey: []byte("metadata-http-test-only-signing-key"),
+		side:   &sideQuestionState{},
+	}
+}
 
 func TestTaskMetadataPatchReturnsRenameAndPin(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
@@ -24,7 +38,7 @@ func TestTaskMetadataPatchReturnsRenameAndPin(t *testing.T) {
 	}
 	taskID, _ := strconv.ParseInt(task.ID, 10, 64)
 	defer func() { _ = m.pg.DeleteTask(taskID) }()
-	s := New(context.Background(), m, t.TempDir(), t.TempDir(), t.TempDir())
+	s := metadataHTTPServer(t, m)
 	token, err := signJWT(s.jwtKey)
 	if err != nil {
 		t.Fatal(err)
@@ -49,6 +63,9 @@ func TestTaskMetadataPatchReturnsRenameAndPin(t *testing.T) {
 	if updated.Name != "renamed task" || !updated.Pinned || updated.PinnedAt == "" {
 		t.Fatalf("unexpected task patch response: %+v", updated)
 	}
+	if s.engine.Started(task.ID) {
+		t.Fatal("metadata patch started task execution")
+	}
 
 	body, _ = json.Marshal(map[string]any{"name": strings.Repeat("任", maxTaskNameRunes+1)})
 	req = httptest.NewRequest(http.MethodPatch, "/api/tasks/"+task.ID, bytes.NewReader(body))
@@ -66,7 +83,7 @@ func TestConversationBatchDeleteReportsMissing(t *testing.T) {
 		t.Skipf("postgres unavailable (%v) — skipping", err)
 	}
 	defer m.Close()
-	s := New(context.Background(), m, t.TempDir(), t.TempDir(), t.TempDir())
+	s := metadataHTTPServer(t, m)
 	first, err := m.pg.CreateConversation("mainagent", "batch-http-first", nil)
 	if err != nil {
 		t.Fatal(err)
