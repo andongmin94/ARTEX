@@ -6,11 +6,9 @@ import { usePathname } from "next/navigation";
 
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { useCurrentUser } from "@/hooks/use-current-user";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-import { AccountSwitcher } from "./sidebar/account-switcher";
 import { LayoutControls } from "./sidebar/layout-controls";
 import { SearchDialog } from "./sidebar/search-dialog";
 import { ThemeSwitcher } from "./sidebar/theme-switcher";
@@ -31,7 +29,6 @@ function isFullBleed(pathname: string) {
 }
 
 export function MainContent({ children }: { children: ReactNode }) {
-  const currentUser = useCurrentUser();
   const pathname = usePathname();
   const [version, setVersion] = useState("");
 
@@ -69,7 +66,6 @@ export function MainContent({ children }: { children: ReactNode }) {
             )}
             <LayoutControls />
             <ThemeSwitcher />
-            <AccountSwitcher users={[currentUser]} />
           </div>
         </div>
       </header>

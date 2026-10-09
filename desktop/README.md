@@ -24,6 +24,8 @@ Go가 PATH에 없으면 개발 빌드에서 `$env:ARTEX_GO='<지정 Go 실행 �
 UI는 기본 Mono를 포함한 neobrutal-ui의 19개 색상 프리셋을 제공하며, 상단 화면 설정에서 라이트/다크/시스템 모드와 함께 저장한다. Mono 다크의 배경·카드·사이드바·그림자는 부드러운 석탄색 계층으로 조정한다. Mono는 색상 테마 이름이며 글꼴은 Pretendard Variable 하나를 사용한다. 웹 UI의 글꼴은 Go에 내장하고, Go 준비 전 시작·오류 화면은 동일한 `PretendardVariable.woff2`를 `resources/fonts`에서 읽는다. 코드·진단 로그도 같은 글꼴을 사용하며 글꼴 선택 설정은 제공하지 않는다.
 빌드에는 로컬 글꼴과 `resources/licenses/OFL-Pretendard.txt`의 저작권·SIL Open Font License를 포함한다. 실행 중 원격 글꼴을 요청하지 않는다.
 
+상단 화면 설정의 테마 탭은 19개 색상칩·이름·선택 표시를 격자로 제공하며, 화면 배치 탭은 페이지 너비와 사이드바 등의 설정을 제공한다. Electron의 기능 없는 우측 A 계정 전환과 하단 ARTEX 프로필 메뉴는 제거했다. Go 단독 브라우저는 비밀번호 변경·로그아웃을 사이드바 하단에 직접 표시한다.
+
 렌더러는 sandbox/contextIsolation을 유지하고 Node·파일·명령 API를 제공하지 않는다.
 IPC는 메인 프레임과 URL을 검증한 뒤 상태 조회·실패 재시도·앱 종료·백업/새 폴더 복원·업데이트와 지정된 ChatGPT 로그인·사용량 페이지의 기본 브라우저 열기를 허용한다. 백업·업데이트 IPC는 실제 Go origin의 준비된 메인 프레임에서만 호출할 수 있으며 임의 경로나 명령 실행 API는 제공하지 않는다.
 Go ready PID/loopback URL을 검증하며 외부 탐색/새 창/권한은 차단한다.

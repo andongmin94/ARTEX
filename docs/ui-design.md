@@ -100,6 +100,10 @@ Playwright는 실제 Electron/Go에서 주요 21개 화면을 라이트/다크·
 
 컬러 프리셋의 액션·배경·차트 팔레트는 원본을 사용하되 카드·표·로그의 보조색은 업무 화면의 역할에 맞춘다. 링크·HTTP 코드·강조 텍스트에는 `primary-text`와 전용 syntax 색상을 사용해 밝은 액션/차트색이 글자의 대비를 낮추지 않게 한다. 다크 Fuchsia의 액션 글자는 흰색으로 구분한다. 공식 ChatGPT 연결 버튼의 지정 색상·로고는 유지한다. Pretendard Variable과 기존 눌림·포커스·축소 모션은 그대로 사용한다.
 
+추가 사용자 요청으로 프리셋 선택은 작은 점이 붙은 드롭다운 대신 19개 색상칩·이름·선택 체크가 보이는 격자로 제공한다. 테마와 화면 배치를 탭으로 나누고, 창 높이가 부족하면 설정 패널 내부에서 스크롤한다. 원본 `docs/src/special-pages/styling/controls.tsx`의 색상 선택·즉시 화면 반영을 참고하며 원본에 있는 반경·굵기 슬라이더를 별도 요구 없이 추가하지 않는다. Radix의 실제 선택 속성에 맞춰 탭 강조를 적용한다.
+
+Electron의 상단 A 계정 전환과 하단 ARTEX 프로필 메뉴는 실제 기능이 없는 중복 표시이므로 제거한다. 단독 브라우저의 실제 인증 기능은 비밀번호 변경·로그아웃 이름으로 하단에 직접 제공한다. 앱 이름은 사이드바 머리의 탐색 링크로 유지하며 가짜 사용자·작업 공간 전환을 표현하지 않는다.
+
 ## ChatGPT 구독 연결 버튼 자산
 
 OpenAI의 [Sign in with ChatGPT UI 지침](https://developers.openai.com/siwc/token-sharing-open-source/ui-ux-guidelines)에 따라 `Continue with ChatGPT` 버튼과 최초 연결 안내를 제공한다.

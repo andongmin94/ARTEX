@@ -121,7 +121,7 @@ test("실제 Electron 자동 진입·모델 저장·재시작·화면·격리", 
     await cdp.send("DOM.enable");
     await cdp.send("CSS.enable");
     const { root } = await cdp.send("DOM.getDocument");
-    const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: '[data-slot="sidebar-footer"] button span.text-xs' });
+    const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: '[data-slot="sidebar-content"] [data-slot="sidebar-menu-button"] span' });
     const { fonts } = await cdp.send("CSS.getPlatformFontsForNode", { nodeId });
     expect(fonts).toHaveLength(1);
     expect(fonts[0]).toMatchObject({ familyName: expect.stringMatching(/Pretendard/), isCustomFont: true });
@@ -132,13 +132,11 @@ test("실제 Electron 자동 진입·모델 저장·재시작·화면·격리", 
     await expect(page.getByText("글꼴", { exact: true })).toHaveCount(0);
     await page.keyboard.press("Escape");
     expect(await api("/auth/status")).toEqual({ initialized: false, mode: "desktop" });
-    for (const trigger of [page.locator('[data-slot="sidebar-footer"]').getByRole("button"), page.locator('header [aria-haspopup="menu"]').last()]) {
-      await trigger.click();
-      await expect(page.getByRole("menu")).toContainText("로컬 데스크톱");
-      await expect(page.getByRole("menuitem", { name: "비밀번호 변경", exact: true })).toHaveCount(0);
-      await expect(page.getByRole("menuitem", { name: "로그아웃", exact: true })).toHaveCount(0);
-      await page.keyboard.press("Escape");
-    }
+    await expect(page.locator('[data-slot="sidebar-footer"]')).toHaveCount(0);
+    await expect(page.locator('header [data-slot="avatar"]')).toHaveCount(0);
+    await expect(page.getByText("로컬 데스크톱", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "비밀번호 변경", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "로그아웃", exact: true })).toHaveCount(0);
     const initialOrigin = new URL(page.url()).origin;
     await page.evaluate(() => { localStorage.setItem("artex_token", "invalid-old-token"); document.cookie = "artex_token=invalid-old-token; path=/"; });
     await page.goto(`${initialOrigin}/login/`);
