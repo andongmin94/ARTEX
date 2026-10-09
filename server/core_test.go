@@ -110,7 +110,7 @@ func TestCoreTaskLifecyclePG(t *testing.T) {
 	}
 
 	// delete → cascade removes the exploration subgraph and selected related data
-	taskDir := filepath.Join(m.dir, "tasks", id)
+	taskDir := filepath.Join(m.workspaceDir(), "tasks", id)
 	if err := os.MkdirAll(taskDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

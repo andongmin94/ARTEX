@@ -595,7 +595,7 @@ func (s *Server) applyLLM(cfg agent.Config) error {
 	s.cfgMu.Lock()
 	// chat agent serves MANY custom agents by key → it holds the GLOBAL opts
 	// (backend/key) and gates Enabled per-conversation-agent at Chat time. 对话始终用激活配置。
-	s.chatAgent = agent.NewChatAgent(prov, cfg.Model, s.m.dir, tx, win) // chat page runner
+	s.chatAgent = agent.NewChatAgent(prov, cfg.Model, s.m.workspaceDir(), tx, win) // chat page runner
 	s.chatAgent.SetProxy(s.m.ProxyAddr(), s.m.ProxyCACert())
 	s.chatAgent.SetWebSearch(s.m.WebSearchOpts())
 	s.chatAgent.SetGuard(s.chatGuard())
@@ -738,7 +738,7 @@ func (s *Server) chatAgentForProfile(id int64) *agent.ChatAgent {
 		return nil
 	}
 	tx := transcript.NewStore(filepath.Join(s.m.dir, "transcripts"))
-	ca := agent.NewChatAgent(s.poolForBinding(id, prov, cfg), cfg.Model, s.m.dir, tx, cfg.CompactionWindow())
+	ca := agent.NewChatAgent(s.poolForBinding(id, prov, cfg), cfg.Model, s.m.workspaceDir(), tx, cfg.CompactionWindow())
 	ca.SetProxy(s.m.ProxyAddr(), s.m.ProxyCACert())
 	ca.SetWebSearch(s.m.WebSearchOpts())
 	ca.SetGuard(s.chatGuard())
@@ -3909,7 +3909,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 			resume := func() { s.reviveTask(t) } // set_goals 新增目标 → 把任务拉回 running
 			// 把上传附件的【绝对路径】清单拼进发给 agent 的消息,它据此用 Read/Bash 打开文件。
 			// taskDir = agent 的工作目录(CWD),与 chatUpload 落盘、ensureRunDir 一致。
-			taskDir := filepath.Join(s.m.dir, "tasks", t.ID)
+			taskDir := filepath.Join(s.m.workspaceDir(), "tasks", t.ID)
 			agentMsg := composeAgentMessage(agentMessage, req.Attachments, taskDir)
 			s.engine.BeginLLMCall(t.ID)
 			_, err := ma.Chat(ctx, maTaskID, mainSeg, s.m.Assets(), t.Store, t.Goal, agentMsg, emit, t.Notify, resume, t.NotifyGoal, t.NotifyHint)

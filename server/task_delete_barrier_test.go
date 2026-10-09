@@ -340,7 +340,7 @@ func TestTaskChatUploadRejectsDeleteBarrierBeforeCreatingDirectory(t *testing.T)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("expected 409 while deleting, got %d: %s", rec.Code, rec.Body.String())
 	}
-	if _, err := os.Stat(filepath.Join(dataDir, "tasks", "7")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(workspaceDirectory(dataDir), "tasks", "7")); !os.IsNotExist(err) {
 		t.Fatalf("upload must not recreate task directory, stat err=%v", err)
 	}
 }

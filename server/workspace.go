@@ -2,7 +2,10 @@ package server
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -11,40 +14,154 @@ import (
 	"sort"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/google/uuid"
 )
 
-// Workspace file manager — browse / view / edit / download / upload / delete the
-// shared work dir (s.m.dir), where all agents write their artifacts. Every path is
-// confined to the work dir root (traversal via ".." is neutralised). All routes sit
-// behind requireAuth (see Handler()).
-
+// User artifacts have their own root, separate from application-owned stores.
 const (
-	maxWorkspaceRead   = 2 << 20   // 2 MiB: files bigger than this aren't inlined for view/edit (download instead)
-	maxWorkspaceUpload = 512 << 20 // 512 MiB per upload request
+	maxWorkspaceRead   = 2 << 20
+	maxWorkspaceUpload = 512 << 20
 )
 
-// wsResolve maps a user-supplied relative path to an absolute path INSIDE the work
-// dir. It returns ok=false if the path would escape the root. filepath.Clean on a
-// rooted copy collapses any ".." so nothing can climb above the root.
-func (s *Server) wsResolve(rel string) (string, bool) {
-	base := filepath.Clean(s.m.dir)
-	rel = strings.TrimPrefix(strings.TrimSpace(rel), "/")
-	clean := filepath.Clean("/" + rel) // e.g. "/a/../../etc" → "/etc" (still rooted at "/")
-	abs := filepath.Clean(filepath.Join(base, clean))
-	if abs != base && !strings.HasPrefix(abs, base+string(os.PathSeparator)) {
-		return "", false
+var errWorkspacePath = errors.New("허용되지 않는 작업 공간 경로")
+
+func workspaceDirectory(dataDir string) string { return filepath.Join(dataDir, "workspace") }
+func (m *Manager) workspaceDir() string        { return workspaceDirectory(m.dir) }
+
+// Staging helpers also own managed transcripts. Check the user side before
+// their cross-directory rename, including aliased parent directories.
+func validateWorkspaceArtifactPath(dataDir, name string) error {
+	root, err := openWorkspaceDirectory(dataDir)
+	if err != nil {
+		return err
 	}
-	return abs, true
+	defer root.Close()
+	server := &Server{m: &Manager{dir: dataDir, workRoot: root}}
+	_, err = server.wsPath(name, true)
+	return err
 }
 
-// wsRel renders an absolute path back as a workspace-relative path (forward slashes).
-func (s *Server) wsRel(abs string) string {
-	base := filepath.Clean(s.m.dir)
-	rel, err := filepath.Rel(base, abs)
-	if err != nil || rel == "." {
+func newManagedToolWorkspace(prefix string) (string, error) {
+	home := os.Getenv("ARTEX_HOME")
+	if !filepath.IsAbs(home) {
+		return "", errors.New("앱 데이터 홈이 지정되지 않았습니다")
+	}
+	dataDir := filepath.Join(home, "data")
+	root, err := openWorkspaceDirectory(dataDir)
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+	server := &Server{m: &Manager{dir: dataDir, workRoot: root}}
+	parent, err := server.wsPath("tool-workspaces", true)
+	if err != nil {
+		return "", err
+	}
+	if err := root.MkdirAll(parent, 0o700); err != nil {
+		return "", err
+	}
+	name := filepath.Join(parent, prefix+uuid.NewString())
+	if err := root.Mkdir(name, 0o700); err != nil {
+		return "", err
+	}
+	return filepath.Join(workspaceDirectory(dataDir), name), nil
+}
+
+func openWorkspaceDirectory(dataDir string) (*os.Root, error) {
+	data, err := os.OpenRoot(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	defer data.Close()
+	if err := data.Mkdir("workspace", 0o700); err != nil && !os.IsExist(err) {
+		return nil, err
+	}
+	info, err := data.Lstat("workspace")
+	if err != nil || !info.IsDir() || workspaceLink(info) {
+		return nil, errWorkspacePath
+	}
+	root, err := data.OpenRoot("workspace")
+	if err != nil {
+		return nil, err
+	}
+	opened, err := root.Stat(".")
+	if err != nil || !os.SameFile(info, opened) {
+		root.Close()
+		return nil, errWorkspacePath
+	}
+	return root, nil
+}
+
+// Reject traversal rather than silently rewriting it. os.Root also confines
+// actual operations if a checked component is concurrently replaced by a link.
+func workspacePath(rel string) (string, error) {
+	if strings.ContainsAny(rel, ":\x00\r\n") {
+		return "", errWorkspacePath
+	}
+	rel = strings.ReplaceAll(rel, "\\", "/")
+	if rel == "" || rel == "." {
+		return ".", nil
+	}
+	if !filepath.IsLocal(filepath.FromSlash(rel)) {
+		return "", errWorkspacePath
+	}
+	for _, part := range strings.Split(rel, "/") {
+		if part == ".." || strings.HasSuffix(part, ".") || strings.HasSuffix(part, " ") || workspaceReservedName(part) {
+			return "", errWorkspacePath
+		}
+	}
+	return filepath.Clean(filepath.FromSlash(rel)), nil
+}
+
+func workspaceReservedName(part string) bool {
+	base := strings.ToUpper(strings.TrimRight(strings.SplitN(part, ".", 2)[0], " "))
+	switch base {
+	case "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$":
+		return true
+	}
+	if strings.HasPrefix(base, "COM") || strings.HasPrefix(base, "LPT") {
+		suffix := strings.TrimPrefix(strings.TrimPrefix(base, "COM"), "LPT")
+		return strings.Contains("123456789¹²³", suffix) && suffix != "" && len([]rune(suffix)) == 1
+	}
+	return false
+}
+
+func workspaceUploadName(hdr *multipart.FileHeader) (string, error) {
+	_, params, err := mime.ParseMediaType(hdr.Header.Get("Content-Disposition"))
+	if err != nil {
+		return "", errWorkspacePath
+	}
+	name, err := workspacePath(params["filename"])
+	if err != nil || name == "." || filepath.Base(name) != name {
+		return "", errWorkspacePath
+	}
+	return name, nil
+}
+
+func (s *Server) wsPath(rel string, mutate bool) (string, error) {
+	name, err := workspacePath(rel)
+	if err != nil || (mutate && name == ".") || s.m.workRoot == nil {
+		return "", errWorkspacePath
+	}
+	current := ""
+	for _, part := range strings.Split(name, string(filepath.Separator)) {
+		current = filepath.Join(current, part)
+		info, err := s.m.workRoot.Lstat(current)
+		if os.IsNotExist(err) {
+			break
+		}
+		if err != nil || workspaceLink(info) || (!info.IsDir() && !info.Mode().IsRegular()) {
+			return "", errWorkspacePath
+		}
+	}
+	return name, nil
+}
+func wsRel(name string) string {
+	if name == "." {
 		return ""
 	}
-	return filepath.ToSlash(rel)
+	return filepath.ToSlash(name)
 }
 
 type wsEntry struct {
@@ -52,239 +169,282 @@ type wsEntry struct {
 	Path  string `json:"path"`
 	Dir   bool   `json:"dir"`
 	Size  int64  `json:"size"`
-	MTime int64  `json:"mtime"` // unix millis
+	MTime int64  `json:"mtime"`
 }
 
-// GET /api/workspace/list?path=<rel>
-func (s *Server) wsList(w http.ResponseWriter, r *http.Request) {
-	abs, ok := s.wsResolve(r.URL.Query().Get("path"))
-	if !ok {
-		writeErr(w, 400, "허용되지 않는 경로")
-		return
-	}
-	fi, err := os.Stat(abs)
+func (s *Server) wsOpenFile(name string) (*os.File, os.FileInfo, error) {
+	file, err := s.m.workRoot.Open(name)
 	if err != nil {
+		return nil, nil, err
+	}
+	info, err := file.Stat()
+	if err == nil && (!info.Mode().IsRegular() || workspaceMultipleLinks(file, info)) {
+		err = errWorkspacePath
+	}
+	if err != nil {
+		file.Close()
+		return nil, nil, err
+	}
+	return file, info, nil
+}
+func workspaceError(w http.ResponseWriter, err error) {
+	if os.IsNotExist(err) {
 		writeErr(w, 404, "경로가 존재하지 않습니다")
-		return
+	} else if errors.Is(err, errWorkspacePath) || os.IsPermission(err) {
+		writeErr(w, 400, errWorkspacePath.Error())
+	} else {
+		writeErr(w, 500, "작업 파일 처리에 실패했습니다")
 	}
-	if !fi.IsDir() {
-		writeErr(w, 400, "디렉터리가 아닙니다")
-		return
-	}
-	ents, err := os.ReadDir(abs)
+}
+
+func (s *Server) wsList(w http.ResponseWriter, r *http.Request) {
+	name, err := s.wsPath(r.URL.Query().Get("path"), false)
 	if err != nil {
-		writeErr(w, 500, err.Error())
+		workspaceError(w, err)
 		return
 	}
-	out := make([]wsEntry, 0, len(ents))
-	for _, e := range ents {
-		info, err := e.Info()
+	dir, err := s.m.workRoot.Open(name)
+	if err != nil {
+		workspaceError(w, err)
+		return
+	}
+	defer dir.Close()
+	entries, err := dir.ReadDir(-1)
+	if err != nil {
+		workspaceError(w, err)
+		return
+	}
+	out := make([]wsEntry, 0, len(entries))
+	for _, entry := range entries {
+		child, err := s.wsPath(filepath.Join(name, entry.Name()), false)
 		if err != nil {
 			continue
 		}
-		out = append(out, wsEntry{
-			Name:  e.Name(),
-			Path:  s.wsRel(filepath.Join(abs, e.Name())),
-			Dir:   e.IsDir(),
-			Size:  info.Size(),
-			MTime: info.ModTime().UnixMilli(),
-		})
+		info, err := s.m.workRoot.Lstat(child)
+		if err != nil {
+			continue
+		}
+		if !info.IsDir() {
+			file, _, err := s.wsOpenFile(child)
+			if err != nil {
+				continue
+			}
+			file.Close()
+		}
+		out = append(out, wsEntry{entry.Name(), wsRel(child), info.IsDir(), info.Size(), info.ModTime().UnixMilli()})
 	}
-	// 目录在前，各自按名称排序。
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Dir != out[j].Dir {
 			return out[i].Dir
 		}
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
 	})
-	writeJSON(w, 200, map[string]any{"path": s.wsRel(abs), "entries": out})
+	writeJSON(w, 200, map[string]any{"path": wsRel(name), "entries": out})
 }
-
-// GET /api/workspace/read?path=<rel> — inline text for view/edit. Binary or oversize
-// files return {binary:true}/{too_large:true} with no content (use download instead).
 func (s *Server) wsRead(w http.ResponseWriter, r *http.Request) {
-	abs, ok := s.wsResolve(r.URL.Query().Get("path"))
-	if !ok {
-		writeErr(w, 400, "허용되지 않는 경로")
-		return
-	}
-	fi, err := os.Stat(abs)
+	name, err := s.wsPath(r.URL.Query().Get("path"), false)
 	if err != nil {
-		writeErr(w, 404, "파일이 존재하지 않습니다")
+		workspaceError(w, err)
 		return
 	}
-	if fi.IsDir() {
-		writeErr(w, 400, "디렉터리이므로 파일로 읽을 수 없습니다")
-		return
-	}
-	if fi.Size() > maxWorkspaceRead {
-		writeJSON(w, 200, map[string]any{"path": s.wsRel(abs), "size": fi.Size(), "too_large": true, "binary": true})
-		return
-	}
-	data, err := os.ReadFile(abs)
+	file, info, err := s.wsOpenFile(name)
 	if err != nil {
-		writeErr(w, 500, err.Error())
+		workspaceError(w, err)
+		return
+	}
+	defer file.Close()
+	if info.Size() > maxWorkspaceRead {
+		writeJSON(w, 200, map[string]any{"path": wsRel(name), "size": info.Size(), "too_large": true, "binary": true})
+		return
+	}
+	data, err := io.ReadAll(io.LimitReader(file, maxWorkspaceRead+1))
+	if err != nil {
+		workspaceError(w, err)
+		return
+	}
+	if len(data) > maxWorkspaceRead {
+		writeJSON(w, 200, map[string]any{"path": wsRel(name), "size": len(data), "too_large": true, "binary": true})
 		return
 	}
 	if bytes.IndexByte(data, 0) >= 0 || !utf8.Valid(data) {
-		writeJSON(w, 200, map[string]any{"path": s.wsRel(abs), "size": fi.Size(), "binary": true})
+		writeJSON(w, 200, map[string]any{"path": wsRel(name), "size": len(data), "binary": true})
 		return
 	}
-	writeJSON(w, 200, map[string]any{"path": s.wsRel(abs), "size": fi.Size(), "binary": false, "content": string(data)})
+	writeJSON(w, 200, map[string]any{"path": wsRel(name), "size": len(data), "binary": false, "content": string(data)})
 }
 
-// POST /api/workspace/write  {path, content} — create/overwrite a text file.
+// A fresh file and root-relative rename replace the directory entry instead of
+// truncating a concurrently introduced hard link to an app-managed file.
+func (s *Server) wsSave(name string, content io.Reader) error {
+	if file, _, err := s.wsOpenFile(name); err == nil {
+		file.Close()
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	root := s.m.workRoot
+	if err := root.MkdirAll(filepath.Dir(name), 0o700); err != nil {
+		return err
+	}
+	temp := ".upload-" + uuid.NewString()
+	file, err := root.OpenFile(temp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer root.Remove(temp)
+	_, copyErr := io.Copy(file, content)
+	syncErr := file.Sync()
+	closeErr := file.Close()
+	if err := errors.Join(copyErr, syncErr, closeErr); err != nil {
+		return err
+	}
+	return root.Rename(temp, name)
+}
 func (s *Server) wsWrite(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Path    string `json:"path"`
-		Content string `json:"content"`
-	}
+	var req struct{ Path, Content string }
 	if err := decode(r, &req); err != nil {
 		writeErr(w, 400, err.Error())
 		return
 	}
-	abs, ok := s.wsResolve(req.Path)
-	if !ok || abs == filepath.Clean(s.m.dir) {
-		writeErr(w, 400, "허용되지 않는 경로")
+	name, err := s.wsPath(req.Path, true)
+	if err == nil {
+		err = s.wsSave(name, strings.NewReader(req.Content))
+	}
+	if err != nil {
+		workspaceError(w, err)
 		return
 	}
-	if fi, err := os.Stat(abs); err == nil && fi.IsDir() {
-		writeErr(w, 400, "대상이 디렉터리입니다")
-		return
-	}
-	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
-		writeErr(w, 500, err.Error())
-		return
-	}
-	if err := os.WriteFile(abs, []byte(req.Content), 0o644); err != nil {
-		writeErr(w, 500, err.Error())
-		return
-	}
-	writeJSON(w, 200, map[string]any{"ok": true, "path": s.wsRel(abs)})
+	writeJSON(w, 200, map[string]any{"ok": true, "path": wsRel(name)})
 }
-
-// POST /api/workspace/mkdir  {path}
 func (s *Server) wsMkdir(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Path string `json:"path"`
-	}
+	var req struct{ Path string }
 	if err := decode(r, &req); err != nil {
 		writeErr(w, 400, err.Error())
 		return
 	}
-	abs, ok := s.wsResolve(req.Path)
-	if !ok || abs == filepath.Clean(s.m.dir) {
-		writeErr(w, 400, "허용되지 않는 경로")
+	name, err := s.wsPath(req.Path, true)
+	if err == nil {
+		err = s.m.workRoot.MkdirAll(name, 0o700)
+	}
+	if err != nil {
+		workspaceError(w, err)
 		return
 	}
-	if err := os.MkdirAll(abs, 0o755); err != nil {
-		writeErr(w, 500, err.Error())
-		return
-	}
-	writeJSON(w, 200, map[string]any{"ok": true, "path": s.wsRel(abs)})
+	writeJSON(w, 200, map[string]any{"ok": true, "path": wsRel(name)})
 }
-
-// DELETE /api/workspace/delete?path=<rel> — removes a file or a directory tree
-// (confined to the work dir; the root itself can't be deleted).
 func (s *Server) wsDelete(w http.ResponseWriter, r *http.Request) {
-	abs, ok := s.wsResolve(r.URL.Query().Get("path"))
-	if !ok {
-		writeErr(w, 400, "허용되지 않는 경로")
-		return
+	name, err := s.wsPath(r.URL.Query().Get("path"), true)
+	if err == nil {
+		var info os.FileInfo
+		info, err = s.m.workRoot.Stat(name)
+		if err == nil && !info.IsDir() {
+			var file *os.File
+			file, _, err = s.wsOpenFile(name)
+			if file != nil {
+				file.Close()
+			}
+		}
 	}
-	if abs == filepath.Clean(s.m.dir) {
-		writeErr(w, 400, "작업 공간의 루트 디렉터리는 삭제할 수 없습니다")
-		return
+	if err == nil {
+		err = s.m.workRoot.RemoveAll(name)
 	}
-	if _, err := os.Stat(abs); err != nil {
-		writeErr(w, 404, "경로가 존재하지 않습니다")
-		return
-	}
-	if err := os.RemoveAll(abs); err != nil {
-		writeErr(w, 500, err.Error())
+	if err != nil {
+		workspaceError(w, err)
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
-
-// GET /api/workspace/download?path=<rel> — stream a file as an attachment.
 func (s *Server) wsDownload(w http.ResponseWriter, r *http.Request) {
-	abs, ok := s.wsResolve(r.URL.Query().Get("path"))
-	if !ok {
-		writeErr(w, 400, "허용되지 않는 경로")
+	name, err := s.wsPath(r.URL.Query().Get("path"), false)
+	if err != nil {
+		workspaceError(w, err)
 		return
 	}
-	fi, err := os.Stat(abs)
-	if err != nil || fi.IsDir() {
-		writeErr(w, 404, "파일이 존재하지 않습니다")
+	file, info, err := s.wsOpenFile(name)
+	if err != nil {
+		workspaceError(w, err)
 		return
 	}
-	name := filepath.Base(abs)
-	// RFC 5987 filename* keeps non-ASCII names intact; plain filename is the fallback.
-	w.Header().Set("Content-Disposition", "attachment; filename=\""+sanitizeFilename(name)+"\"; filename*=UTF-8''"+url.PathEscape(name))
-	http.ServeFile(w, r, abs)
+	defer file.Close()
+	base := filepath.Base(name)
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+sanitizeFilename(base)+"\"; filename*=UTF-8''"+url.PathEscape(base))
+	http.ServeContent(w, r, base, info.ModTime(), file)
 }
-
-// POST /api/workspace/upload?path=<dir> — multipart form field "file" (one or more).
 func (s *Server) wsUpload(w http.ResponseWriter, r *http.Request) {
-	dirAbs, ok := s.wsResolve(r.URL.Query().Get("path"))
-	if !ok {
-		writeErr(w, 400, "허용되지 않는 경로")
+	name, err := s.wsPath(r.URL.Query().Get("path"), false)
+	if err != nil {
+		workspaceError(w, err)
 		return
 	}
-	if fi, err := os.Stat(dirAbs); err != nil || !fi.IsDir() {
+	info, err := s.m.workRoot.Stat(name)
+	if err != nil || !info.IsDir() {
 		writeErr(w, 400, "대상 디렉터리가 존재하지 않습니다")
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxWorkspaceUpload)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		writeErr(w, 400, "업로드 해석 실패 또는 크기 상한 초과:"+err.Error())
+		writeErr(w, 400, "업로드 해석 실패 또는 크기 상한 초과")
 		return
 	}
+	defer r.MultipartForm.RemoveAll()
 	files := r.MultipartForm.File["file"]
 	if len(files) == 0 {
 		writeErr(w, 400, "업로드 파일이 없습니다(폼 필드 file)")
 		return
 	}
-	saved := 0
-	for _, hdr := range files {
-		name := filepath.Base(hdr.Filename) // strip any path component
-		if name == "" || name == "." || name == ".." {
-			continue
-		}
-		destAbs, okd := s.wsResolve(filepath.Join(s.wsRel(dirAbs), name))
-		if !okd {
-			continue
-		}
-		if err := saveUpload(hdr, destAbs); err != nil {
-			writeErr(w, 500, err.Error())
+	destinations := make([]string, len(files))
+	for i, hdr := range files {
+		fileName, err := workspaceUploadName(hdr)
+		if err != nil {
+			workspaceError(w, errWorkspacePath)
 			return
 		}
-		saved++
+		destinations[i], err = s.wsPath(filepath.Join(name, fileName), true)
+		if err != nil {
+			workspaceError(w, err)
+			return
+		}
 	}
-	writeJSON(w, 200, map[string]any{"uploaded": saved})
+	for i, hdr := range files {
+		src, err := hdr.Open()
+		if err != nil {
+			workspaceError(w, err)
+			return
+		}
+		err = s.wsSave(destinations[i], src)
+		src.Close()
+		if err != nil {
+			workspaceError(w, err)
+			return
+		}
+	}
+	writeJSON(w, 200, map[string]any{"uploaded": len(files)})
 }
 
-func saveUpload(hdr *multipart.FileHeader, dest string) error {
+func saveChatUpload(root *os.Root, hdr *multipart.FileHeader, dir, name string) (string, error) {
 	src, err := hdr.Open()
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer src.Close()
-	out, err := os.Create(dest)
-	if err != nil {
-		return err
+	ext := filepath.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+	for i := 0; ; i++ {
+		candidate := name
+		if i > 0 {
+			candidate = fmt.Sprintf("%s-%d%s", stem, i, ext)
+		}
+		dest := filepath.Join(dir, candidate)
+		out, err := root.OpenFile(dest, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if os.IsExist(err) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		_, copyErr := io.Copy(out, src)
+		return dest, errors.Join(copyErr, out.Close())
 	}
-	defer out.Close()
-	_, err = io.Copy(out, src)
-	return err
 }
-
-// sanitizeFilename strips characters unsafe for a Content-Disposition filename token.
 func sanitizeFilename(name string) string {
-	name = strings.ReplaceAll(name, "\"", "")
-	name = strings.ReplaceAll(name, "\\", "")
-	name = strings.ReplaceAll(name, "\n", "")
-	name = strings.ReplaceAll(name, "\r", "")
-	return name
+	return strings.NewReplacer("\"", "", "\\", "", "\n", "", "\r", "").Replace(name)
 }

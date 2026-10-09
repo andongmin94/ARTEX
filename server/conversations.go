@@ -453,7 +453,7 @@ func (s *Server) pgSendConversationMessage(w http.ResponseWriter, r *http.Reques
 	// Read/Bash tools. baseDir = the agent's per-session CWD (<workDir>/sessions/
 	// conv-<id>/), matching chatUpload's landing dir and agent/chat.go's sessionWorkDir
 	// — busyKey == convBusyKey(c.ID) == "conv-<id>" == that session id.
-	baseDir := filepath.Join(s.m.dir, "sessions", busyKey)
+	baseDir := filepath.Join(s.m.workspaceDir(), "sessions", busyKey)
 	s.runConversation(c, composeAgentMessage(agentMessage, req.Attachments, baseDir), busyKey, msg)
 	writeJSON(w, 202, map[string]any{"status": "accepted"})
 }

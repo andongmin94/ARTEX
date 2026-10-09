@@ -160,7 +160,7 @@ func (s *Server) pgTestCustomTool(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 	defer cancel()
-	tc := &actool.ToolContext{WorkingDir: s.m.dir} // run in the project dir, like a real call
+	tc := &actool.ToolContext{WorkingDir: s.m.workspaceDir()} // run in the project dir, like a real call
 	if desktopToolSession() {
 		work, err := s.managedEditorWorkspace()
 		if err != nil {
@@ -413,7 +413,7 @@ func (s *Server) runScriptTool(ctx context.Context, key string, execRaw json.Raw
 	if interp == "" {
 		return actool.Errorf("Python 인터프리터가 설정되지 않았고 자동 탐색도 실패했습니다. 시스템 설정에서 지정하세요"), nil
 	}
-	workDir := s.m.dir
+	workDir := s.m.workspaceDir()
 	var sessionEnv []string
 	if tc != nil {
 		if tc.WorkingDir != "" {

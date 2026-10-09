@@ -43,6 +43,10 @@ func newManagerFromDB(dir, proxyAddr string, store *pgdb.DB) (result *Manager, e
 	if store == nil || store.DB == nil {
 		return nil, errors.New("업무 저장소가 준비되지 않았습니다")
 	}
+	m.workRoot, err = openWorkspaceDirectory(dir)
+	if err != nil {
+		return nil, fmt.Errorf("작업 공간 초기화: %w", err)
+	}
 	values, err := store.SettingsSnapshot(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("실행 설정 복원: %w", err)

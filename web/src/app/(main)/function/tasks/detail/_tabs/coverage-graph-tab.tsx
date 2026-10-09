@@ -526,9 +526,17 @@ function GraphInner({ taskId, coverageEnabled = true }: { taskId: string; covera
     // render() 异步跑 d3-force 布局;若组件在布局落地前被卸载/销毁,g6 会在已清空的
     // context 上访问 transform 抛错(见 runtime/layout transformDataAfterLayout)。这是纯
     // teardown 竞态,吞掉它,不影响功能;真正的渲染错误(图未销毁)仍打日志。
-    void graph.render().catch((err) => {
-      if (!graph.destroyed) console.error("[coverage-graph] render:", err);
-    });
+    void graph
+      .render()
+      .then(async () => {
+        // 작은 그래프는 자동 맞춤으로 과대 확대하지 않는다. 휠 확대 범위는 유지한다.
+        if (graph.destroyed || graph.getZoom() <= 1) return;
+        await graph.zoomTo(1, false);
+        if (!graph.destroyed) await graph.fitCenter(false);
+      })
+      .catch((err) => {
+        if (!graph.destroyed) console.error("[coverage-graph] render:", err);
+      });
   }, []);
 
   // 建图（一次）。动态 import 避开 SSR/静态导出期的 window 依赖。
@@ -544,6 +552,7 @@ function GraphInner({ taskId, coverageEnabled = true }: { taskId: string; covera
         container: containerRef.current,
         autoResize: true,
         autoFit: "view",
+        padding: 24,
         background: "#f0f2f7",
         node: {
           style: {

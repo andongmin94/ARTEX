@@ -90,6 +90,14 @@ func taskArchivePath(dataDir string, archiveID int64, taskID string) string {
 }
 
 func stageTaskArchiveFiles(dataDir string, archiveID int64, taskID string, explorationID int64) (*taskArchiveFileStage, error) {
+	if err := validateWorkspaceArtifactPath(dataDir, filepath.Join("tasks", taskID)); err != nil {
+		return nil, err
+	}
+	if _, err := os.Lstat(filepath.Join(dataDir, "tasks", taskID)); err == nil {
+		return nil, errors.New("이전 작업 폴더가 남아 있어 파일을 빠뜨리지 않도록 보관을 중단했습니다. 기존 파일은 이동하거나 삭제하지 않았습니다")
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
 	root := filepath.Join(taskArchiveRoot(dataDir), ".staging", strconv.FormatInt(archiveID, 10))
 	stage := &taskArchiveFileStage{root: root, payload: filepath.Join(root, "payload")}
 	journalPath := filepath.Join(root, "journal.json")
@@ -117,7 +125,7 @@ func stageTaskArchiveFiles(dataDir string, archiveID int64, taskID string, explo
 	}
 	stage.journal = archiveStageJournal{ArchiveID: archiveID, TaskID: taskID}
 	targets := []archiveFileMove{}
-	taskDir := filepath.Join(dataDir, "tasks", taskID)
+	taskDir := filepath.Join(workspaceDirectory(dataDir), "tasks", taskID)
 	if _, err := os.Lstat(taskDir); err == nil {
 		targets = append(targets, archiveFileMove{Source: taskDir, Relative: filepath.Join("files", "tasks", taskID)})
 	} else if !os.IsNotExist(err) {
@@ -233,10 +241,13 @@ func installTaskArchiveFiles(dataDir, extractedDir, taskID string, archiveID int
 	if err != nil || numericTaskID <= 0 {
 		return nil, fmt.Errorf("invalid restore task id %q", taskID)
 	}
+	if err := validateWorkspaceArtifactPath(dataDir, filepath.Join("tasks", taskID)); err != nil {
+		return nil, err
+	}
 	sources := []restoredArchivePath{}
 	workspace := filepath.Join(extractedDir, "files", "tasks", taskID)
 	if _, err := os.Lstat(workspace); err == nil {
-		sources = append(sources, restoredArchivePath{Source: workspace, Destination: filepath.Join(dataDir, "tasks", taskID)})
+		sources = append(sources, restoredArchivePath{Source: workspace, Destination: filepath.Join(workspaceDirectory(dataDir), "tasks", taskID)})
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
@@ -523,6 +534,11 @@ func writeTaskArchivePackage(path, payloadDir string, snapshot *pgdb.TaskArchive
 	if snapshot == nil {
 		return 0, 0, "", errors.New("nil task archive snapshot")
 	}
+	payload, err := os.OpenRoot(payloadDir)
+	if err != nil {
+		return 0, 0, "", err
+	}
+	defer payload.Close()
 	if err = os.MkdirAll(filepath.Dir(path), archiveDirMode); err != nil {
 		return 0, 0, "", err
 	}
@@ -565,24 +581,38 @@ func writeTaskArchivePackage(path, payloadDir string, snapshot *pgdb.TaskArchive
 		return 0, 0, "", err
 	}
 	tarWriter := tar.NewWriter(encoder)
-	walkErr := filepath.WalkDir(payloadDir, func(current string, entry fs.DirEntry, walkErr error) error {
+	walkErr := fs.WalkDir(payload.FS(), ".", func(relative string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
-		relative, err := filepath.Rel(payloadDir, current)
-		if err != nil || relative == "." {
-			return err
+		if relative == "." {
+			return nil
 		}
 		info, err := entry.Info()
 		if err != nil {
 			return err
 		}
-		if info.Mode()&os.ModeSymlink != 0 {
+		if workspaceLink(info) {
 			// 归档格式端到端只支持普通文件与目录（解包端对其它类型直接报错），
 			// 无法还原符号链接。跳过而非整包失败：不读取链接目标(lstat，不越出目录树)，
 			// 也不写入 symlink 条目；链接指向树内时目标文件本身仍会被单独遍历归档。
-			log.Printf("[task-archive] 심볼릭 링크 건너뜀(보관에서 지원하지 않으며 다른 파일에는 영향 없음): %s", current)
+			log.Printf("[task-archive] 심볼릭 링크 건너뜀(보관에서 지원하지 않으며 다른 파일에는 영향 없음): %s", relative)
 			return nil
+		}
+		var input *os.File
+		if !info.IsDir() {
+			input, err = payload.Open(filepath.FromSlash(relative))
+			if err != nil {
+				return err
+			}
+			defer input.Close()
+			info, err = input.Stat()
+			if err != nil {
+				return err
+			}
+			if !info.Mode().IsRegular() || workspaceMultipleLinks(input, info) {
+				return errors.New("연결된 파일 또는 일반 파일이 아닌 항목이 있어 작업 보관을 중단했습니다")
+			}
 		}
 		header, err := tar.FileInfoHeader(info, "")
 		if err != nil {
@@ -592,14 +622,10 @@ func writeTaskArchivePackage(path, payloadDir string, snapshot *pgdb.TaskArchive
 		if err := tarWriter.WriteHeader(header); err != nil {
 			return err
 		}
-		if entry.IsDir() {
+		if info.IsDir() {
 			return nil
 		}
 		originalSize += info.Size()
-		input, err := os.Open(current)
-		if err != nil {
-			return err
-		}
 		_, copyErr := io.Copy(tarWriter, input)
 		closeErr := input.Close()
 		return errors.Join(copyErr, closeErr)

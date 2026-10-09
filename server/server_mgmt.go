@@ -2132,7 +2132,7 @@ func (s *Server) pgListModels(w http.ResponseWriter, r *http.Request) {
 // {{.Now}} — e.g. subtract it from a fixed start stamp to reason about elapsed time.
 var globalPromptVars = []db.PromptVar{
 	{Name: "Now", Description: "서버 현재 시각(매 실행마다 갱신되며 고정 시작 시각과 비교하여 경과 시간을 판단할 수 있음)", Example: "2026-08-11 14:30:00 CST", Source: "runtime"},
-	{Name: "DataDir", Description: "서버 데이터 루트 디렉터리(모든 작업/세션 산출물의 루트). 각 에이전트는 <DataDir>/<taskID> 같은 하위 디렉터리에 파일을 기록합니다", Example: "/app/data", Source: "runtime"},
+	{Name: "DataDir", Description: "작업 파일 루트 디렉터리. 작업과 대화는 <DataDir>/tasks/<taskID>, <DataDir>/sessions/<sessionID>에 파일을 기록합니다. 앱 DB·설정·증거 저장소와 분리됩니다", Example: "/app/data/workspace", Source: "runtime"},
 }
 
 // withGlobalVars appends the universal runtime vars onto an agent's own catalog,

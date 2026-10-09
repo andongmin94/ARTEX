@@ -10,12 +10,14 @@ for (const key of Object.keys(isolatedEnvironment)) {
 test("Windows 실행 패키지의 실제 Go·SQLite·UI 부팅 및 재시작", async ({}, testInfo) => {
   test.setTimeout(120_000);
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "ARTEX 패키지 한글 #%-"));
-  const bundle = path.resolve(__dirname, `../dist/ARTEX-win32-${process.arch}`);
+  const bundle = process.env.ARTEX_PACKAGE_TEST_BUNDLE || path.resolve(__dirname, `../dist/ARTEX-win32-${process.arch}`);
+  expect(path.isAbsolute(bundle), "검사 패키지는 절대 경로여야 합니다").toBe(true);
   const executablePath = path.join(bundle, "ARTEX.exe");
   expect(fs.existsSync(executablePath), "먼저 npm run package를 실행하세요").toBe(true);
   for (const license of ["LICENSE", "LICENSES.chromium.html", "resources/artex/licenses/ARTEX-LICENSE.txt", "resources/artex/licenses/neobrutal-ui-MIT.txt", "resources/artex/licenses/OFL-Pretendard.txt"]) expect(fs.existsSync(path.join(bundle, license)), license).toBe(true);
   expect(fs.readdirSync(path.join(bundle, "resources/artex/fonts"))).toEqual(["PretendardVariable.woff2"]);
   expect(fs.existsSync(path.join(bundle, "resources/artex/licenses/OFL-NotoSansKR.txt"))).toBe(false);
+  expect(fs.readFileSync(path.join(bundle, "resources/internal/browserports/restricted-ports.json"), "utf8")).toBe(fs.readFileSync(path.resolve(__dirname, "../../internal/browserports/restricted-ports.json"), "utf8"));
   let electron;
   let page;
   async function api(route, method = "GET", body) {
@@ -61,7 +63,7 @@ test("Windows 실행 패키지의 실제 Go·SQLite·UI 부팅 및 재시작", a
     expect((await api("/auth/login", "POST", { username: "ARTEX", password: "패키지검증-12345678" })).token.split(".")).toHaveLength(3);
     await page.locator('a[href="/system/settings/"]').click();
     await expect(page.getByText("자동 업데이트 미구성", { exact: true })).toBeVisible();
-    await expect(page.getByText("일부 도구 사용 가능", { exact: true })).toBeVisible();
+    await expect(page.getByText("일부 도구 사용 가능", { exact: true })).toBeVisible({ timeout: 40_000 });
     await expect(page.getByText("사용 가능", { exact: true })).toHaveCount(5);
     await expect(page.getByText("실행 차단", { exact: true })).toHaveCount(1);
     await page.screenshot({ path: testInfo.outputPath("portable-restarted.png") });

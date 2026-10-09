@@ -11,6 +11,15 @@ test("임시 설치의 실제 Electron·Go·SQLite 부팅, 업그레이드, 제�
   if (process.platform !== "win32") throw new Error("이 검사는 실제 Windows에서 실행해야 합니다");
   const source = process.env.ARTEX_INSTALLER_TEST_BUNDLE;
   if (!source || !path.isAbsolute(source) || !fs.existsSync(path.join(source, "ARTEX.exe"))) throw new Error("최종 빌드의 Windows 실행 폴더를 ARTEX_INSTALLER_TEST_BUNDLE 절대 경로로 지정하세요");
+  const verifyRegistration = process.env.ARTEX_INSTALLER_VERIFY_REGISTRATION === "1";
+  function registration() {
+    return JSON.parse(powershell(["-Command", "$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new(); $key='HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\ARTEX'; $link=Join-Path ([Environment]::GetFolderPath('Programs')) 'ARTEX.lnk'; $item=if(Test-Path -LiteralPath $key){Get-ItemProperty -LiteralPath $key}; $target=if(Test-Path -LiteralPath $link){(New-Object -ComObject WScript.Shell).CreateShortcut($link).TargetPath}; @{registered=[bool]$item; shortcut=[bool](Test-Path -LiteralPath $link); root=$item.InstallLocation; version=$item.DisplayVersion; target=$target} | ConvertTo-Json -Compress"]));
+  }
+  if (verifyRegistration) {
+    const existing = registration();
+    assert.equal(existing.registered, false, "기존 ARTEX 제거 등록이 있으면 OS 등록 검사를 실행하지 않습니다");
+    assert.equal(existing.shortcut, false, "기존 ARTEX 시작 메뉴 바로가기가 있으면 OS 등록 검사를 실행하지 않습니다");
+  }
   const work = fs.mkdtempSync(path.join(os.tmpdir(), "ARTEX 설치 실제 앱 한글-"));
   const installation = path.join(work, "설치 폴더"), home = path.join(work, "보존할 사용자 데이터"); fs.mkdirSync(home);
   const packageJSON = JSON.parse(fs.readFileSync(path.join(source, "resources/app/package.json"), "utf8"));
@@ -25,8 +34,16 @@ test("임시 설치의 실제 Electron·Go·SQLite 부팅, 업그레이드, 제�
     return createDistribution({ bundle, destination: path.join(work, `distribution-${version}`), version, development: true });
   }
   function install(release) {
-    const result = spawnSync(release.setup, ["--quiet", "--no-registration", `--root=${installation}`], { windowsHide: true, encoding: "utf8", timeout: 3 * 60_000 });
+    const result = spawnSync(release.setup, ["--quiet", ...(!verifyRegistration ? ["--no-registration"] : []), `--root=${installation}`], { windowsHide: true, encoding: "utf8", timeout: 3 * 60_000 });
     assert.equal(result.status, 0, result.stdout + result.stderr);
+    if (verifyRegistration) {
+      const state = registration();
+      assert.equal(state.registered, true);
+      assert.equal(state.shortcut, true);
+      assert.equal(fs.realpathSync.native(state.root).toLowerCase(), fs.realpathSync.native(installation).toLowerCase());
+      assert.equal(state.version, release.manifest.version);
+      assert.equal(fs.realpathSync.native(state.target).toLowerCase(), fs.realpathSync.native(path.join(installation, "ARTEX.exe")).toLowerCase());
+    }
   }
   let electron;
   const environment = { ...process.env };
@@ -87,11 +104,22 @@ test("임시 설치의 실제 Electron·Go·SQLite 부팅, 업그레이드, 제�
     await electron.close(); electron = null;
     powershell(["-File", path.join(installation, "install.ps1"), "-Mode", "Uninstall", "-Root", installation]);
     assert.equal(fs.existsSync(path.join(installation, "versions")), false); assert.equal(fs.existsSync(path.join(home, "data/artex.sqlite")), true); assert.equal(fs.readFileSync(skill, "utf8"), "사용자가 편집한 스킬");
-    fs.writeFileSync(path.join(work, "verification.json"), JSON.stringify({ install: true, actualElectronGoSQLite: true, upgrade: true, metadataVersions: [initial, upgraded], upgradeChanges: "test-only package.json version; app code identical", readinessConfirmed: true, dataPreserved: true, existingPasswordLogin: true, uninstall: true, registrationWritten: false, signedProduction: false }, null, 2));
+    if (verifyRegistration) {
+      const state = registration();
+      assert.equal(state.registered, false);
+      assert.equal(state.shortcut, false);
+    }
+    fs.writeFileSync(path.join(work, "verification.json"), JSON.stringify({ install: true, actualElectronGoSQLite: true, upgrade: true, metadataVersions: [initial, upgraded], upgradeChanges: "test-only package.json version; app code identical", readinessConfirmed: true, dataPreserved: true, existingPasswordLogin: true, uninstall: true, registrationWritten: verifyRegistration, registrationRemoved: verifyRegistration, signedProduction: false }, null, 2));
     console.log(`실제 설치 앱 검사 증거: ${work}`);
   } catch (error) {
     fs.writeFileSync(path.join(work, "failure.txt"), error.stack || String(error));
     console.error(`실패 검사 증거: ${work}`);
     throw error;
-  } finally { if (electron) await electron.close(); }
+  } finally {
+    try { if (electron) await electron.close(); }
+    finally {
+      // An interrupted OS integration check removes only this owned installation.
+      if (verifyRegistration && fs.existsSync(path.join(installation, "installation.json"))) powershell(["-File", path.join(installation, "install.ps1"), "-Mode", "Uninstall", "-Root", installation]);
+    }
+  }
 });

@@ -218,6 +218,7 @@ type DeleteTaskResult struct {
 // graph + config) and the in-memory set of task handles.
 type Manager struct {
 	dir         string
+	workRoot    *os.Root // user artifacts only; application stores remain outside
 	pg          *pgdb.DB
 	assets      *pgdb.AssetStore
 	traffic     *traffic.Traffic       // process-wide recording proxy (may be nil)
@@ -596,14 +597,17 @@ func (m *Manager) Close() error {
 	if m.enrich != nil {
 		m.enrich.Close()
 	}
-	var trafficErr, dbErr error
+	var trafficErr, dbErr, workspaceErr error
 	if m.traffic != nil {
 		trafficErr = m.traffic.Close()
 	}
 	if m.pg != nil && m.pg.DB != nil {
 		dbErr = m.pg.Close()
 	}
-	return errors.Join(trafficErr, dbErr)
+	if m.workRoot != nil {
+		workspaceErr = m.workRoot.Close()
+	}
+	return errors.Join(trafficErr, dbErr, workspaceErr)
 }
 
 // isTerminalStatus reports whether a task status is terminal (done/failed/timeout).
@@ -1252,6 +1256,11 @@ func (m *Manager) DeleteTask(id string, opts DeleteTaskOptions) (DeleteTaskResul
 
 	var fileStage *taskFileDeleteStage
 	if opts.DeleteFiles {
+		if _, oldErr := os.Lstat(filepath.Join(m.dir, "tasks", id)); oldErr == nil {
+			result.CleanupWarning = "이전 작업 폴더의 파일은 보존했습니다. 새 작업 공간의 파일과 앱 관리 대화 기록만 삭제합니다"
+		} else if !os.IsNotExist(oldErr) {
+			return result, oldErr
+		}
 		fileStage, err = stageTaskFiles(m.dir, id, registered.ExplorationID)
 		if err != nil {
 			return result, err
@@ -1375,9 +1384,12 @@ type taskFileDeleteStage struct {
 // a same-filesystem staging directory. The trailing dash in the transcript
 // prefix is significant: exploration 12 must not match exploration 123.
 func stageTaskFiles(dataDir, taskID string, explorationID int64) (*taskFileDeleteStage, error) {
+	if err := validateWorkspaceArtifactPath(dataDir, filepath.Join("tasks", taskID)); err != nil {
+		return nil, err
+	}
 	stage := &taskFileDeleteStage{}
 	var targets []string
-	taskDir := filepath.Join(dataDir, "tasks", taskID)
+	taskDir := filepath.Join(workspaceDirectory(dataDir), "tasks", taskID)
 	if _, err := os.Lstat(taskDir); err == nil {
 		targets = append(targets, taskDir)
 	} else if !os.IsNotExist(err) {

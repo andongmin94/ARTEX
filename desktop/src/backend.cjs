@@ -3,6 +3,7 @@ const { createInterface } = require("node:readline");
 const fs = require("node:fs");
 const path = require("node:path");
 const { createHash } = require("node:crypto");
+const { ports: restrictedPorts } = require("../../internal/browserports/restricted-ports.json");
 
 class Backend {
   constructor({ executable, home, sessionToken, toolRoot, onFailure }) {
@@ -42,7 +43,10 @@ class Backend {
     const lines = createInterface({ input: child.stdout });
     return new Promise((resolve, reject) => {
       let ready = false;
+      let failed = false;
       const fail = (error) => {
+        if (failed) return;
+        failed = true;
         if (!ready) reject(error);
         else if (!this.stopping) this.onFailure(error);
       };
@@ -62,12 +66,15 @@ class Backend {
         fail(new Error(`백엔드가 종료됐습니다 (${signal ?? code}). ${log.trim()}`));
       });
       lines.on("line", (line) => {
-        if (ready) return;
+        if (ready || failed) return;
         try {
           const event = JSON.parse(line);
           const url = new URL(event.url);
           if (event.event !== "ready" || event.pid !== child.pid || url.protocol !== "http:" || url.hostname !== "127.0.0.1" || !url.port || url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
             throw new Error("백엔드 ready 응답의 PID 또는 loopback 주소가 유효하지 않습니다");
+          }
+          if (restrictedPorts.includes(Number(url.port))) {
+            throw new Error(`백엔드 ready 응답의 포트 ${url.port}는 앱 브라우저에서 금지된 포트입니다`);
           }
           ready = true;
           clearTimeout(timer);

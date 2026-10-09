@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -70,15 +69,7 @@ func connectManagedMCP(ctx context.Context, m *db.MCPServer) (mcpClient, error) 
 	if key == "pty" || key == "browser" {
 		return nil, errors.New("이 MCP 실행 경로의 격리 연결이 아직 준비되지 않았습니다")
 	}
-	home := os.Getenv("ARTEX_HOME")
-	if !filepath.IsAbs(home) {
-		return nil, errors.New("MCP 작업 폴더를 위한 앱 데이터 홈이 없습니다")
-	}
-	root := filepath.Join(home, "data", "tool-workspaces")
-	if err := os.MkdirAll(root, 0o700); err != nil {
-		return nil, err
-	}
-	work, err := os.MkdirTemp(root, "mcp-"+strconv.FormatInt(m.ID, 10)+"-")
+	work, err := newManagedToolWorkspace("mcp-" + strconv.FormatInt(m.ID, 10) + "-")
 	if err != nil {
 		return nil, err
 	}

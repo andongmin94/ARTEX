@@ -120,6 +120,14 @@ LLM의 모델 설정/재시도 및 백오프는 `line` 변형의 밑줄형 탭�
 
 실제 Button의 native/Radix 호출 계약과 크기, 140ms 전환·hover 3px 이동/1px 그림자·active 4px 이동을 유지한다. Electron 시작/오류 화면의 라이트 버튼에도 같은 채움·글자·검정 외곽을 사용한다. 소스값 대조와 실제 앱의 상태별 computed 색상·시각 검수를 구분해서 기록한다.
 
+## 2026-10-10 MCP 카드와 안정된 캡처
+
+원본 최신 main은 `b4da2463fe710a77bf464c65125a1a7f40424722`로 동일하며 Card/토큰 소스를 다시 확인했다. MCP 카드의 이름·전송 방식·토글·삭제를 한 줄에 몰아 작은 카드에서 동작 버튼이 잘리던 배치를 두 행으로 나눈다. 긴 이름은 줄바꿈하고 토글·삭제 묶음은 축소하지 않는다. 기존 설정·활성화·삭제 API와 공통 색상/컨트롤은 유지한다.
+
+모델 Sheet는 열기 애니메이션의 opacity/이동이 끝나고 패널 전체가 viewport 안에 있는지 확인한 뒤 캡처한다. 작업 탭도 선택 전환·로딩 종료를 기다린다. 그래프의 데이터 범례와 canvas 생성/그리기는 서로 다른 비동기 단계이므로 범례만 보이는 이미지를 완성된 그래프 검수로 사용하지 않는다. 이 기준은 Electron 확대/DOM 검사이며 물리 OS DPI·네이티브 IME 검수와 구분한다.
+현재 Windows 표시 환경에서 Playwright의 확대 일반/전체 페이지 PNG가 실제 viewport보다 작게 잘리는 현상을 실제 좌표·클릭·clip 없는 CDP/네이티브 캡처로 확인했다. 확대 상태의 시각 증거는 Electron `webContents.capturePage()`로 저장하며 앱 패널의 배치 오류와 검사 도구의 캡처 오류를 구분한다.
+자산 커버리지 그래프는 작은 그래프를 자동으로 과대 확대하지 않도록 맞춤 후 확대율1을 넘으면 원래 크기로 중앙 정렬하고 가장자리 여백24px을 둔다. 큰 그래프의 자동 축소와 사용자의 휠 확대·드래그는 유지한다. 설치된 G6 5.1.1의 타입/구현과 [공식 viewport API](https://g6.antv.antgroup.com/en/api/viewport)를 확인했으며 레이블·그래프 데이터·대상 정책은 변경하지 않는다.
+
 ## ChatGPT 구독 연결 버튼 자산
 
 OpenAI의 [Sign in with ChatGPT UI 지침](https://developers.openai.com/siwc/token-sharing-open-source/ui-ux-guidelines)에 따라 `Continue with ChatGPT` 버튼과 최초 연결 안내를 제공한다.

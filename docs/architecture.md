@@ -50,8 +50,10 @@ userData/
   config.json
   jwt.key
   data/artex.sqlite
-  data/<기존 작업·증거·트래픽 구조>
-  data/tool-workspaces/<stdio MCP 작업 폴더>
+  data/<앱 관리 증거·트래픽·대화 기록·보관 구조>
+  data/workspace/tasks/<작업별 사용자 파일>
+  data/workspace/sessions/<대화별 사용자 파일>
+  data/workspace/tool-workspaces/<stdio MCP 작업 폴더>
   skills/
   chatgpt/credentials/
   .desktop-backup.json
@@ -64,6 +66,7 @@ userData의 부모/ARTEX-backups/<홈 식별자>/<새 백업 폴더>/
 ```
 
 업무 DB는 data/artex.sqlite를 사용한다. 도구 실행 폴더는 Go가 검증한 업무 폴더이며 도구 자체는 앱 자원에 둔다. 자동 백업은 데이터 홈 밖에 새 폴더로 게시하며 기존 백업을 삭제하지 않는다. 새 폴더 복원 뒤 실행 홈 선택은 최초 홈의 `.active-home.json`에 저장한다.
+작업 파일 API는 `data/workspace`의 열린 `os.Root`만 사용한다. 목록·읽기·다운로드·쓰기·업로드·폴더 생성·삭제를 같은 경계에 묶고 경로 이탈·링크/Windows junction·다중 하드 링크를 거부한다. 쓰기는 새 파일을 동기화한 뒤 루트 내부 rename으로 게시한다. 에이전트·첨부·셸·MCP의 작업 폴더도 이 루트를 사용하고 DB·증거·대화 기록·보관은 밖에 둔다. 이전 `data/tasks` 등의 파일은 자동 이동·삭제하지 않는다. 이전 작업 파일이 남아 있는 보관 요청은 파일을 누락한 성공으로 처리하지 않는다.
 기본 스킬은 패키지 자원에서 설치하되 사용자 수정 파일을 무조건 덮어쓰지 않는다.
 
 부모는 Go를 다음 계약으로 시작한다.
@@ -83,6 +86,7 @@ Go는 저장소 초기화와 실제 HTTP 포트 바인딩 뒤 stdout에 한 줄 
 부모는 자식 PID와 loopback URL을 검증한다. Electron은 앱 세션으로 API JWT를 자동 발급받아 비밀번호 없이 진입하며, Go 단독 브라우저 접속의 비밀번호 로그인은 유지한다. 배너는 이 모드에서 생략되며 로그는 stderr로 수집한다.
 부모가 stdin 파이프를 닫거나 죽어서 EOF가 나면 Go가 정상 종료 경로를 실행한다.
 HTTP 종료 제한 시간 후에는 남은 연결을 닫는다. 생성 실패/포트 충돌/ready 출력 실패는 오류 종료한다.
+동적 바인딩은 번들 Electron의 Chromium 고정 제한 목록을 제외한다. 금지된 후보 소켓은 안전한 소켓을 확보할 때까지 유지해 같은 포트의 재배정을 피하고, 제한된 횟수 안에 확보하지 못하면 시작 오류를 반환한다. 명시한 금지 포트도 바인딩 전에 거부한다. Go embed와 Electron ready 검증은 `internal/browserports/restricted-ports.json`을 공유하며 실행 패키지에도 포함한다. 브라우저의 포트 제한을 해제하는 실행 옵션은 사용하지 않는다.
 
 Electron은 단일 인스턴스·30초 ready 제한·종료 대기·시작 오류/재시도 UI를 구현한다.
 32바이트 앱 세션 키는 메인 프로세스가 요청 헤더로 넣고 Go가 실제 loopback Host/Origin과 함께 검사한다.

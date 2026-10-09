@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -74,8 +73,11 @@ func (s *Server) chatUpload(w http.ResponseWriter, r *http.Request) {
 		}
 		defer s.engine.decInflight(id)
 	}
-	dir := filepath.Join(s.m.dir, sub, id, "uploads")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	dir, err := s.wsPath(filepath.Join(sub, id, "uploads"), true)
+	if err == nil {
+		err = s.m.workRoot.MkdirAll(dir, 0o700)
+	}
+	if err != nil {
 		writeErr(w, 500, "디렉터리 생성 실패: "+err.Error())
 		return
 	}
@@ -84,6 +86,7 @@ func (s *Server) chatUpload(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "업로드 해석 실패 또는 크기 상한 초과: "+err.Error())
 		return
 	}
+	defer r.MultipartForm.RemoveAll()
 	files := r.MultipartForm.File["file"]
 	if len(files) == 0 {
 		writeErr(w, 400, "업로드 파일이 없습니다(폼 필드 file)")
@@ -91,36 +94,20 @@ func (s *Server) chatUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]chatAttachment, 0, len(files))
 	for _, hdr := range files {
-		name := filepath.Base(hdr.Filename) // strip any path component
-		if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
-			continue
+		name, err := workspaceUploadName(hdr)
+		if err != nil {
+			writeErr(w, 400, "허용되지 않는 첨부 파일 이름")
+			return
 		}
-		dest := uniqueUploadPath(dir, name)
-		if err := saveUpload(hdr, dest); err != nil {
+		dest, err := saveChatUpload(s.m.workRoot, hdr, dir, name)
+		if err != nil {
 			writeErr(w, 500, "저장 실패: "+err.Error())
 			return
 		}
 		base := filepath.Base(dest)
-		out = append(out, chatAttachment{Name: base, Path: "uploads/" + base, Size: hdr.Size, Abs: dest})
+		out = append(out, chatAttachment{Name: base, Path: "uploads/" + base, Size: hdr.Size, Abs: filepath.Join(s.m.workspaceDir(), dest)})
 	}
 	writeJSON(w, 200, map[string]any{"attachments": out})
-}
-
-// uniqueUploadPath returns dir/name, or dir/name-1, dir/name-2… when it already exists,
-// so re-uploading the same filename never clobbers a prior attachment.
-func uniqueUploadPath(dir, name string) string {
-	dest := filepath.Join(dir, name)
-	if _, err := os.Stat(dest); os.IsNotExist(err) {
-		return dest
-	}
-	ext := filepath.Ext(name)
-	stem := strings.TrimSuffix(name, ext)
-	for i := 1; ; i++ {
-		cand := filepath.Join(dir, fmt.Sprintf("%s-%d%s", stem, i, ext))
-		if _, err := os.Stat(cand); os.IsNotExist(err) {
-			return cand
-		}
-	}
 }
 
 // composeAgentMessage appends an attachment manifest to the user's message so the agent

@@ -134,7 +134,7 @@ func validateManagedWorkspace(work string) error {
 	}
 	work = filepath.Clean(work)
 	for _, kind := range []string{"tasks", "sessions", "tool-workspaces"} {
-		root := filepath.Join(home, "data", kind)
+		root := filepath.Join(workspaceDirectory(filepath.Join(home, "data")), kind)
 		rel, err := filepath.Rel(root, work)
 		if err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			return nil
@@ -146,14 +146,7 @@ func validateManagedWorkspace(work string) error {
 // Caller-owned test/editor calls receive a new workspace rather than the data
 // root; granting that root to a tool would also expose SQLite and credentials.
 func (s *Server) managedEditorWorkspace() (string, error) {
-	root := filepath.Join(os.Getenv("ARTEX_HOME"), "data", "tool-workspaces")
-	if !filepath.IsAbs(root) {
-		return "", errors.New("앱 데이터 홈이 지정되지 않았습니다")
-	}
-	if err := os.MkdirAll(root, 0o700); err != nil {
-		return "", err
-	}
-	return os.MkdirTemp(root, "editor-")
+	return newManagedToolWorkspace("editor-")
 }
 
 func runManagedCapture(ctx context.Context, b *toolruntime.Bundle, r toolruntime.Request, input []byte) (string, error) {

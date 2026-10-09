@@ -19,6 +19,10 @@ fs.cpSync(path.join(root, "node_modules/electron/dist"), destination, { recursiv
 const appDir = path.join(destination, "resources/app");
 fs.mkdirSync(appDir, { recursive: true });
 fs.cpSync(path.join(root, "src"), path.join(appDir, "src"), { recursive: true });
+// Preserve backend.cjs's shared Go/Electron port definition at its relative path.
+const portDefinitionDir = path.join(destination, "resources/internal/browserports");
+fs.mkdirSync(portDefinitionDir, { recursive: true });
+fs.copyFileSync(path.join(root, "../internal/browserports/restricted-ports.json"), path.join(portDefinitionDir, "restricted-ports.json"));
 const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 delete pkg.devDependencies;
 delete pkg.scripts;

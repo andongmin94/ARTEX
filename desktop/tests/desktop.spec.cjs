@@ -163,6 +163,7 @@ test("실제 Electron 자동 진입·모델 저장·재시작·화면·격리", 
     await dialog.getByLabel("API Key", { exact: true }).fill("temporary-local-fixture");
     await dialog.getByRole("button", { name: "생성", exact: true }).click();
     await expect(page.getByText("로컬 저장 검증", { exact: true })).toBeVisible();
+    await expect(dialog).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath("model-saved.png") });
     const profiles = await api("/llm/profiles");
     const profile = profiles.profiles.find((item) => item.name === "로컬 저장 검증");
@@ -280,8 +281,39 @@ test("실제 Electron 자동 진입·모델 저장·재시작·화면·격리", 
     await page.goto(`${origin}/function/tasks/detail/?id=${task.id}`);
     await expect(page.getByText("한글 로컬 작업 검증", { exact: true }).first()).toBeVisible();
     for (const tab of ["세션", "개요", "탐색 경로", "활동 보드", "취약점", "재검증", "테스트 자산", "자산 커버리지 그래프", "차단 승인", "보고서"]) {
-      await page.getByRole("tab", { name: tab, exact: true }).click();
-      await expect(page.getByRole("tabpanel", { name: tab, exact: true })).toBeVisible();
+      const selectedTab = page.getByRole("tab", { name: tab, exact: true });
+      await selectedTab.click();
+      await expect(selectedTab).toHaveAttribute("data-state", "active");
+      const panel = page.getByRole("tabpanel", { name: tab, exact: true });
+      await expect(panel).toBeVisible();
+      await expect(panel.locator('[data-slot="skeleton"]')).toHaveCount(0);
+      await expect(panel.getByText("불러오는 중…", { exact: true })).toHaveCount(0);
+      if (tab === "재검증") await expect(panel.getByText("재검증 기록 없음", { exact: true })).toBeVisible();
+      if (tab === "보고서") await expect(panel.getByText("침투 테스트 보고서 — 검사 전용 로컬 HTTP 증거", { exact: true })).toBeVisible();
+      if (tab === "자산 커버리지 그래프") {
+        await expect(panel.locator("canvas").first()).toBeVisible();
+        let previousSignature = "", stableSamples = 0;
+        await expect.poll(async () => {
+          const signature = await panel.locator("canvas").evaluateAll((canvases) => canvases.map((canvas) => {
+            if (!canvas.width || !canvas.height) return "";
+            const context = canvas.getContext("2d");
+            if (!context) return "";
+            const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+            const colors = new Set();
+            let hash = 2166136261;
+            for (let y = 0; y < canvas.height; y += 16) for (let x = 0; x < canvas.width; x += 16) {
+              const index = (y * canvas.width + x) * 4;
+              if (data[index + 3]) colors.add(`${data[index]},${data[index + 1]},${data[index + 2]}`);
+              for (let channel = 0; channel < 4; channel++) hash = Math.imul(hash ^ data[index + channel], 16777619);
+            }
+            return colors.size > 1 ? String(hash) : "";
+          }).filter(Boolean).join(","));
+          stableSamples = signature && signature === previousSignature ? stableSamples + 1 : 0;
+          previousSignature = signature;
+          return stableSamples >= 2;
+        }, { intervals: [100, 100, 100], timeout: 10_000 }).toBe(true);
+      }
+      await expect.poll(() => selectedTab.evaluate((node) => node.getAnimations().every((animation) => animation.playState === "finished"))).toBe(true);
       await page.screenshot({ path: testInfo.outputPath(`task-detail-${tab}.png`) });
     }
     await page.goto(`${origin}/function/findings/detail/?id=${findingId}`);
@@ -308,6 +340,18 @@ test("실제 Electron 자동 진입·모델 저장·재시작·화면·격리", 
             await expect(page.getByText(/명령·스크립트·PTY는 검증된 앱 도구/)).toBeVisible();
             await expect(page.getByText("자동 업데이트 미구성", { exact: true })).toBeVisible();
           }
+          if (route === "system/mcp") {
+            const headers = page.locator('[data-slot="card-header"]');
+            await expect(headers.first()).toBeVisible();
+            await expect.poll(() => headers.evaluateAll((nodes) => nodes.flatMap((header) => {
+              const card = header.closest('[data-slot="card"]').getBoundingClientRect();
+              return [...header.querySelectorAll('[role="switch"], button')].filter((control) => {
+                const rect = control.getBoundingClientRect();
+                return rect.width <= 0 || rect.left < card.left || rect.right > card.right
+                  || rect.top < card.top || rect.bottom > card.bottom;
+              }).map((control) => control.getAttribute("aria-label"));
+            }))).toEqual([]);
+          }
           await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
           await page.screenshot({ path: testInfo.outputPath(`${route.replaceAll("/", "-")}-${theme}-${width}.png`) });
           page.off("response", response);
@@ -320,9 +364,29 @@ test("실제 Electron 자동 진입·모델 저장·재시작·화면·격리", 
       await page.goto(`${origin}/system/llm/`);
       await expect(page.getByText("로컬 저장 검증", { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "생성", exact: true }).click();
-      await expect(page.getByRole("dialog")).toBeVisible();
+      const modelDialog = page.getByRole("dialog");
+      await expect(modelDialog).toBeVisible();
+      await expect.poll(() => modelDialog.evaluate((node) => {
+        const rect = node.getBoundingClientRect();
+        return getComputedStyle(node).opacity === "1"
+          && node.getAnimations().every((animation) => animation.playState === "finished")
+          && rect.left >= -1 && rect.right <= innerWidth + 1
+          && rect.top >= -1 && rect.bottom <= innerHeight + 1;
+      })).toBe(true);
+      expect(await modelDialog.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+      await expect(modelDialog.getByLabel("이름", { exact: true })).toBeInViewport({ ratio: 1 });
+      await expect(modelDialog.getByRole("combobox").first()).toBeInViewport({ ratio: 1 });
+      await expect(modelDialog.getByRole("button", { name: "닫기", exact: true })).toBeInViewport({ ratio: 1 });
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-      await page.screenshot({ path: testInfo.outputPath(`model-dialog-windows-${zoom}.png`) });
+      // Playwright's viewport screenshot crops Electron zoomed content on this
+      // Windows display. Capture the complete actual webContents instead.
+      const capture = await electron.evaluate(async ({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        const image = await window.webContents.capturePage();
+        return { png: image.toPNG().toString("base64"), size: image.getSize(), zoom: window.webContents.getZoomFactor() };
+      });
+      fs.writeFileSync(testInfo.outputPath(`model-dialog-windows-${zoom}.png`), Buffer.from(capture.png, "base64"));
+      fs.writeFileSync(testInfo.outputPath(`model-dialog-windows-${zoom}.json`), JSON.stringify({ size: capture.size, zoom: capture.zoom, capture: "Electron webContents.capturePage" }, null, 2));
       await page.keyboard.press("Escape");
       await expect(page.getByRole("dialog")).toHaveCount(0);
     }

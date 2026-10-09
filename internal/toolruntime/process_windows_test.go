@@ -139,6 +139,39 @@ func executableFixture(t *testing.T) (*Bundle, string) {
 	return b, t.TempDir()
 }
 
+func TestWindowsBrowserStartRemainsBlocked(t *testing.T) {
+	b, work := executableFixture(t)
+	b.Manifest.Components[0].Key = "browser"
+	digest := writeManifestValue(t, b.Root, b.Manifest)
+	b, err := Load(b.Root, digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status := b.Status()[4]; status.Key != "browser" || status.State != "verified" {
+		t.Fatal("browser fixture files were not verified", status)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	for _, terminal := range []bool{false, true} {
+		p, err := b.Start(ctx, Request{
+			Component: "browser", WorkingDir: work, Terminal: terminal,
+			Args:        []string{"-test.run=^TestManagedHelperProcess$"},
+			Environment: map[string]string{"ARTEX_TEST_RUNTIME_HELPER": "inspect"},
+		})
+		if p != nil {
+			_ = p.Close()
+			t.Fatal("blocked browser created a process", terminal)
+		}
+		if err == nil || !strings.Contains(err.Error(), "AppContainer 내부 IPC와 승인 대상 네트워크 중계") {
+			t.Fatal("blocked browser did not report the unmet execution boundary", terminal, err)
+		}
+	}
+	entries, err := os.ReadDir(work)
+	if err != nil || len(entries) != 0 {
+		t.Fatal("blocked browser modified the workspace", entries, err)
+	}
+}
+
 func collectProcess(t *testing.T, p *Process) (string, string, int) {
 	t.Helper()
 	out := make(chan string, 1)

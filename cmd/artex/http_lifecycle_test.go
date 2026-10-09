@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Autumn-27/artex/internal/browserports"
 )
 
 func awaitServe(t *testing.T, done <-chan error) {
@@ -48,6 +50,9 @@ func TestHTTPReadyAndGracefulShutdown(t *testing.T) {
 	}
 	if event.Event != "ready" || event.PID != os.Getpid() || event.Version != "test-version" || strings.HasSuffix(event.URL, ":0") {
 		t.Fatalf("invalid ready event: %+v", event)
+	}
+	if !browserports.Allowed(listener.Addr().(*net.TCPAddr).Port) {
+		t.Fatalf("ready announced a browser-restricted port: %s", event.URL)
 	}
 	transport := &http.Transport{Proxy: nil}
 	t.Cleanup(transport.CloseIdleConnections)
@@ -178,5 +183,126 @@ func TestReadyPipeFailureIsReported(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "http://[::1]:8787") {
 		t.Fatalf("IPv6 address incorrectly encoded: %s", out.String())
+	}
+}
+
+type boundPortListener struct {
+	port       int
+	closeCount int
+	closeErr   error
+}
+
+func (l *boundPortListener) Accept() (net.Conn, error) { return nil, net.ErrClosed }
+func (l *boundPortListener) Addr() net.Addr {
+	return &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: l.port}
+}
+func (l *boundPortListener) Close() error {
+	l.closeCount++
+	return l.closeErr
+}
+
+func TestHTTPDiscardRestrictedEphemeralPort(t *testing.T) {
+	blocked := &boundPortListener{port: 6000}
+	safe := &boundPortListener{port: 49152}
+	calls := 0
+	listener, err := listenBrowserHTTP("127.0.0.1:0", func(network, address string) (net.Listener, error) {
+		if network != "tcp" || address != "127.0.0.1:0" {
+			t.Fatalf("unexpected bind: %s %s", network, address)
+		}
+		calls++
+		if calls == 1 {
+			return blocked, nil
+		}
+		if blocked.closeCount != 0 {
+			t.Fatal("restricted socket was released before a safe socket was bound")
+		}
+		return safe, nil
+	})
+	if err != nil || listener != safe || calls != 2 {
+		t.Fatalf("listener=%v, attempts=%d, err=%v", listener, calls, err)
+	}
+	if blocked.closeCount != 1 || safe.closeCount != 0 {
+		t.Fatalf("closed rejected=%d safe=%d", blocked.closeCount, safe.closeCount)
+	}
+}
+
+func TestHTTPRejectExplicitRestrictedPort(t *testing.T) {
+	for _, port := range []string{"6000", "10080", "65536", "-1"} {
+		t.Run(port, func(t *testing.T) {
+			listener, err := listenBrowserHTTP("127.0.0.1:"+port, func(string, string) (net.Listener, error) {
+				t.Fatal("explicit restricted port must be rejected before bind")
+				return nil, nil
+			})
+			if err == nil || listener != nil {
+				t.Fatalf("unsafe explicit port returned listener=%v err=%v", listener, err)
+			}
+		})
+	}
+}
+
+func TestHTTPRestrictedPortRetriesAreBoundedAndClosed(t *testing.T) {
+	var sockets []*boundPortListener
+	listener, err := listenBrowserHTTP("127.0.0.1:0", func(string, string) (net.Listener, error) {
+		candidate := &boundPortListener{port: 6000}
+		sockets = append(sockets, candidate)
+		return candidate, nil
+	})
+	if err == nil || listener != nil || len(sockets) != browserports.BindAttempts() {
+		t.Fatalf("listener=%v attempts=%d err=%v", listener, len(sockets), err)
+	}
+	for index, candidate := range sockets {
+		if candidate.closeCount != 1 {
+			t.Errorf("rejected socket %d closed %d times", index, candidate.closeCount)
+		}
+	}
+}
+
+func TestHTTPRejectedSocketCleanupFailureClosesSafePort(t *testing.T) {
+	cleanupErr := errors.New("controlled socket cleanup failure")
+	blocked := &boundPortListener{port: 6000, closeErr: cleanupErr}
+	safe := &boundPortListener{port: 49152}
+	calls := 0
+	listener, err := listenBrowserHTTP("127.0.0.1:0", func(string, string) (net.Listener, error) {
+		calls++
+		if calls == 1 {
+			return blocked, nil
+		}
+		return safe, nil
+	})
+	if listener != nil || !errors.Is(err, cleanupErr) || safe.closeCount != 1 {
+		t.Fatalf("listener=%v safe close=%d err=%v", listener, safe.closeCount, err)
+	}
+}
+
+func TestHTTPRejectedPortThenBindErrorIsReported(t *testing.T) {
+	bindErr := errors.New("controlled bind failure")
+	blocked := &boundPortListener{port: 6000}
+	calls := 0
+	listener, err := listenBrowserHTTP("127.0.0.1:0", func(string, string) (net.Listener, error) {
+		calls++
+		if calls == 1 {
+			return blocked, nil
+		}
+		return nil, bindErr
+	})
+	if listener != nil || !errors.Is(err, bindErr) || blocked.closeCount != 1 {
+		t.Fatalf("listener=%v rejected close=%d err=%v", listener, blocked.closeCount, err)
+	}
+}
+
+func TestHTTPListenerValidationFailureClosesBoundPort(t *testing.T) {
+	validationErr := errors.New("controlled desktop listener rejection")
+	var address string
+	listener, done, err := startHTTP(&http.Server{Addr: "127.0.0.1:0"}, func(addr net.Addr) error {
+		address = addr.String()
+		return validationErr
+	})
+	if listener != nil || done != nil || !errors.Is(err, validationErr) {
+		t.Fatalf("listener=%v done=%v err=%v", listener, done, err)
+	}
+	conn, dialErr := net.DialTimeout("tcp", address, time.Second)
+	if dialErr == nil {
+		_ = conn.Close()
+		t.Fatal("rejected listener survived validation failure")
 	}
 }

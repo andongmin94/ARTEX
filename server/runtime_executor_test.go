@@ -37,7 +37,7 @@ func managedBundleEnvironment(t *testing.T) string {
 	t.Setenv("ARTEX_DESKTOP_SESSION", strings.Repeat("ab", 32))
 	home := t.TempDir()
 	t.Setenv("ARTEX_HOME", home)
-	work := filepath.Join(home, "data", "sessions", "fixture")
+	work := filepath.Join(home, "data", "workspace", "sessions", "fixture")
 	if err := os.MkdirAll(work, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestManagedWorkspaceRejectsDataRootAndAdjacentHomes(t *testing.T) {
 		}
 	}
 	for _, kind := range []string{"tasks", "sessions", "tool-workspaces"} {
-		if err := validateManagedWorkspace(filepath.Join(home, "data", kind, "fixture")); err != nil {
+		if err := validateManagedWorkspace(filepath.Join(home, "data", "workspace", kind, "fixture")); err != nil {
 			t.Fatal(err)
 		}
 	}

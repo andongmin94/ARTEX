@@ -66,6 +66,9 @@ func (b *Bundle) Start(ctx context.Context, r Request) (*Process, error) {
 	if _, ok := b.Component(r.Component); !ok {
 		return nil, errors.New("도구 구성요소가 배포되지 않았습니다")
 	}
+	if r.Component == "browser" {
+		return nil, errors.New("브라우저의 AppContainer 내부 IPC와 승인 대상 네트워크 중계가 아직 준비되지 않았습니다")
+	}
 	if !filepath.IsAbs(r.WorkingDir) {
 		return nil, errors.New("도구 작업 폴더가 절대 경로가 아닙니다")
 	}

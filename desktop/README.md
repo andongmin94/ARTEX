@@ -40,6 +40,7 @@ Playwright는 실제 Electron과 임시 userData의 Go/SQLite를 사용한다. �
 21개 업무 화면을 밝은/어두운 모드와 1280/1440 폭으로 확인하고, 작업 상세 10개 탭·취약점 증거 화면·한국어 입력 조합 이벤트·125/150% 확대·reduced motion을 검사한다. 물리 IME/OS DPI 검사는 별도다.
 렌더러 격리·CSP·외부 탐색/새 창 차단·단일 인스턴스·앱 세션 없는 HTTP 차단·Go 종료·프록시 충돌 후 시작 실패/재시도도 확인한다.
 `npm run package` 후 `npm run test:package`는 실제 `app.isPackaged` 실행 경로에서 자동 진입·DB 생성·기존 비밀번호 데이터 재시작·사용자 스킬 파일 보존·미준비 상태 표시와 포함 라이선스를 검사한다.
+기존 출력을 보존한 별도 실행 폴더를 검사할 때는 `$env:ARTEX_PACKAGE_TEST_BUNDLE = '<Windows 실행 폴더 절대 경로>'`를 지정한다. 작업 파일 검사는 새 임시 홈에서 파일 CRUD·앱 DB 경계·Windows junction/하드 링크·재시작 보존을 확인한다. 시작 응답 집중 검사는 `node --test backend-tests/ready.test.cjs`로 실행한다.
 일반 브라우저용 회귀 검사는 설치된 Chrome을 검사 도구로 사용해 Go 단독 실행의 비밀번호 설정·로그인·약관을 확인한다. Chrome 설치를 앱의 도구 런타임 준비로 간주하지 않는다.
 실제 앱 부팅 실패는 실패로 반환하며 mock 또는 검사 skip으로 바꾸지 않는다.
 스크린샷/trace/임시 DB는 로컬 검사 증거로 남으며 커밋하지 않는다.
@@ -83,4 +84,4 @@ $env:ARTEX_INSTALLER_TEST_BUNDLE = '<최종 Windows 실행 폴더 절대 경로>
 npm run test:installed
 ```
 
-설치 검사는 별도 임시 설치·userData와 `--no-registration`을 사용하며 실제 시작 메뉴/사용자 등록을 변경하지 않는다. 일부 배포 보안 검사는 명시적 로컬 fixture다. 공인 서명·운영 HTTPS 업데이트·macOS/Linux 실제 실행, 물리 IME/OS DPI·모든 UI 상태 수동 검수는 Windows 개발 검사와 구분한다. 현재 통과/미실행 범위는 [유일한 개발 계획](../docs/development-plan.md)을 따른다.
+설치 검사는 기본적으로 별도 임시 설치·userData와 `--no-registration`을 사용한다. 실제 Windows 시작 메뉴·제거 등록을 검증할 때만 `$env:ARTEX_INSTALLER_VERIFY_REGISTRATION = '1'`을 지정한다. 이 검사는 기존 ARTEX 등록/바로가기가 있으면 중단하며, 검사 설치의 등록·업그레이드 버전·바로가기 대상과 제거 후 등록 해제를 확인한다. 중간 실패에도 검사 소유 설치만 제거하고 사용자 DB는 보존한다. 일부 배포 보안 검사는 명시적 로컬 fixture다. 공인 서명·운영 HTTPS 업데이트·macOS/Linux 실제 실행, 물리 IME/OS DPI·모든 UI 상태 수동 검수는 Windows 개발 검사와 구분한다. 현재 통과/미실행 범위는 [유일한 개발 계획](../docs/development-plan.md)을 따른다.

@@ -53,7 +53,7 @@ func TestDeleteTaskFilesRemovesOnlyOwnedWorkspaceAndTranscripts(t *testing.T) {
 		path  string
 		isDir bool
 	}{
-		{path: filepath.Join("tasks", "77"), isDir: true},
+		{path: filepath.Join("workspace", "tasks", "77"), isDir: true},
 		{path: filepath.Join("transcripts", "exp12-main.jsonl")},
 		{path: filepath.Join("transcripts", "exp12-planner.jsonl")},
 		{path: filepath.Join("transcripts", "exp12-worker-i9.jsonl")},
@@ -64,7 +64,7 @@ func TestDeleteTaskFilesRemovesOnlyOwnedWorkspaceAndTranscripts(t *testing.T) {
 		path  string
 		isDir bool
 	}{
-		{path: filepath.Join("tasks", "78"), isDir: true},
+		{path: filepath.Join("workspace", "tasks", "78"), isDir: true},
 		{path: filepath.Join("transcripts", "exp123-main.jsonl")},
 		{path: filepath.Join("transcripts", "exp123-main"), isDir: true},
 		{path: filepath.Join("transcripts", "exp1-main.jsonl")},
@@ -122,7 +122,7 @@ func TestDeleteTaskFilesMissingTargetsIsIdempotent(t *testing.T) {
 func TestStageTaskFilesRollbackRestoresWorkspaceAndTranscripts(t *testing.T) {
 	dataDir := t.TempDir()
 	paths := []string{
-		filepath.Join("tasks", "77", "notes.txt"),
+		filepath.Join("workspace", "tasks", "77", "notes.txt"),
 		filepath.Join("transcripts", "exp12-main.jsonl"),
 		filepath.Join("transcripts", "exp12-worker-i9", "sidechain.jsonl"),
 	}
@@ -150,8 +150,8 @@ func TestStageTaskFilesRollbackRestoresWorkspaceAndTranscripts(t *testing.T) {
 
 func TestStageTaskFilesRollbackReportsRestoreFailure(t *testing.T) {
 	dataDir := t.TempDir()
-	workspace := filepath.Join(dataDir, "tasks", "77")
-	createDeleteFixture(t, dataDir, filepath.Join("tasks", "77"), true)
+	workspace := filepath.Join(workspaceDirectory(dataDir), "tasks", "77")
+	createDeleteFixture(t, dataDir, filepath.Join("workspace", "tasks", "77"), true)
 
 	stage, err := stageTaskFiles(dataDir, "77", 12)
 	if err != nil {
@@ -194,7 +194,7 @@ func TestManagerDeleteTaskRestoresFilesAndTrafficWhenSQLiteDeleteFails(t *testin
 	if _, err := m.Assets().UpsertHTTPService(pgdb.UpsertHTTPServiceReq{URL: "https://" + host, TaskID: taskID}); err != nil {
 		t.Fatal(err)
 	}
-	createDeleteFixture(t, dataDir, filepath.Join("tasks", task.ID), true)
+	createDeleteFixture(t, dataDir, filepath.Join("workspace", "tasks", task.ID), true)
 	transcriptPath := filepath.Join(dataDir, "transcripts", fmt.Sprintf("exp%d-main.jsonl", task.ExpID))
 	createDeleteFixture(t, dataDir, filepath.Join("transcripts", filepath.Base(transcriptPath)), false)
 
@@ -228,7 +228,7 @@ WHEN OLD.id = %d BEGIN SELECT RAISE(ABORT,'forced task delete failure'); END`, t
 	if got, err := m.pg.GetTask(taskID); err != nil || got == nil {
 		t.Fatalf("task row was lost after failed delete: task=%+v err=%v", got, err)
 	}
-	assertPathExists(t, filepath.Join(dataDir, "tasks", task.ID))
+	assertPathExists(t, filepath.Join(workspaceDirectory(dataDir), "tasks", task.ID))
 	assertPathExists(t, transcriptPath)
 	if got, err := os.ReadFile(trafficMarker); err != nil || string(got) != "original traffic" {
 		t.Fatalf("traffic tree was not restored: content=%q err=%v", got, err)

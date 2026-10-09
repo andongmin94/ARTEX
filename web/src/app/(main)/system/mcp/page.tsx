@@ -382,14 +382,16 @@ export default function MCPPage() {
             onClick={() => openEdit(s)}
             className="hover:border-primary/60 cursor-pointer gap-3 transition hover:shadow-sm"
           >
-            <CardHeader>
-              <div className="flex items-center gap-2">
+            <CardHeader className="gap-3">
+              <div className="flex min-w-0 items-start gap-2">
                 <ServerIcon className="text-muted-foreground size-4 shrink-0" />
-                <CardTitle className="truncate text-base">{s.name}</CardTitle>
+                <CardTitle className="min-w-0 break-words text-base">{s.name}</CardTitle>
+              </div>
+              <div className="flex items-center justify-between gap-2">
                 <Badge variant="outline" className="uppercase">
                   {s.transport}
                 </Badge>
-                <div className="ml-auto flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                <div className="flex shrink-0 items-center gap-2" onClick={(e) => e.stopPropagation()}>
                   <Switch
                     checked={s.enabled}
                     onCheckedChange={() => toggleEnabled(s)}

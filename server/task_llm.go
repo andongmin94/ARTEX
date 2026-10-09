@@ -572,7 +572,7 @@ func (s *Server) agentsForTask(t *Task) *taskAgentBundle {
 	mainRuntime := &taskLLMRuntime{s: s, taskID: t.ID, agentKey: "mainagent"}
 	tx := transcript.NewStore(filepath.Join(s.m.dir, "transcripts"))
 	window := workerRuntime.CompactionWindow()
-	wk := agent.NewWorker(workerRuntime, "task-router", s.m.dir, tx, window, s.agentMaxTurns("worker"))
+	wk := agent.NewWorker(workerRuntime, "task-router", s.m.workspaceDir(), tx, window, s.agentMaxTurns("worker"))
 	wk.SetFindingRecorder(s.evidenceStore())
 	wk.SetCompactionWindowResolver(workerRuntime.CompactionWindow)
 	wk.SetNonStreaming(workerRuntime.nonStreaming) // 按任务当前激活 profile 的流式开关(每轮读)
@@ -582,7 +582,7 @@ func (s *Server) agentsForTask(t *Task) *taskAgentBundle {
 	wk.SetProxy(s.m.ProxyAddr(), s.m.ProxyCACert())
 	wk.SetWebSearch(s.webSearchFor("worker"))
 	wk.SetConstraintInject(s.constraintInjectWorker) // 操作约束注入 worker(可配置,默认开)
-	pl := agent.NewPlanner(plannerRuntime, "task-router", s.m.dir, tx, plannerRuntime.CompactionWindow(), s.agentMaxTurns("planner"))
+	pl := agent.NewPlanner(plannerRuntime, "task-router", s.m.workspaceDir(), tx, plannerRuntime.CompactionWindow(), s.agentMaxTurns("planner"))
 	pl.SetGuard(t.Guard)
 	pl.SetFindingRecorder(s.evidenceStore())
 	pl.SetCompactionWindowResolver(plannerRuntime.CompactionWindow)
@@ -598,7 +598,7 @@ func (s *Server) agentsForTask(t *Task) *taskAgentBundle {
 	// (agentsForTask),Compactor 必须接在这里。走任务路由的 planner provider(§4:与 agent
 	// 同模型,随任务 LLM 链解析),压缩用 Complete 一次性生成 body。
 	pl.SetCompactor(agent.NewCompactor(plannerRuntime, "task-router"))
-	main := agent.NewMainAgent(mainRuntime, "task-router", s.m.dir, tx, mainRuntime.CompactionWindow(), s.agentMaxTurns("mainagent"))
+	main := agent.NewMainAgent(mainRuntime, "task-router", s.m.workspaceDir(), tx, mainRuntime.CompactionWindow(), s.agentMaxTurns("mainagent"))
 	main.SetGuard(t.Guard)
 	main.SetFindingRecorder(s.evidenceStore())
 	main.SetCompactionWindowResolver(mainRuntime.CompactionWindow)

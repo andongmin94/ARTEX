@@ -16,7 +16,7 @@ func TestTaskArchivePackageFilesRoundTrip(t *testing.T) {
 	dataDir := t.TempDir()
 	taskID := "42"
 	explorationID := int64(73)
-	taskFile := filepath.Join(dataDir, "tasks", taskID, "uploads", "evidence.txt")
+	taskFile := filepath.Join(workspaceDirectory(dataDir), "tasks", taskID, "uploads", "evidence.txt")
 	transcriptFile := filepath.Join(dataDir, "transcripts", "exp73-worker-1.jsonl")
 	unrelatedTranscript := filepath.Join(dataDir, "transcripts", "exp74-worker-1.jsonl")
 	for path, body := range map[string]string{
@@ -94,6 +94,79 @@ func TestTaskArchivePackageFilesRoundTrip(t *testing.T) {
 	}
 }
 
+func TestTaskArchivePackageRejectsHardLinksToApplicationFiles(t *testing.T) {
+	dataDir := t.TempDir()
+	secret := filepath.Join(dataDir, "protected-config.txt")
+	if err := os.WriteFile(secret, []byte("private application fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	taskDir := filepath.Join(workspaceDirectory(dataDir), "tasks", "42")
+	if err := os.MkdirAll(taskDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	linked := filepath.Join(taskDir, "linked-config.txt")
+	if err := os.Link(secret, linked); err != nil {
+		t.Fatal(err)
+	}
+	stage, err := stageTaskArchiveFiles(dataDir, 1, "42", 73)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := taskArchivePath(dataDir, 1, "42")
+	_, _, _, err = writeTaskArchivePackage(archive, stage.payload, &pgdb.TaskArchiveSnapshot{FormatVersion: pgdb.TaskArchiveFormatVersion, TaskID: 42})
+	if err == nil {
+		t.Fatal("application hard-link bytes published in task archive")
+	}
+	assertPathMissing(t, archive)
+	assertPathMissing(t, archive+".partial")
+	if err := stage.rollback(); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(secret); err != nil || string(got) != "private application fixture" {
+		t.Fatalf("protected file changed: %q %v", got, err)
+	}
+	assertPathExists(t, linked)
+}
+
+func TestTaskFileStagingAndRestoreRejectWorkspaceParentJunctions(t *testing.T) {
+	dataDir := t.TempDir()
+	root, err := openWorkspaceDirectory(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root.Close()
+	protected := filepath.Join(dataDir, "evidence", "42", "protected.txt")
+	if err := os.MkdirAll(filepath.Dir(protected), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(protected, []byte("preserve managed evidence"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	workspaceOutsideLink(t, filepath.Join(workspaceDirectory(dataDir), "tasks"), filepath.Join(dataDir, "evidence"))
+	if _, err := stageTaskFiles(dataDir, "42", 73); err == nil {
+		t.Fatal("task delete followed workspace parent junction")
+	}
+	if _, err := stageTaskArchiveFiles(dataDir, 1, "42", 73); err == nil {
+		t.Fatal("task archive followed workspace parent junction")
+	}
+	extracted := filepath.Join(dataDir, "restore")
+	source := filepath.Join(extracted, "files", "tasks", "42", "restore.txt")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("restored file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installTaskArchiveFiles(dataDir, extracted, "42", 1); err == nil {
+		t.Fatal("task restore followed workspace parent junction")
+	}
+	if got, err := os.ReadFile(protected); err != nil || string(got) != "preserve managed evidence" {
+		t.Fatalf("protected file changed: %q %v", got, err)
+	}
+	assertPathExists(t, source)
+	assertPathMissing(t, filepath.Join(dataDir, "evidence", "42", "restore.txt"))
+}
+
 func TestTaskArchivePackageSkipsSymlink(t *testing.T) {
 	dataDir := t.TempDir()
 	payload := filepath.Join(dataDir, "payload")
@@ -129,7 +202,7 @@ func TestTaskArchivePackageSkipsSymlink(t *testing.T) {
 
 func TestTaskArchiveStageJournalRollsBackInterruptedMoves(t *testing.T) {
 	dataDir := t.TempDir()
-	taskFile := filepath.Join(dataDir, "tasks", "42", "evidence.txt")
+	taskFile := filepath.Join(workspaceDirectory(dataDir), "tasks", "42", "evidence.txt")
 	transcriptFile := filepath.Join(dataDir, "transcripts", "exp73-worker.jsonl")
 	for _, path := range []string{taskFile, transcriptFile} {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -179,7 +252,7 @@ func TestTaskArchiveRestoreJournalRollsBackInterruptedInstall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	destination := filepath.Join(dataDir, "tasks", "42", "evidence.txt")
+	destination := filepath.Join(workspaceDirectory(dataDir), "tasks", "42", "evidence.txt")
 	if _, err := os.Stat(destination); err != nil {
 		t.Fatal(err)
 	}
