@@ -953,7 +953,14 @@ export interface RuntimeToolsStatus {
   ready: boolean;
   mode: string;
   message: string;
-  components: { key: "shell" | "pty" | "python" | "node" | "browser" | "cli"; state: string }[];
+  components: {
+    key: "shell" | "pty" | "python" | "node" | "browser" | "cli";
+    state: string;
+    execution: string;
+    version?: string;
+    message?: string;
+  }[];
+  isolation?: { state: string; process_tree: string; workspace: string; network: string; message?: string };
 }
 
 // ---- 漏洞 IM 推送 ----

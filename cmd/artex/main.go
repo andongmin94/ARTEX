@@ -17,6 +17,8 @@ import (
 
 	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/config"
+	"github.com/Autumn-27/artex/internal/backup"
+	"github.com/Autumn-27/artex/internal/toolruntime"
 	"github.com/Autumn-27/artex/server"
 )
 
@@ -47,19 +49,43 @@ func main() {
 
 func run() (code int) {
 	var (
-		addr        = flag.String("addr", "127.0.0.1:8787", "HTTP listen address")
-		dataDir     = flag.String("data", "", "data directory (default: data/ under ARTEX_HOME or the executable directory)")
-		proxy       = flag.String("proxy", "127.0.0.1:8788", "traffic recording proxy address (empty to disable)")
-		readyStdout = flag.Bool("ready-stdout", false, "emit a JSON ready event to stdout instead of the startup banner")
-		parentStdin = flag.Bool("parent-stdin", false, "shut down when the supervising parent's stdin pipe closes")
+		addr         = flag.String("addr", "127.0.0.1:8787", "HTTP listen address")
+		dataDir      = flag.String("data", "", "data directory (default: data/ under ARTEX_HOME or the executable directory)")
+		proxy        = flag.String("proxy", "127.0.0.1:8788", "traffic recording proxy address (empty to disable)")
+		readyStdout  = flag.Bool("ready-stdout", false, "emit a JSON ready event to stdout instead of the startup banner")
+		parentStdin  = flag.Bool("parent-stdin", false, "shut down when the supervising parent's stdin pipe closes")
+		backupPath   = flag.String("backup", "", "create a verified offline snapshot in a new absolute directory")
+		restorePath  = flag.String("restore", "", "restore a verified snapshot directory into a new home")
+		restoreHome  = flag.String("restore-home", "", "new absolute data home for snapshot restoration")
+		verifyBackup = flag.String("verify-backup", "", "verify every snapshot file and SQLite database")
 	)
 	flag.Parse()
+	if handled, result := maintenanceCommand(context.Background(), *backupPath, *restorePath, *restoreHome, *verifyBackup, *dataDir); handled {
+		return result
+	}
 
 	if err := config.InitHome(); err != nil {
 		fmt.Fprintf(os.Stderr, "runtime home: %v\n", err)
 		return 1
 	}
+	home, err := filepath.Abs(config.BaseDir())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "데이터 홈: %v\n", err)
+		return 1
+	}
+	lease, err := backup.LockHome(home)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "데이터 홈 잠금: %v\n", err)
+		return 1
+	}
+	defer lease.Close()
 	if os.Getenv("ARTEX_DESKTOP_SESSION") != "" {
+		if runtime.GOOS == "windows" {
+			if err := toolruntime.InstallProcessTreeGuard(); err != nil {
+				log.Printf("외부 도구 프로세스 격리 초기화: %v", err)
+				return 1
+			}
+		}
 		// Use the SDK's native Go search implementation. A desktop startup must
 		// never install a global npm package or discover host PATH as a tool bundle.
 		if err := os.Setenv("NORMA_DISABLE_RIPGREP", "1"); err != nil {

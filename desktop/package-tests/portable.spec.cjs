@@ -41,6 +41,7 @@ test("Windows 실행 패키지의 실제 Go·SQLite·UI 부팅 및 재시작", a
     await expect(page.locator('input[type="password"]')).toHaveCount(0);
     expect(await page.evaluate(async () => { await document.fonts.ready; return [...document.fonts].map(({ family, status }) => ({ family, status })); })).toEqual([{ family: expect.stringMatching(/pretendard/i), status: "loaded" }]);
     expect(await api("/auth/status")).toEqual({ initialized: false, mode: "desktop" });
+    expect((await api("/health")).version).toBe(JSON.parse(fs.readFileSync(path.join(bundle, "resources/app/package.json"), "utf8")).version);
     expect(fs.existsSync(path.join(home, "data/artex.sqlite"))).toBe(true);
     const customSkill = path.join(home, "skills", "package-inspection.txt");
     fs.writeFileSync(customSkill, "사용자 스킬 파일 보존 검증");
@@ -60,8 +61,9 @@ test("Windows 실행 패키지의 실제 Go·SQLite·UI 부팅 및 재시작", a
     expect((await api("/auth/login", "POST", { username: "ARTEX", password: "패키지검증-12345678" })).token.split(".")).toHaveLength(3);
     await page.locator('a[href="/system/settings/"]').click();
     await expect(page.getByText("자동 업데이트 미구성", { exact: true })).toBeVisible();
-    await expect(page.getByText("실행 환경 미준비", { exact: true })).toBeVisible();
-    await expect(page.getByText("미준비", { exact: true })).toHaveCount(6);
+    await expect(page.getByText("일부 도구 사용 가능", { exact: true })).toBeVisible();
+    await expect(page.getByText("사용 가능", { exact: true })).toHaveCount(5);
+    await expect(page.getByText("실행 차단", { exact: true })).toHaveCount(1);
     await page.screenshot({ path: testInfo.outputPath("portable-restarted.png") });
     fs.writeFileSync(testInfo.outputPath("temporary-home.txt"), home);
   } finally {

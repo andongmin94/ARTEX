@@ -24,6 +24,9 @@ type mcpClient interface {
 func connectMCP(ctx context.Context, m *db.MCPServer) (mcpClient, error) {
 	switch m.Transport {
 	case "stdio":
+		if desktopToolSession() {
+			return connectManagedMCP(ctx, m)
+		}
 		if desktopToolsUnavailable() {
 			return nil, fmt.Errorf("%s", unmanagedDesktopToolsMessage)
 		}

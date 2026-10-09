@@ -2,8 +2,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { spawnSync } = require("node:child_process");
+const { prepareTools } = require("./prepare-tools.cjs");
+const { compareVersions } = require("../src/update.cjs");
 const root = path.resolve(__dirname, "../..");
 const resources = path.join(root, "desktop/resources");
+const appVersion = JSON.parse(fs.readFileSync(path.join(root, "desktop/package.json"), "utf8")).version;
+compareVersions(appVersion, "0.0.0");
 
 function run(command, args, cwd = root) {
   const result = spawnSync(command, args, { cwd, stdio: "inherit", windowsHide: true });
@@ -45,5 +49,8 @@ fs.copyFileSync(path.join(root, "web/src/lib/fonts/files/PretendardVariable.woff
 fs.copyFileSync(path.join(root, "LICENSE"), path.join(resources, "licenses/ARTEX-LICENSE.txt"));
 const go = process.env.ARTEX_GO ?? "go";
 if (process.env.ARTEX_GO && !path.isAbsolute(go)) throw new Error("ARTEX_GO는 개발 도구의 절대 경로여야 합니다");
-run(go, ["build", "-tags", "embedui", "-o", path.join(resources, process.platform === "win32" ? "artex.exe" : "artex"), "./cmd/artex"]);
-console.log("정적 UI·Go·기본 스킬·CSP·라이선스 빌드 완료");
+run(go, ["build", "-tags", "embedui", "-ldflags", `-X main.version=${appVersion}`, "-o", path.join(resources, process.platform === "win32" ? "artex.exe" : "artex"), "./cmd/artex"]);
+prepareTools().then(() => console.log("정적 UI·Go·기본 스킬·CSP·라이선스·도구 빌드 완료")).catch((error) => {
+  console.error(error.message);
+  process.exitCode = 1;
+});

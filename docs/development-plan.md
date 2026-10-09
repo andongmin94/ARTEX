@@ -4,7 +4,48 @@
 UI 기준: **[andongmin94/neobrutal-ui](https://github.com/andongmin94/neobrutal-ui)**. 기존 기능·한국어·화면 흐름을 유지하고 시각·상호작용을 통일한다.
 작업 기준: **main 단일 브랜치**. 최종 갱신: 2026-10-09.
 
-## 현재 단위 — 2026-10-09 인증·SQLite·Electron 회귀 검증
+## 현재 단위 — 2026-10-09 Windows 도구·백업·설치 연결
+
+main `e72ddd27a74f84f11473898f1b2ad00cc0e50715`의 미커밋 변경이 없는 상태에서 시작했다. 사용자 요청으로 남은 구현을 연결한다. 기존 한글화 시작 커밋과 원본 v0.3.15의 부모 관계는 바꾸지 않는다.
+
+- [x] 공식 고정 버전 Windows x64 도구 묶음, manifest·전체 파일 해시·추가 파일·링크 검증과 host PATH 우회 차단
+- [x] AppContainer 작업 폴더·네트워크 차단과 Job Object 자손 정리, PowerShell·ConPTY·Python·Node·Git·stdio MCP의 실제 Go 호출부 연결
+- [x] 정상 종료/강제 종료 WAL의 실제 modernc 백업·무결성·증거 참조 검사, 새 폴더 복원과 원본 보존
+- [x] 최종 Electron의 백업/복원·중복 종료·유지 작업 실패·새 홈 재시작 및 기존 업무/UI 회귀
+- [x] 최종 Windows 실행 패키지의 임시 설치·업그레이드·제거·실제 Go/UI 준비·기존 데이터 보존
+- [ ] 공인 Windows 코드 서명·운영 HTTPS 업데이트, macOS/Linux 실제 실행, 물리 IME/OS DPI와 전체 상태 수동 검수
+
+PowerShell 7.6.6·Python 3.14.8·Node.js 24.21.0·MinGit 2.56.0.2와 Chrome for Testing 153.0.8010.12를 공식 ZIP의 고정 SHA256으로 준비한다. 실제 셸·PTY·스크립트·MCP·Git은 지정 업무 폴더의 AppContainer 안에서 동작하며 일반 TCP와 호스트 인증 환경변수는 차단한다. 다른 작업/에이전트 세션의 터미널 접근은 거부한다. 정상 에이전트 반환에도 owner cleanup이 남은 프로세스를 종료한다.
+장시간 셸 작업은 명시적인 background 요청으로 시작한다. foreground timeout은 작업을 중지하며 자동으로 background로 바꾸지 않는다. 현재 SDK의 세션 알림은 `shell_read`/`shell_list`로 확인한다. stdio MCP는 앱 manifest key 또는 검증된 실행 파일 절대 경로만 받으며 host `npx` 자동 설치를 제거했다. 도구 목록 마지막 페이지의 cursor 생략과 stdin 쓰기/직렬화 대기 중 호출 취소를 검사했다. 현 SDK가 전달하지 못하는 image/audio/resource 콘텐츠는 text를 보존하고 명시적 오류로 반환한다.
+
+**전체 도구 준비 상태는 아직 `ready=false`다.** 셸/PTY/Python/Node/CLI는 `verified` + `available`, 브라우저는 파일만 `verified`이며 실행은 `blocked`다. Chromium의 실제 Windows AppContainer 시작에서 crashpad 네임드 파이프 접근 거부를 확인했다. 승인 대상 네트워크 중계도 준비되지 않아 브라우저 MCP를 활성화하지 않는다. 미지원 OS·누락·변조는 차단하며 호스트 실행을 fallback으로 추가하지 않는다.
+대안인 공식 Headless Shell 153.0.8010.12도 파일 해시를 대조한 뒤 별도 임시 AppContainer에서 검사했다. 버전 조회는 성공했으나 내부 sandbox를 유지한 DOM 실행은 `0x80000003`으로 실패했다. 공식 Chromium의 [Windows sandbox 초기화](https://raw.githubusercontent.com/chromium/chromium/153.0.8010.12/sandbox/policy/sandbox.cc)와 [alternate windowstation 코드](https://raw.githubusercontent.com/chromium/chromium/153.0.8010.12/sandbox/win/src/window.cc)는 관련 경로를 보여주지만 정확한 crash stack은 확보하지 않았다. Firefox의 자손 IPC도 실패했으며 종료0에 PNG가 없으면 실패로 처리했다. SID 전용 private windowstation의 일반 권한 생성도 거부됐다. `--no-sandbox`의 진단 성공을 제품에 적용하거나 기존 WinSta0 ACL·네트워크 capability를 바꾸지 않았다. 다음 브라우저 연결에는 내부 sandbox와 AppContainer의 desktop·IPC를 함께 유지하는 실행 경로가 필요하다.
+기존 Electron 44.6.0도 별도 임시 worker로 복제해 같은 capability0 AppContainer/Job과 `--enable-sandbox`에서 검사했다. JS 시작 전에 `0x80000003`으로 실패했다. 같은 스크립트의 일반 호스트 대조는 DOM·렌더러 Node 접근 부재·PNG 생성에 성공했으나 제품 fallback으로 사용하지 않았다. 종료 후 probe의 Go/Electron 프로세스가 남지 않았으며 공유 소스/자원과 실제 앱의 프록시 포트는 변경하지 않았다.
+
+백업은 Go를 정상 중지하고 데이터 홈 OS 잠금을 확보한 뒤 실제 SQLite 백업 기능과 설정·JWT 키·스킬·증거/본문·구독 보호 저장을 함께 검증한다. 자동 백업은 하루 첫 정상 종료에 데이터 홈 밖에 새 폴더를 만든다. 복원은 새 홈만 만들고 기존 홈을 덮어쓰지 않는다. Go의 손상·경로 이탈·링크·증거 누락 거부, 동일 parsed manifest 사용, 보호 ACL 및 no-replace 게시를 검사했다. UI 복원 중 종료와 백업 프로세스 timeout은 자식 종료를 기다린다.
+
+설치·업데이트는 버전별 폴더와 실제 ready 확인, shared mutex, 고정 RSA 배포 서명·파일 목록·SHA256·Authenticode를 사용한다. signed native Host는 자신의 Windows 신뢰/고정 서명자와 내장 script SHA를 확인한 뒤 프로세스 범위의 PowerShell 정책을 적용한다. 설치 준비 ACK 뒤 데이터 백업이 성공해야 게시 permit을 남기고 종료한다. 백업 실패/취소에는 permit 회수와 native Host의 Job 자손 종료를 확인한다. ready 실패 버전의 재설치는 소유한 비활성 버전을 설치 루트 밖의 고유 sibling에 보존한다. 제거 후 같은 경로 재설치도 검사한다. 개발 설치물은 자동 업데이트 미구성이며 정식 배포가 아니다. 공인 인증서·운영 배포 주소·다른 OS 환경은 현재 준비돼 있지 않다.
+
+### 실제 검사와 범위
+
+| 검사 | 결과와 범위 |
+| --- | --- |
+| 전체 native Go | Go 1.26.3·modernc 1.52.0·norma 0.4.3·CGO=0의 `go test -json -p 1 -count=1 -timeout 180s ./...` 종료0, 149.568초. 테스트가 있는 21개 패키지, 최상위861·하위 포함1,378개 통과·실패0·외부 모델 설정을 요구하는 `TestLiveContextReview`만 skip1. `report`는 테스트 파일이 없다. 이후 MCP 취소/지원 콘텐츠 보완의 공식 Node 집중3·하위2 및 `go vet ./server`를 별도 통과했다. |
+| Windows 도구 | 최종 공식 묶음 native 상위13·하위18, server 집중6·하위2, agent owner cleanup1 통과·실패/skip0. 실제 PowerShell·Unicode ConPTY·Python·Node·Git·stdio MCP, 외부 파일/TCP/환경변수 거부, 취소/Go 강제 종료의 detached 자손 정리와 Windows 8.3/긴 경로12개 관계 거부·정상 alias의 같은 격리 ID 공유·junction 거부를 확인했다. 영향 패키지 vet도 통과했다. Linux/macOS 3개 패키지 cross-build는 코드 빌드이며 다른 OS의 실행 검사가 아니다. |
+| 백업·복원 | Go backup 상위10·하위8, cmd7, Node4 통과. 실제 modernc 정상/강제 종료 WAL의 새 백업·복원·비밀번호/JWT/증거/스킬 보존, 누락·손상·경로 이탈·링크·쓰기 실패·동시 목적지·manifest 교체 거부를 검사했다. Node timeout/UTF-8 제어 fixture는 실제 DB 검사와 구분한다. |
+| 웹·정적 검사 | 타입·한국어·입력·unit8, 새 설정 카드/desktop 타입 Biome, `go vet ./...` 및 이후 영향 패키지 vet 통과. Go32개 gofmt·JS18개/PowerShell3개 문법·diff, 문서4개 코드 블록/로컬 링크10개 검사 통과. 의존성/lockfile/수동 전용 workflow를 유지했다. |
+| 실제 앱/UI | 백업 Electron1개 15.0초 및 나머지 Electron/Chrome5개 1.4분 통과·실패0·skip0. 실제 백업 IPC·새 홈 재실행·중복 종료 대기·복원 실패 후 Go 종료, 기존 업무/증거/보관/인증/재시작·21페이지×2모드×2폭과 IPC 격리를 확인했다. `app.relaunch` 호출은 제어하고 새 프로세스를 실제 실행했다. 구독 화면/모델/일부 장애는 명시적 로컬 fixture이며 이번에 실계정 OAuth·외부 추론을 반복하지 않았다. |
+| 빌드·실행 패키지 | 31페이지 export·최종 embedui Go·CSP·글꼴/스킬/공식 도구/라이선스·Windows 실행 패키지·서명되지 않은 개발 Setup 빌드 통과. 최종 `test:package` 1개 8.4초 통과·실패0·skip0. 실제 SQLite/UI 부팅·재시작·비밀번호/스킬 보존, 사용 가능 도구5개·차단 브라우저1개와 Go health/Electron 패키지 버전 일치를 확인했다. Go 버전은 빌드 시 desktop/package.json에서 주입하며 새 릴리스 태그를 만들지 않는다. |
+| 배포 집중 검사 | 최종 Node9개 28.4초 통과·실패0·skip0. 실제 native Setup/Host·mutex·게시 취소·준비 실패 rollback·동일 버전 재시도·제거 후 같은 경로 재설치, 8.3/긴 소유권 경로와 실제 실행 중 프로세스의 설치/제거 거부를 확인했다. 일부 서명/취소 검사는 명시적 로컬 키/제어 fixture이며 공인 서명·운영 HTTPS 업데이트 성공 증거가 아니다. |
+| 실제 설치 앱 | 최종 `test:installed` 1개 266.2초 통과·실패0·skip0. 임시 `--no-registration` native Setup 설치→실제 Electron·Go 2.2.0·SQLite와 업무 화면→기존 비밀번호의 실제 로그인 JWT/스킬 보존→업그레이드 healthy 확인→제거 후 DB/스킬 보존을 확인했다. 2.2.1은 동일 Go/앱 코드의 package.json 메타데이터만 바꾼 fixture이며 새 코드 릴리스나 운영 자동 업데이트 검사가 아니다. 실제 시작 메뉴/사용자 제거 등록은 변경하지 않았다. |
+
+초기 전체 Go의 localization 검사는 동시 작성 중 Go 파일의 구문 오류로 실패했다. 소스 동결 후 위 전체 검사를 통과했다. 백업 Electron fixture의 main-process 모듈 접근과 npm의 검사 인수 전달을 수정했다. 첫 실제 설치 검사에서는 Windows 8.3/긴 경로의 문자열 비교가 정상 설치를 거부해 ready 뒤 실패 화면으로 이동하는 제품 결함을 발견했다. 설치 소유권·helper root·실행 중 프로세스와 도구 폴더 관계를 canonical 경로로 검사하도록 보완하고 기존 reparse 차단을 유지했다. 실패 로그와 최종 JSON·PNG·trace·임시 DB는 로컬에 보존한다. 이전 빌드/패키지는 별도 로컬 캐시에 보존했다.
+
+race(C 컴파일러 없음), 공인 코드 서명·운영 HTTPS 업데이트, 실제 시작 메뉴/제거 등록의 OS 통합, macOS/Linux 실제 실행, 물리 IME/OS DPI와 모든 데이터/오류/승인 상태 수동 검수는 미실행이다. 다음 구현 시작점은 **Chromium의 Windows 격리 실행과 승인 대상 네트워크 중계를 유지하는 브라우저 연결**이다. 위 외부 환경 검증과 구분한다.
+Actions 실행/재실행·원격 artifact 업로드·태그·배포는 하지 않는다. 원격 반영 SHA는 완료 보고와 이 단위의 Git 커밋에서 확인한다.
+변경 범위는 `internal/toolruntime`, `internal/backup`, `server/runtime_*`와 도구 조립/사용자 도구, `cmd/artex`·`db/snapshot.go`, Electron의 실행/백업/업데이트·패키징/설치 스크립트·관련 검사, 설정 카드/desktop 타입, README 두 개·아키텍처·이 계획이다.
+
+## 이전 단위 — 2026-10-09 인증·SQLite·Electron 회귀 검증
 
 Electron 자동 진입과 일반 브라우저 비밀번호 흐름의 인증 보호를 확인하고, SQLite 및 실제 데스크톱 회귀 검사를 수행했다.
 아래 결과는 해당 날짜에 실제 수행한 검사 기록이며 전체 제품 출시나 미완료 도구·설치 기능의 완료를 뜻하지 않는다.
@@ -254,7 +295,7 @@ UI 지침과 최신 지정 원본을 읽었고 원본 SHA b4da2463fe710a77bf464c
 - [x] 공통 Mono 색상 토큰/Pretendard 단일 로컬 글꼴/컨트롤/표/오버레이와 호출부 연결, MIT/OFL/기존 저작권 보존.
 - [ ] 셸/전체 업무 화면의 기본 21개 페이지 ×2모드×2폭 검사는 통과. 모든 데이터·오류·승인 상태의 시각 검수는 미완료.
 - [x] Electron 메인/렌더러 분리, lockfile/Go/정적 UI, 단일 인스턴스/userData/ready/장애/정상 종료.
-- [ ] 앱 세션/Origin/Host/IPC/CSP/탐색·부모 EOF 검사는 통과. OS 강제 kill·자손 정리는 M4와 연결해 추가 검증.
+- [x] 앱 세션/Origin/Host/IPC/CSP/탐색·부모 EOF와 Windows Go 강제 kill·관리된 도구의 detached 자손 정리 검사. 다른 OS의 자손 정리는 별도 미검증.
 - [x] 서명되지 않은 Windows 실행 패키지의 실제 resources/userData/Go/SQLite 부팅·재실행·사용자 스킬 보존·라이선스 검사.
 - [x] 실제 Electron의 21개 페이지 × 라이트/다크 × 1280/1440px, 작업 상세 10개 탭, 취약점 증거, 키보드·DOM composition·125/150% Electron 확대·축소 모션 검사.
 - [ ] 물리 Windows IME·OS DPI·모든 데이터/오류/승인/오버레이 상태의 수동 시각·접근성 검수. DOM composition/Electron 확대 검사와 구분한다.
@@ -263,11 +304,14 @@ UI 지침과 최신 지정 원본을 읽었고 원본 SHA b4da2463fe710a77bf464c
 
 ## M4/M5. 도구·신뢰성·배포
 
-- [ ] OS별 셸/PTY/Python/Node/브라우저/MCP/CLI, 전용 경로·버전·출처·해시·라이선스·복구/준비 상태 차단.
-- [ ] 권한/작업 공간/네트워크/자손 프로세스, 다중 기록 부하, kill/디스크 오류/손상, 일관된 DB+증거 백업/복원.
+- [x] Windows x64 셸/PTY/Python/Node/Git/stdio MCP, 공식 경로·버전·출처·전체 해시·라이선스·누락/변조/미지원 준비 상태 차단.
+- [ ] Windows 브라우저 내부 IPC·승인 대상 네트워크 중계와 브라우저 MCP의 실제 호출부 연결. 전체 도구 `ready=false`를 유지한다.
+- [x] Windows AppContainer의 작업 공간/네트워크/인증 환경변수 차단, Job 자손 정리·kill·손상·쓰기 실패와 일관된 DB+증거 백업/새 폴더 복원.
+- [ ] 전체 다중 기록 부하와 모든 디스크 오류, macOS/Linux 도구/PTY/네트워크/자손 격리의 실제 실행.
 - [x] Go 자체 업데이트/시작 스크립트/Docker/PG 안내·의존성·구 배포 workflow 제거. 사용자 데이터 보존. Electron 자동 업데이트 배포는 별도 미완료.
 - [x] README와 개발 안내를 현재 Electron/SQLite 빌드·검사·데이터 경로·미완료 상태로 교체.
-- [ ] Windows 설치/서명/업데이트, macOS/Linux 실제 지원 검증, 전체 스타일 확인.
+- [x] 최종 Windows 임시 설치·업그레이드·제거와 실제 Go/UI 준비·기존 데이터 보존. 2.2.1은 동일 코드의 메타데이터 검사 fixture.
+- [ ] 공인 Windows 코드 서명·운영 HTTPS 업데이트, macOS/Linux 실제 지원 검증, 전체 스타일/접근성 수동 확인.
 
 ## 이전 단위의 로컬 검증 — 2026-10-07 SQLite/Electron 연결
 

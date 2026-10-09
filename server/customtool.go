@@ -161,6 +161,14 @@ func (s *Server) pgTestCustomTool(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 	defer cancel()
 	tc := &actool.ToolContext{WorkingDir: s.m.dir} // run in the project dir, like a real call
+	if desktopToolSession() {
+		work, err := s.managedEditorWorkspace()
+		if err != nil {
+			writeErr(w, http.StatusConflict, err.Error())
+			return
+		}
+		tc.WorkingDir = work
+	}
 	var res actool.Result
 	switch req.Kind {
 	case "command":
@@ -185,6 +193,10 @@ const settingPythonInterp = "python_interpreter"
 
 // detectPython finds a python interpreter absolute path (python3 preferred).
 func detectPython() string {
+	if desktopToolSession() {
+		p, _ := managedPythonPath()
+		return p
+	}
 	for _, c := range []string{"python3", "python"} {
 		if p, err := exec.LookPath(c); err == nil {
 			// Windows App Execution Aliases can exist without an interpreter and
@@ -206,6 +218,9 @@ func detectPython() string {
 // pythonInterpreter resolves the interpreter: user-set > stored auto-detect > live
 // detect. "" only when truly none found.
 func (s *Server) pythonInterpreter() (string, error) {
+	if desktopToolSession() {
+		return managedPythonPath()
+	}
 	v, ok, err := s.m.pg.GetSetting(settingPythonInterp)
 	if err != nil {
 		return "", fmt.Errorf("Python 설정 읽기: %w", err)
@@ -219,7 +234,7 @@ func (s *Server) pythonInterpreter() (string, error) {
 // seedPythonInterpreter stores the auto-detected interpreter on startup if unset
 // (never clobbers a user-set value).
 func (s *Server) seedPythonInterpreter() error {
-	if desktopToolsUnavailable() {
+	if desktopToolSession() {
 		return nil
 	}
 	v, ok, err := s.m.pg.GetSetting(settingPythonInterp)
@@ -371,6 +386,9 @@ func (s *Server) runCommandTool(ctx context.Context, execRaw json.RawMessage, pa
 		ctx, cancel = context.WithTimeout(ctx, timeoutOr(spec.TimeoutMs, 120000))
 		defer cancel()
 	}
+	if desktopToolSession() {
+		return runManagedBash(ctx, bashIn, tc)
+	}
 	return actool.NewBash().Call(ctx, bashIn, tc)
 }
 
@@ -384,6 +402,9 @@ func (s *Server) runScriptTool(ctx context.Context, key string, execRaw json.Raw
 	_ = json.Unmarshal(execRaw, &spec)
 	if strings.TrimSpace(spec.Code) == "" {
 		return actool.Errorf("script code가 비어 있습니다"), nil
+	}
+	if desktopToolSession() {
+		return runManagedPython(ctx, key, spec.Code, params, tc, timeoutOr(spec.TimeoutMs, 120000))
 	}
 	interp, err := s.pythonInterpreter()
 	if err != nil {

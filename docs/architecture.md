@@ -43,20 +43,27 @@ Electron은 `app.getPath('userData')` 아래의 앱 전용 디렉터리를 절�
 홈에 설정이 없다는 이유로 CWD의 다른 `config.json`을 선택하지 않는다.
 `ARTEX_CONFIG`/`ARTEX_SKILL_DIR`은 명시적 override이며, Electron은 부모 셸에서 상속한 임의 override를 제거하고 자기가 관리하는 값만 전달해야 한다.
 
-최종 배치 예정:
+현재 Windows 배치:
 
 ```text
 userData/
   config.json
+  jwt.key
   data/artex.sqlite
   data/<기존 작업·증거·트래픽 구조>
+  data/tool-workspaces/<stdio MCP 작업 폴더>
   skills/
-  tools/<고정 버전의 런타임·도구>
-  logs/
-  backups/
+  chatgpt/credentials/
+  .desktop-backup.json
+
+앱 자원/resources/artex/
+  artex.exe
+  tools/<공식 고정 버전 도구·manifest·라이선스>
+
+userData의 부모/ARTEX-backups/<홈 식별자>/<새 백업 폴더>/
 ```
 
-업무 DB는 data/artex.sqlite를 사용한다. 도구/로그/자동 백업 폴더가 문서에 있다고 구현된 것으로 간주하지 않는다.
+업무 DB는 data/artex.sqlite를 사용한다. 도구 실행 폴더는 Go가 검증한 업무 폴더이며 도구 자체는 앱 자원에 둔다. 자동 백업은 데이터 홈 밖에 새 폴더로 게시하며 기존 백업을 삭제하지 않는다. 새 폴더 복원 뒤 실행 홈 선택은 최초 홈의 `.active-home.json`에 저장한다.
 기본 스킬은 패키지 자원에서 설치하되 사용자 수정 파일을 무조건 덮어쓰지 않는다.
 
 부모는 Go를 다음 계약으로 시작한다.
@@ -108,6 +115,7 @@ WAL, 연결별 foreign_keys와 busy_timeout을 검증한다. 단일 연결에 PR
 
 백업은 실행 중 `.sqlite` 파일 하나를 복사하는 방식이 아니다.
 드라이버가 제공하는 일관된 백업 기능을 먼저 확인하고, DB와 외부 증거 파일을 함께 복원 검증한다.
+현재 백업 CLI는 데이터 홈 OS 잠금 아래 modernc의 native backup을 사용한다. Electron은 Go를 정상 중지한 뒤 동일 실행 파일의 CLI로 백업하고 다시 시작한다. 복원은 read-only 무결성·외래키·앱 스키마·파일 해시·증거 참조를 검사해 존재하지 않는 새 홈에만 게시한다.
 네트워크 공유/동기화 중인 폴더를 live WAL DB의 기본 위치로 사용하지 않는다.
 
 ## 5. Electron과 도구 보안
@@ -121,9 +129,10 @@ WAL, 연결별 foreign_keys와 busy_timeout을 검증한다. 단일 연결에 PR
 Electron의 Node 런타임이 외부 MCP용 일반 `node`/`npm` 명령을 제공한다고 가정하지 않는다.
 Windows의 셸/PTY/프로세스 트리와 Linux 명령 의존을 별도 검증한다. 필수 도구 누락은 기능 실행 전 명확히 표시한다.
 렌더러 sandbox는 Go가 실행하는 외부 명령의 sandbox가 아니다. 별도 권한·작업 공간·네트워크 제한이 필요하다.
+Windows 도구는 capability 없는 AppContainer와 프로세스 수·메모리 제한 및 KILL_ON_JOB_CLOSE Job Object를 사용한다. 지정 작업 폴더의 쓰기 권한만 부여하고 종료 후 SID ACL을 회수한다. 셸/PTY/Python/Node/Git/stdio MCP는 실제 호출부에 연결했으며 브라우저 내부 IPC·승인 대상 네트워크 중계와 다른 OS의 실행 격리는 미완료 상태로 차단한다.
 
 최종 업데이트 소유자는 Electron 하나다. 서명/업데이트/Go/정적 UI가 같은 배포 버전으로 움직인다.
-기존 Go 자체 업데이트 API와 스크립트 경로는 제거했다. Electron의 서명·업데이트 배포는 아직 구현하지 않았다.
+기존 Go 자체 업데이트 API와 스크립트 경로는 제거했다. Windows 설치/업데이트 코드는 버전별 설치·고정 RSA 배포 서명·파일 SHA256·Authenticode·설치 준비 ACK·데이터 사전 백업·실제 ready 확인 후 실행 포인터 확정을 연결한다. 개발 설치물은 자동 업데이트 미구성이며 공인 서명/운영 배포와 다른 OS 실제 실행은 별도 검증한다.
 
 ## 공식 참조
 
@@ -142,4 +151,4 @@ Windows 드라이브 경로는 file URI로 바꾸며 UNC/장치 경로를 허용
 연결별 foreign_keys는 드라이버 DSN, busy_timeout은 연결 훅에서 설정한다. WAL 초기화는 취소 가능한 제한 시간 안에서 잠금 오류만 재시도한다. 부모 폴더는 소유자가 준비한다.
 새 파일은 0600으로 만들고 기존 파일을 자르거나 손상 데이터를 초기화하지 않는다. Windows ACL이나 악성 로컬 사용자의 경로 경합까지 격리하는 API는 아니다.
 호출자가 풀/트랜잭션/쓰기 조정/스키마를 소유한다. 현재 트래픽의 wmu와 트랜잭션 경계를 유지한다.
-업무 DB는 OpenImmediate의 쓰기 트랜잭션을 사용한다. 업무·트래픽·증거 호출자와 실제 다중 풀/취소/재열기/보관 복원 검사는 지정 modernc로 통과했다. 전체 부하·자동 백업·OS 격리 검증은 별도다.
+업무 DB는 OpenImmediate의 쓰기 트랜잭션을 사용한다. 업무·트래픽·증거 호출자와 실제 다중 풀/취소/재열기/보관 복원 및 Windows의 일관된 백업·새 홈 복원 검사는 지정 modernc로 통과했다. 전체 부하·다른 OS 격리·운영 배포 검증은 별도다.

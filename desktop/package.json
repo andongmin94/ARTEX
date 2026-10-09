@@ -7,6 +7,11 @@
     "start": "electron .",
     "build": "node scripts/build.cjs",
     "package": "node scripts/package.cjs",
+    "package:installer": "node scripts/package.cjs --installer",
+    "package:signed": "node scripts/package.cjs --signed",
+    "test:distribution": "node --test distribution-tests/*.test.cjs",
+    "test:backup": "node --test backup-tests/*.test.cjs",
+    "test:installed": "node --test distribution-tests/installed.integration.cjs",
     "test:electron": "playwright test",
     "test:package": "playwright test --config playwright.package.config.cjs"
   },

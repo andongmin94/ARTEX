@@ -35,7 +35,7 @@ const test = base.extend({
       expect(diagnostics.status).toMatchObject({ state: "ready" });
       await page.waitForURL(/\/function\/tasks\/?$/);
       await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
-      expect(await page.evaluate(() => Object.keys(window.artexDesktop).sort())).toEqual(["openChatGPTLogin", "openChatGPTUsage", "quit", "retry", "status"]);
+      expect(await page.evaluate(() => Object.keys(window.artexDesktop).sort())).toEqual(["backupStatus","checkUpdate","createBackup","downloadUpdate","installUpdate","openChatGPTLogin","openChatGPTUsage","openRestoredHome","quit","restoreBackup","retry","setAutomaticBackup","status","updateStatus"]);
       expect(await electron.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences())).toMatchObject({ sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true });
 
       // The only stub in the real API test is this OS-browser boundary. It never
@@ -159,6 +159,9 @@ test("실제 Electron·Go ChatGPT 연결 시작/취소와 인증·IPC 경계 (OA
     expect(await foreign.evaluate(() => typeof window.artexDesktop.openChatGPTLogin)).toBe("function");
     await expect(foreign.evaluate(() => window.artexDesktop.openChatGPTLogin("https://auth.openai.com/api/accounts/authorize?client_id=fixture"))).rejects.toThrow(/허용되지 않은 IPC 호출자/);
     await expect(foreign.evaluate(() => window.artexDesktop.openChatGPTUsage())).rejects.toThrow(/허용되지 않은 IPC 호출자/);
+    for (const method of ["updateStatus", "checkUpdate", "downloadUpdate", "installUpdate"]) {
+      await expect(foreign.evaluate((method) => window.artexDesktop[method](), method)).rejects.toThrow(/허용되지 않은 IPC 호출자/);
+    }
   } finally {
     await electron.evaluate(() => { globalThis.__chatGPTForeignWindow.destroy(); delete globalThis.__chatGPTForeignWindow; });
   }

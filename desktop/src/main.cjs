@@ -1,8 +1,10 @@
-const { app, BrowserWindow, ipcMain, protocol, session, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, protocol, session, shell } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 const { randomBytes } = require("node:crypto");
 const { Backend } = require("./backend.cjs");
+const { DesktopBackup } = require("./backup.cjs");
+const { DesktopUpdater } = require("./update.cjs");
 
 protocol.registerSchemesAsPrivileged([{ scheme: "artex", privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
@@ -11,6 +13,14 @@ if (homeArg) {
   const home = homeArg.slice("--artex-home=".length);
   if (!path.isAbsolute(home)) throw new Error("데이터 경로는 절대 경로여야 합니다");
   app.setPath("userData", home);
+}
+const launchHome = app.getPath("userData");
+const activeHomeFile = path.join(launchHome, ".active-home.json");
+if (fs.existsSync(activeHomeFile)) {
+  if (!fs.lstatSync(activeHomeFile).isFile()) throw new Error("활성 데이터 폴더 설정이 일반 파일이 아닙니다");
+  const active = JSON.parse(fs.readFileSync(activeHomeFile, "utf8"));
+  if (active.schema !== 1 || typeof active.home !== "string" || !path.isAbsolute(active.home) || !fs.lstatSync(active.home).isDirectory()) throw new Error("활성 데이터 폴더를 확인할 수 없습니다");
+  app.setPath("userData", active.home);
 }
 
 const locked = app.requestSingleInstanceLock();
@@ -21,6 +31,10 @@ let backend;
 let origin = null;
 let backendSession = null;
 let quitting = false;
+let cleanupComplete = false;
+let backups;
+let updater;
+let maintenance;
 let status = { state: "starting", message: "로컬 저장소와 백엔드를 준비하는 중…" };
 const resourceRoot = app.isPackaged ? path.join(process.resourcesPath, "artex") : path.join(__dirname, "..", "resources");
 const trusted = (url) => {
@@ -35,16 +49,18 @@ async function failure(error) {
   if (window && !window.isDestroyed()) await window.loadURL("artex://startup/");
 }
 
-async function startBackend() {
+async function startBackend(nextPath = "/") {
   if (status.state === "ready") return;
   status = { state: "starting", message: "로컬 저장소와 백엔드를 준비하는 중…" };
-  await backend?.stop();
   try {
+    await backend?.stop();
     const home = app.getPath("userData");
     fs.mkdirSync(home, { recursive: true });
+    if (!backups) backups = new DesktopBackup({ executable: path.join(resourceRoot, process.platform === "win32" ? "artex.exe" : "artex"), home });
+    if (!updater) updater = new DesktopUpdater({ resourceRoot, executable: app.getPath("exe"), currentVersion: app.getVersion(), home });
     fs.cpSync(path.join(resourceRoot, "skills"), path.join(home, "skills"), { recursive: true, force: false, errorOnExist: false });
     backendSession = randomBytes(32).toString("hex");
-    backend = new Backend({ executable: path.join(resourceRoot, process.platform === "win32" ? "artex.exe" : "artex"), home, sessionToken: backendSession, onFailure: failure });
+    backend = new Backend({ executable: path.join(resourceRoot, process.platform === "win32" ? "artex.exe" : "artex"), home, sessionToken: backendSession, toolRoot: path.join(resourceRoot, "tools"), onFailure: failure });
     const ready = await backend.start();
     if (quitting) return;
     origin = ready.url;
@@ -56,7 +72,7 @@ async function startBackend() {
       if (mainFrame && new URL(url).origin === uiOrigin && new URL(url).pathname !== "/") redirected = true;
     };
     window.webContents.on("did-start-navigation", navigation);
-    try { await window.loadURL(uiOrigin); }
+    try { await window.loadURL(new URL(nextPath, uiOrigin).href); }
     catch (error) {
       const current = window.webContents.getURL();
       process.stderr.write(`[desktop] UI 탐색 ${error.code ?? error.errno}: ${error.message}; 현재 URL=${current}\n`);
@@ -65,7 +81,29 @@ async function startBackend() {
         backend === readyBackend && origin === uiOrigin && status.state === "ready" && new URL(current).origin === uiOrigin;
       if (!authNavigation) throw error;
     } finally { window.webContents.removeListener("did-start-navigation", navigation); }
+    updater?.confirmReady();
   } catch (error) { await failure(error); }
+}
+
+async function withStoppedBackend(message, action) {
+  if (maintenance || quitting) throw new Error("다른 앱 유지 작업이 진행 중입니다");
+  const nextPath = new URL(window.webContents.getURL()).pathname;
+  status = { state: "maintenance", message };
+  origin = null;
+  backendSession = null;
+  maintenance = (async () => {
+    try {
+      await window.loadURL("artex://startup/");
+      await backend.stop();
+      try { return await action(); }
+      finally { if (!quitting) await startBackend(nextPath); }
+    } catch (error) {
+      if (!quitting && status.state === "maintenance") await failure(error);
+      throw error;
+    }
+  })();
+  try { return await maintenance; }
+  finally { maintenance = null; }
 }
 
 function validateSender(event) {
@@ -90,13 +128,24 @@ function validateChatGPTLoginURL(value) {
 app.on("second-instance", () => { if (window) { if (window.isMinimized()) window.restore(); window.focus(); } });
 app.on("window-all-closed", () => app.quit());
 app.on("before-quit", (event) => {
-  if (quitting) return;
+  if (cleanupComplete) return;
   event.preventDefault();
+  if (quitting) return;
   quitting = true;
-  void Promise.resolve(backend?.stop()).finally(() => app.quit());
+  void (async () => {
+    try { await maintenance; }
+    catch (error) { process.stderr.write(`종료 전 유지 작업 실패: ${error.message}\n`); }
+    try {
+      await backend?.stop();
+      await backups?.onQuit();
+    } catch (error) { process.stderr.write(`종료 시 백업/정리 실패: ${error.message}\n`); }
+    finally { cleanupComplete = true; app.quit(); }
+  })();
 });
 
 if (locked) app.whenReady().then(async () => {
+  const home = app.getPath("userData");
+  fs.mkdirSync(home, { recursive: true });
   protocol.handle("artex", (request) => {
     if (request.url === "artex://startup/fonts/PretendardVariable.woff2") return new Response(fs.readFileSync(path.join(resourceRoot, "fonts/PretendardVariable.woff2")), { headers: { "content-type": "font/woff2" } });
     const file = request.url === "artex://startup/" ? "startup.html" : request.url === "artex://startup/startup.js" ? "startup.js" : null;
@@ -133,6 +182,62 @@ if (locked) app.whenReady().then(async () => {
   ipcMain.handle("desktop:status", (event) => { validateSender(event); return status; });
   ipcMain.handle("desktop:retry", async (event) => { validateSender(event); if (status.state === "failed") await startBackend(); });
   ipcMain.handle("desktop:quit", (event) => { validateSender(event); app.quit(); });
+  ipcMain.handle("desktop:backup-status", (event) => { validateReadySender(event); return backups.status(); });
+  ipcMain.handle("desktop:backup-automatic", (event, value) => { validateReadySender(event); return backups.setAutomatic(value); });
+  ipcMain.handle("desktop:backup-create", async (event) => {
+    validateReadySender(event);
+    const result = await dialog.showOpenDialog(window, { title: "백업을 저장할 폴더 선택", properties: ["openDirectory", "createDirectory"] });
+    if (result.canceled) return { cancelled: true };
+    validateReadySender(event);
+    return withStoppedBackend("백엔드를 종료하고 DB와 증거의 백업을 검증하는 중…", () => backups.create(result.filePaths[0]));
+  });
+  ipcMain.handle("desktop:backup-restore", async (event) => {
+    validateReadySender(event);
+    if (maintenance) throw new Error("다른 앱 유지 작업이 진행 중입니다");
+    const source = await dialog.showOpenDialog(window, { title: "검증할 ARTEX 백업 폴더 선택", properties: ["openDirectory"] });
+    if (source.canceled) return { cancelled: true };
+    const destination = await dialog.showOpenDialog(window, { title: "새 복원 폴더를 만들 위치 선택", properties: ["openDirectory", "createDirectory"] });
+    if (destination.canceled) return { cancelled: true };
+    validateReadySender(event);
+    if (maintenance) throw new Error("다른 앱 유지 작업이 진행 중입니다");
+    maintenance = backups.restore(source.filePaths[0], destination.filePaths[0]);
+    try { return await maintenance; }
+    finally { maintenance = null; }
+  });
+  ipcMain.handle("desktop:backup-open-restored", async (event) => {
+    validateReadySender(event);
+    if (maintenance) throw new Error("다른 앱 유지 작업이 진행 중입니다");
+    const home = backups.status().restoredHome;
+    if (!home || !path.isAbsolute(home) || !fs.lstatSync(home).isDirectory()) throw new Error("검증된 복원 폴더가 없습니다");
+    const temporary = `${activeHomeFile}.${randomBytes(8).toString("hex")}.tmp`;
+    const file = fs.openSync(temporary, "wx", 0o600);
+    try { fs.writeFileSync(file, JSON.stringify({ schema: 1, home }) + "\n"); fs.fsyncSync(file); }
+    finally { fs.closeSync(file); }
+    fs.renameSync(temporary, activeHomeFile);
+    app.relaunch();
+    app.quit();
+  });
+  ipcMain.handle("desktop:update-status", (event) => { validateReadySender(event); return updater.status(); });
+  ipcMain.handle("desktop:update-check", (event) => { validateReadySender(event); return updater.check(); });
+  ipcMain.handle("desktop:update-download", (event) => { validateReadySender(event); return updater.download(); });
+  ipcMain.handle("desktop:update-install", async (event) => {
+    validateReadySender(event);
+    if (maintenance || quitting) throw new Error("다른 앱 유지 작업이 진행 중입니다");
+    maintenance = updater.install({
+      stopBackend: async () => {
+        status = { state: "maintenance", message: "업데이트 전에 현재 데이터의 백업을 검증하는 중…" };
+        origin = null;
+        backendSession = null;
+        await window.loadURL("artex://startup/");
+        await backend.stop();
+        await backups.create();
+      },
+      quit: () => app.quit(),
+    });
+    try { await maintenance; }
+    catch (error) { if (!quitting) await startBackend("/system/settings/"); throw error; }
+    finally { maintenance = null; }
+  });
   ipcMain.handle("desktop:chatgpt-login", async (event, url) => {
     validateReadySender(event);
     try { await shell.openExternal(validateChatGPTLoginURL(url)); }

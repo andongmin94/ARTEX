@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -214,6 +215,16 @@ func seedPrompts(pg *db.DB) error {
 // flag and, if kept, wrapped so the model sees the DB-overridden description/schema
 // and缺省入参 get injected. MCP/skill/host tools have no row and pass through.
 func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) error {
+	if desktopToolSession() {
+		if err := os.Setenv("NORMA_DISABLE_RIPGREP", "1"); err != nil {
+			return fmt.Errorf("앱 내부 검색 설정: %w", err)
+		}
+		// The SDK appends Monitor/task controls after host resolution and would
+		// otherwise bypass the managed executor. Inject our bound family below.
+		if err := os.Setenv("AGENT_CORE_DISABLE_BACKGROUND_TASKS", "1"); err != nil {
+			return fmt.Errorf("앱 내부 백그라운드 실행 설정: %w", err)
+		}
+	}
 	agent.FindingTrafficBindingEnabled = func() bool { return pg.GetBool(settingAgentTrafficBinding, false) }
 	// Seed the built-in domain tools (first-insert only; DO NOTHING preserves edits).
 	// No startup prune: rows we didn't seed are left alone so future user-defined
@@ -306,7 +317,7 @@ func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) error {
 				shellHints = append(shellHints, "- "+row.Key+": "+row.Description)
 			}
 		}
-		if len(shellHints) > 0 && !desktopToolsUnavailable() {
+		if len(shellHints) > 0 && !desktopToolSession() {
 			note := "\n\n다음 도구는 Bash 환경에 설치되어 있어 Bash로 직접 호출할 수 있습니다:\n" + strings.Join(shellHints, "\n")
 			for i, t := range out {
 				if t.Name() == "Bash" {
@@ -330,10 +341,16 @@ func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) error {
 				}
 			}
 		}
-		if desktopToolsUnavailable() {
+		if desktopToolSession() {
+			out = append(out, actool.NewMonitor(), actool.NewTaskOutput(), actool.NewTaskStop(), actool.NewTaskList())
+			managed := newManagedToolSessions(ctx)
 			for index, tool := range out {
 				if externalProcessTool(tool.Name()) {
-					out[index] = unavailableDesktopTool{CoreTool: tool}
+					if desktopToolsUnavailable() {
+						out[index] = unavailableDesktopTool{CoreTool: tool}
+					} else {
+						out[index] = managedDesktopTool{CoreTool: tool, sessions: managed}
+					}
 				}
 			}
 		}

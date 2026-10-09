@@ -18,6 +18,19 @@ const labels = {
   cli: "명령 도구",
 };
 
+function preparationLabel(status: RuntimeToolsStatus) {
+  if (status.ready) return "실행 환경 준비됨";
+  if (status.components.some((component) => component.execution === "available")) return "일부 도구 사용 가능";
+  return "실행 환경 미준비";
+}
+
+function executionLabel(component: RuntimeToolsStatus["components"][number]) {
+  if (component.execution === "available") return "사용 가능";
+  if (component.state === "verified") return "실행 차단";
+  if (component.state === "not_prepared") return "미준비";
+  return "검증 실패";
+}
+
 export function RuntimeToolsCard() {
   const [status, setStatus] = useState<RuntimeToolsStatus | null>(null);
   const [error, setError] = useState("");
@@ -46,14 +59,18 @@ export function RuntimeToolsCard() {
         {!error && !status && <p className="text-muted-foreground">준비 상태를 확인하는 중…</p>}
         {!error && status && (
           <>
-            <Badge variant="outline">{status.ready ? "실행 환경 준비됨" : "실행 환경 미준비"}</Badge>
+            <Badge variant="outline">{preparationLabel(status)}</Badge>
             <p className="text-muted-foreground">{status.message}</p>
             <dl className="divide-y-2 rounded-md border-2 px-3">
               {status.components.map((component) => (
-                <div key={component.key} className="flex justify-between gap-3 py-2">
-                  <dt>{labels[component.key]}</dt>
-                  <dd className="text-muted-foreground">
-                    {component.state === "not_prepared" ? "미준비" : component.state}
+                <div key={component.key} className="space-y-1 py-2">
+                  <div className="flex justify-between gap-3">
+                    <dt>{labels[component.key]}</dt>
+                    <dd className="shrink-0 text-muted-foreground">{executionLabel(component)}</dd>
+                  </div>
+                  <dd className="text-muted-foreground text-xs">
+                    {component.version && <span>버전 {component.version}</span>}
+                    {component.message && <p className="mt-1">{component.message}</p>}
                   </dd>
                 </div>
               ))}

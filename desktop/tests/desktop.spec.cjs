@@ -104,7 +104,7 @@ test("실제 Electron 자동 진입·모델 저장·재시작·화면·격리", 
     await expect(page.locator('input[type="password"]')).toHaveCount(0);
     expect((await page.evaluate(() => localStorage.getItem("artex_token"))).split(".")).toHaveLength(3);
     expect(await api("/auth/status")).toMatchObject({ mode: "desktop" });
-    expect(await api("/runtime/tools")).toMatchObject({ ready: false, mode: "desktop", components: expect.arrayContaining([{ key: "shell", state: "not_prepared" }, { key: "browser", state: "not_prepared" }]) });
+    expect(await api("/runtime/tools")).toMatchObject({ ready: false, mode: "desktop", components: expect.arrayContaining([expect.objectContaining({ key: "shell", state: "verified", execution: "available" }), expect.objectContaining({ key: "pty", state: "verified", execution: "available" }), expect.objectContaining({ key: "browser", state: "verified", execution: "blocked" })]), isolation: { state: "available", process_tree: "job_object", workspace: "appcontainer_acl", network: "denied" } });
   }
   try {
     await launch();
@@ -229,7 +229,7 @@ test("실제 Electron 자동 진입·모델 저장·재시작·화면·격리", 
     expect(prematurePosts).toEqual([]);
 
     expect(await page.evaluate(() => ({ require: typeof window.require, process: typeof window.process }))).toEqual({ require: "undefined", process: "undefined" });
-    expect(await page.evaluate(() => Object.keys(window.artexDesktop).sort())).toEqual(["openChatGPTLogin", "openChatGPTUsage", "quit", "retry", "status"]);
+    expect(await page.evaluate(() => Object.keys(window.artexDesktop).sort())).toEqual(["backupStatus","checkUpdate","createBackup","downloadUpdate","installUpdate","openChatGPTLogin","openChatGPTUsage","openRestoredHome","quit","restoreBackup","retry","setAutomaticBackup","status","updateStatus"]);
     const preferences = await electron.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences());
     expect(preferences).toMatchObject({ sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, webviewTag: false });
     expect(await page.evaluate(() => window.open("https://example.com") === null)).toBe(true);
@@ -303,9 +303,11 @@ test("실제 Electron 자동 진입·모델 저장·재시작·화면·격리", 
           await expect(page.locator('[data-slot="sidebar"] a[aria-current="page"]')).toHaveCount(1);
           await expect(page.locator("main").first()).toBeVisible();
           if (route === "system/settings") {
-            await expect(page.getByText("실행 환경 미준비", { exact: true })).toBeVisible();
-            await expect(page.getByText("미준비", { exact: true })).toHaveCount(6);
-            await expect(page.getByText("앱 전용 외부 도구 배포와 검증이 완료되지 않아 외부 명령 실행이 차단되었습니다", { exact: true })).toBeVisible();
+            await expect(page.getByText("일부 도구 사용 가능", { exact: true })).toBeVisible();
+            await expect(page.getByText("사용 가능", { exact: true })).toHaveCount(5);
+            await expect(page.getByText("실행 차단", { exact: true })).toHaveCount(1);
+            await expect(page.getByRole("button", { name: "다시 탐색", exact: true })).toHaveCount(0);
+            await expect(page.getByText(/명령·스크립트·PTY는 검증된 앱 도구/)).toBeVisible();
             await expect(page.getByText("자동 업데이트 미구성", { exact: true })).toBeVisible();
           }
           await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

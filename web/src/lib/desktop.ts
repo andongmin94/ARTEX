@@ -1,7 +1,43 @@
-interface ArtexDesktop {
+export interface DesktopBackupStatus {
+  state: string;
+  automatic: boolean;
+  lastBackup?: string;
+  lastBackupAt?: string;
+  restoredHome?: string;
+  restoredAt?: string;
+  error?: string;
+}
+
+export interface DesktopUpdateStatus {
+  state:
+    | "unavailable"
+    | "idle"
+    | "checking"
+    | "current"
+    | "available"
+    | "downloading"
+    | "downloaded"
+    | "preparing"
+    | "installing"
+    | "failed";
+  message: string;
+  version: string;
+  nextVersion?: string;
+}
+
+export interface ArtexDesktop {
   status: () => Promise<{ state: string; url?: string; pid?: number }>;
   retry: () => Promise<void>;
   quit: () => Promise<void>;
+  backupStatus: () => Promise<DesktopBackupStatus>;
+  setAutomaticBackup: (value: boolean) => Promise<DesktopBackupStatus>;
+  createBackup: () => Promise<DesktopBackupStatus | { cancelled: true }>;
+  restoreBackup: () => Promise<DesktopBackupStatus | { cancelled: true }>;
+  openRestoredHome: () => Promise<void>;
+  updateStatus: () => Promise<DesktopUpdateStatus>;
+  checkUpdate: () => Promise<DesktopUpdateStatus>;
+  downloadUpdate: () => Promise<DesktopUpdateStatus>;
+  installUpdate: () => Promise<void>;
   openChatGPTLogin: (url: string) => Promise<void>;
   openChatGPTUsage: () => Promise<void>;
 }

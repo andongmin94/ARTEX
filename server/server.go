@@ -3489,6 +3489,15 @@ func notifyDigestIntervalMin(pg *db.DB) int {
 
 // pgDetectPython re-runs interpreter detection, stores + returns it.
 func (s *Server) pgDetectPython(w http.ResponseWriter, r *http.Request) {
+	if desktopToolSession() {
+		p, err := managedPythonPath()
+		if err != nil {
+			writeErr(w, http.StatusConflict, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"python_interpreter": p})
+		return
+	}
 	if desktopToolsUnavailable() {
 		writeErr(w, http.StatusConflict, unmanagedDesktopToolsMessage)
 		return
@@ -3543,6 +3552,10 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, 400, err.Error())
+		return
+	}
+	if desktopToolSession() && req.PythonInterp != nil {
+		writeErr(w, http.StatusConflict, "앱의 Python 실행 경로는 검증된 도구 매니페스트가 관리합니다")
 		return
 	}
 	if req.ConstraintsInjectPlanner != nil {

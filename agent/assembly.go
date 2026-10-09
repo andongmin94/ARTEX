@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"runtime/debug"
+	"sync"
 
 	actool "github.com/Autumn-27/norma/tool"
 )
@@ -59,6 +60,24 @@ func AugmentTools(ctx context.Context, agentKey string, base []actool.CoreTool) 
 	// and pass through untouched, so deferred/unlock wiring stays consistent.
 	if ToolResolve != nil {
 		out = ToolResolve(ctx, agentKey, out)
+	}
+	// Host executors can own processes that the SDK's task manager did not
+	// create. Close them on every return path, alongside MCP augmentation.
+	previousCleanup := cleanup
+	owned := make([]interface{ Close() error }, 0)
+	for _, t := range out {
+		if c, ok := t.(interface{ Close() error }); ok {
+			owned = append(owned, c)
+		}
+	}
+	var cleanupOnce sync.Once
+	cleanup = func() {
+		cleanupOnce.Do(func() {
+			for _, c := range owned {
+				_ = c.Close()
+			}
+			previousCleanup()
+		})
 	}
 	out, def.FindingGuidance = findingWorkflowTools(agentKey, out)
 	for i, t := range out {

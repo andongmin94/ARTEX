@@ -15,6 +15,7 @@ import { api } from "@/lib/api";
 import { CHAT_SEND_MODE_OPTIONS, type ChatSendMode, setChatSendMode, useChatSendMode } from "@/lib/chat-send-mode";
 import type { Settings } from "@/lib/types";
 
+import { BackupCard } from "./_components/backup-card";
 import { UpdateCard } from "./_components/update-card";
 import { RuntimeToolsCard } from "./_components/runtime-tools-card";
 
@@ -37,6 +38,7 @@ export default function SystemSettingsPage() {
   const [saving, setSaving] = React.useState(false);
   const [savingKey, setSavingKey] = React.useState(false);
   const [pyInterp, setPyInterp] = React.useState("");
+  const [desktop, setDesktop] = React.useState<boolean | null>(null);
   const [workers, setWorkers] = React.useState("3");
   const [savingWorkers, setSavingWorkers] = React.useState(false);
   // 操作约束注入范围(默认都开)。
@@ -101,6 +103,7 @@ export default function SystemSettingsPage() {
   };
 
   React.useEffect(() => {
+    setDesktop(!!window.artexDesktop);
     api
       .settings()
       .then(apply)
@@ -269,6 +272,7 @@ export default function SystemSettingsPage() {
       <div className="columns-1 gap-4 md:gap-6 lg:columns-2">
         <UpdateCard />
         <RuntimeToolsCard />
+        <BackupCard />
 
         <Card className="mb-4 break-inside-avoid md:mb-6">
           <CardHeader>
@@ -617,25 +621,34 @@ export default function SystemSettingsPage() {
               사용자 정의 스크립트 · Python 인터프리터
             </CardTitle>
             <CardDescription>
-              사용자 정의 <b>script</b> 유형 도구가 Python을 실행할 때 사용합니다. 시작 시 python3를 우선 탐색합니다. 가상 환경이나 특정 버전의 절대 경로를 지정할 수 있으며, 비워두면 실행 시 자동 탐색합니다.
+              {desktop ? (
+                "앱에 포함된 고정 버전 Python을 사용합니다. 버전과 사용 가능 여부는 외부 실행 도구에서 확인할 수 있습니다."
+              ) : (
+                <>
+                  사용자 정의 <b>script</b> 유형 도구가 Python을 실행할 때 사용합니다. 시작 시 python3를 우선
+                  탐색합니다. 가상 환경이나 특정 버전의 절대 경로를 지정할 수 있으며, 비워두면 실행 시 자동 탐색합니다.
+                </>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <Input
-                className="font-sans text-sm"
-                placeholder="/usr/bin/python3(비워두면 자동 탐색)"
-                value={pyInterp}
-                disabled={!loaded || saving}
-                onChange={(e) => setPyInterp(e.target.value)}
-              />
-              <Button variant="outline" onClick={detectPython} disabled={!loaded || saving}>
-                다시 탐색
-              </Button>
-              <Button onClick={savePython} disabled={!loaded || saving}>
-                저장
-              </Button>
-            </div>
+            {desktop === false && (
+              <div className="flex items-center gap-2">
+                <Input
+                  className="font-sans text-sm"
+                  placeholder="/usr/bin/python3(비워두면 자동 탐색)"
+                  value={pyInterp}
+                  disabled={!loaded || saving}
+                  onChange={(e) => setPyInterp(e.target.value)}
+                />
+                <Button variant="outline" onClick={detectPython} disabled={!loaded || saving}>
+                  다시 탐색
+                </Button>
+                <Button onClick={savePython} disabled={!loaded || saving}>
+                  저장
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
 
