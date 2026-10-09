@@ -10,6 +10,7 @@
 - 최초 검토 ref: `main`, SHA `b4da2463fe710a77bf464c65125a1a7f40424722`.
 - `README.md`: Base UI + Tailwind v4, 소스 소유 방식의 shadcn registry, 기본 Mono 테마 및 템플릿 사용 범위.
 - `registry/src/data/theme.ts`: 색상 역할, 섀도/모서리/글자 굵기 및 눌림 거리 토큰.
+- `registry/src/data/colors.ts`: Mono·Mono Warm과 17개 컬러 프리셋의 라이트/다크 배경·액션·차트 팔레트.
 - `registry/src/components/ui/button.tsx`, `button-variants.ts`: 실제 Base UI 컨트롤과 hover/active/disabled/focus/motion-reduce 동작.
 - 전체 화면 구성은 원본의 Dashboard/CMS 데모와 `registry/src/blocks`를 추가 확인한다. 이번 검토에서는 데모를 브라우저로 실행하거나 시각 검수하지 않았다.
 
@@ -21,6 +22,7 @@ UI 구현을 시작할 때 원본 최신 ref와 위 기준의 차이를 확인�
 ## 채택할 시각·상호작용 규칙
 
 원본 토큰의 출발점은 **Mono 색상 테마, 2px 컨트롤 테두리, 4px/4px 무블러 섀도, 5px 기본 모서리, 본문 500/제목 700**이다.
+2026-10-09 사용자 요청으로 기본 Mono를 포함한 원본의 19개 프리셋을 화면 설정에 제공한다. 배경용 액션색과 링크·코드 강조의 텍스트색을 구분해 밝은 Yellow/Amber/Lime에서도 읽을 수 있게 한다.
 글꼴은 사용자 요청에 따라 **Pretendard Variable 하나**를 로컬 제공한다. Mono는 색상 테마 이름이며 고정폭 글꼴을 뜻하지 않는다.
 버튼 원본은 140ms 전환으로 hover 때 섀도를 줄이고 active 때 눌림 위치로 이동한다.
 이를 공통 토큰/컴포넌트에서 정의하고 화면마다 다른 임의 값으로 흉내 내지 않는다.
@@ -89,6 +91,14 @@ Mono 라이트/다크 역할 색상, 2px 테두리·4px 하드 섀도·5px 모�
 Playwright는 실제 Electron/Go에서 주요 21개 화면을 라이트/다크·1280/1440으로 열고 캡처한다.
 125/150% Electron zoom 검사는 실제 Windows 디스플레이 배율 검사와 다르다. DOM composition 검사도 OS 네이티브 한글 IME의 완전한 대체가 아니다.
 최종 실행 결과·업무 fixture 검증과 미실행 범위는 development-plan.md만 현재 목록으로 관리한다.
+
+## 2026-10-09 프리셋과 석탄색 개선
+
+최신 원본 main의 SHA는 `b4da2463fe710a77bf464c65125a1a7f40424722`로 동일하다. `registry/src/data/colors.ts`의 19개 프리셋을 로컬 CSS와 선택 목록에 포함한다. Mono, Mono Warm, Red, Orange, Amber, Yellow, Lime, Green, Emerald, Teal, Cyan, Sky, Blue, Indigo, Violet, Purple, Fuchsia, Pink, Rose를 제공하며 기존 쿠키·부트·화면 상태 경로로 선택을 저장한다.
+
+사용자 요청에 따라 Mono 다크의 배경을 원본 `#18191c`에서 `#27282b`로 밝힌다. 카드 `#303239`, 사이드바 `#2b2d32`, 그림자 `#17191d`로 표면을 구분한다. Mono Warm도 동일한 석탄색 계층을 따뜻한 중립색에 적용한다. 이는 원본값 복구가 아니라 ARTEX에서 밝기를 개선한 부분이다.
+
+컬러 프리셋의 액션·배경·차트 팔레트는 원본을 사용하되 카드·표·로그의 보조색은 업무 화면의 역할에 맞춘다. 링크·HTTP 코드·강조 텍스트에는 `primary-text`와 전용 syntax 색상을 사용해 밝은 액션/차트색이 글자의 대비를 낮추지 않게 한다. 다크 Fuchsia의 액션 글자는 흰색으로 구분한다. 공식 ChatGPT 연결 버튼의 지정 색상·로고는 유지한다. Pretendard Variable과 기존 눌림·포커스·축소 모션은 그대로 사용한다.
 
 ## ChatGPT 구독 연결 버튼 자산
 

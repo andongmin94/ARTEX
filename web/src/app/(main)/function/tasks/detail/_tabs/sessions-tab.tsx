@@ -1917,7 +1917,7 @@ export function SessionsTab({ taskId }: { taskId: string }) {
                         className="flex items-center gap-1.5 rounded-md border bg-muted/50 px-2 py-1 text-xs"
                         title={a.path}
                       >
-                        <PaperclipIcon className="size-3 shrink-0 text-primary" />
+                        <PaperclipIcon className="size-3 shrink-0 text-primary-text" />
                         <span className="max-w-[160px] truncate">{a.name}</span>
                         <span className="text-muted-foreground">{fmtBytes(a.size)}</span>
                         <button

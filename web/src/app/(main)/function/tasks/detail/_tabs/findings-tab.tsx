@@ -117,7 +117,7 @@ function Row({
                 ? `/function/findings/detail?id=${f.finding_id}&context_task=${contextTaskId}`
                 : `/function/findings/detail?id=${f.finding_id}`
             }
-            className="text-muted-foreground hover:text-primary inline-flex shrink-0 items-center gap-0.5 text-xs"
+            className="text-muted-foreground hover:text-primary-text inline-flex shrink-0 items-center gap-0.5 text-xs"
             title="취약점 상세 보기"
           >
             상세

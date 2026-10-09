@@ -16,7 +16,7 @@ const components: Components = {
   ol: ({ node, ...p }) => <ol className="my-1 list-decimal space-y-0.5 pl-5" {...p} />,
   strong: ({ node, ...p }) => <strong className="font-semibold" {...p} />,
   a: ({ node, ...p }) => (
-    <a className="text-primary underline underline-offset-2" target="_blank" rel="noreferrer" {...p} />
+    <a className="text-primary-text underline underline-offset-2" target="_blank" rel="noreferrer" {...p} />
   ),
   hr: () => <hr className="my-2 border-border" />,
   blockquote: ({ node, ...p }) => (

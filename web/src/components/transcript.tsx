@@ -612,7 +612,7 @@ function UserRow({ step, intent, getDetail }: { step: Activity; intent?: boolean
                 className="flex min-w-0 max-w-full items-center gap-1.5 rounded-md border bg-card px-2 py-1 text-xs shadow-sm"
                 title={a.path}
               >
-                <PaperclipIcon className="size-3 shrink-0 text-primary" />
+                <PaperclipIcon className="size-3 shrink-0 text-primary-text" />
                 <span className="max-w-[180px] truncate font-medium">{a.name}</span>
                 <span className="shrink-0 text-muted-foreground">{fmtBytes(a.size)}</span>
               </div>
@@ -627,7 +627,7 @@ function UserRow({ step, intent, getDetail }: { step: Activity; intent?: boolean
         <ActivityTime ts={step.ts} />
       </div>
       <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10">
-        <Icon className="size-3.5 text-primary" />
+        <Icon className="size-3.5 text-primary-text" />
       </div>
     </div>
   );

@@ -195,7 +195,7 @@ function Composer({
               className="flex items-center gap-1.5 rounded-md border bg-muted/50 px-2 py-1 text-xs"
               title={a.path}
             >
-              <PaperclipIcon className="size-3 shrink-0 text-primary" />
+              <PaperclipIcon className="size-3 shrink-0 text-primary-text" />
               <span className="max-w-[160px] truncate">{a.name}</span>
               <span className="text-muted-foreground">{fmtBytes(a.size)}</span>
               {onRemoveAttachment && (
@@ -307,7 +307,7 @@ function LLMProfileRow({
           <button
             type="button"
             disabled={disabled}
-            className="flex shrink-0 items-center gap-0.5 text-primary text-xs hover:underline disabled:pointer-events-none disabled:opacity-40"
+            className="flex shrink-0 items-center gap-0.5 text-primary-text text-xs hover:underline disabled:pointer-events-none disabled:opacity-40"
           >
             변경
             <ChevronDownIcon className="size-3" />
@@ -448,7 +448,7 @@ function DraftChat({
       {/* empty / landing state fills the panel */}
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-4 text-center">
         <div className="bg-primary/10 flex size-12 items-center justify-center rounded-full">
-          <Bot className="text-primary size-6" />
+          <Bot className="text-primary-text size-6" />
         </div>
         <div className="text-sm font-medium">대화 시작: 「{agent?.name ?? "Agent"}」</div>
         {agent?.description && <p className="text-muted-foreground max-w-md text-xs">{agent.description}</p>}
@@ -930,7 +930,7 @@ const ConversationItem = React.memo(function ConversationItem({
           className="min-w-0 flex-1 rounded-md px-2 py-1.5 text-left"
         >
           <div className="flex min-w-0 items-center gap-1.5">
-            {pinned && <PinIcon className="text-primary size-3 shrink-0" aria-label="상단 고정됨" />}
+            {pinned && <PinIcon className="text-primary-text size-3 shrink-0" aria-label="상단 고정됨" />}
             <div className="truncate text-sm">{conv.title || "새 대화"}</div>
             {conv.running ? (
               <Badge variant="secondary" className="shrink-0 gap-1" title="에이전트 실행 중">

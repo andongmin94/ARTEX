@@ -2,7 +2,7 @@
 
 기존 한국어 ARTEX를 Electron + Go + SQLite 로컬 앱으로 전환한 프로젝트입니다. Go가 업무 데이터·트래픽·증거를 저장하고 Electron이 창과 백엔드 수명 주기를 관리합니다. 원본 [Autumn-27/ARTEX](https://github.com/Autumn-27/ARTEX)의 기능과 한국어 화면을 재사용합니다.
 
-UI는 [andongmin94/neobrutal-ui](https://github.com/andongmin94/neobrutal-ui)의 Mono 색상 테마·컨트롤 동작을 적용합니다. 웹 화면과 앱 시작·오류 화면, 코드·로그의 글꼴은 로컬 Pretendard Variable 하나로 통일하며 글꼴 선택 설정은 제공하지 않습니다. 글꼴 파일과 SIL Open Font License를 앱에 포함하고 실행 중 원격 글꼴을 요청하지 않습니다. 현재는 개발 검증 중이며 정식 릴리스가 아닙니다. 설치·서명·자동 업데이트와 도구 런타임 준비 상태는 [개발 계획](docs/development-plan.md)에 실제 검증 범위대로 기록합니다.
+UI는 [andongmin94/neobrutal-ui](https://github.com/andongmin94/neobrutal-ui)의 19개 색상 프리셋·컨트롤 동작을 적용합니다. 상단 화면 설정에서 프리셋과 라이트/다크/시스템 모드를 선택하며, 기본 Mono의 다크 배경은 부드러운 석탄색으로 조정했습니다. 웹 화면과 앱 시작·오류 화면, 코드·로그의 글꼴은 로컬 Pretendard Variable 하나로 통일하며 글꼴 선택 설정은 제공하지 않습니다. 글꼴 파일과 SIL Open Font License를 앱에 포함하고 실행 중 원격 글꼴을 요청하지 않습니다. 현재는 개발 검증 중이며 정식 릴리스가 아닙니다. 설치·서명·자동 업데이트와 도구 런타임 준비 상태는 [개발 계획](docs/development-plan.md)에 실제 검증 범위대로 기록합니다.
 
 작업 생성 → 에이전트 탐색 → 취약점과 증거 검토 → 수정 → 재검증 흐름을 제공합니다. 화면을 한국어로 바꾸었으며 기본 에이전트 지침, 오류·상태 메시지, 알림, 보고서도 한국어로 제공합니다. API 필드, 도구 이름, 명령 옵션 및 상태 코드는 변경하지 않습니다.
 

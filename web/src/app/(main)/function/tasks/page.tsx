@@ -1194,7 +1194,7 @@ const TaskRow = React.memo(function TaskRow({
         <div className="flex max-w-xs items-center gap-2">
           <TaskNameEditor task={task} onRename={onRename} />
           {task.active && <StarIcon className="size-4 shrink-0 fill-amber-400 text-amber-400" />}
-          {taskIsPinned(task) && <PinIcon className="text-primary size-4 shrink-0" aria-label="상단 고정됨" />}
+          {taskIsPinned(task) && <PinIcon className="text-primary-text size-4 shrink-0" aria-label="상단 고정됨" />}
         </div>
       </TableCell>
       <TableCell className="text-muted-foreground max-w-40">

@@ -74,7 +74,7 @@ function ApprovalOrigin({ row, detail = false }: { row: InterceptApprovalRow; de
   return href ? (
     <a
       href={href}
-      className="text-primary underline-offset-4 hover:underline"
+      className="text-primary-text underline-offset-4 hover:underline"
       aria-label={`승인 #${row.id} 출처 찾기: ${label}`}
       aria-busy={locating}
       onClick={async (e) => {

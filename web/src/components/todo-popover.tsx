@@ -54,7 +54,7 @@ export function TodoPopover({
           type="button"
           disabled={disabled}
           title={disabled ? "이 세션에 할 일 목록이 없습니다" : "최근 할 일 보기"}
-          className="text-muted-foreground/70 hover:text-primary flex items-center gap-0.5 text-xs disabled:pointer-events-none disabled:opacity-40"
+          className="text-muted-foreground/70 hover:text-primary-text flex items-center gap-0.5 text-xs disabled:pointer-events-none disabled:opacity-40"
         >
           <ListTodo className="size-3" />
           Todo

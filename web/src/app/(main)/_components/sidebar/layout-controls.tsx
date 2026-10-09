@@ -99,9 +99,11 @@ export function LayoutControls() {
           </div>
           <div className="space-y-3 **:data-[slot=toggle-group]:w-full **:data-[slot=toggle-group-item]:flex-1 **:data-[slot=toggle-group-item]:text-xs">
             <div className="space-y-1">
-              <Label className="font-medium text-xs">테마 프리셋</Label>
+              <Label htmlFor="theme-preset" className="font-medium text-xs">
+                테마 프리셋
+              </Label>
               <Select value={themePreset} onValueChange={onThemePresetChange}>
-                <SelectTrigger size="sm" className="w-full text-xs">
+                <SelectTrigger id="theme-preset" size="sm" className="w-full text-xs">
                   <SelectValue placeholder="프리셋" />
                 </SelectTrigger>
                 <SelectContent>
@@ -109,10 +111,10 @@ export function LayoutControls() {
                     {THEME_PRESET_OPTIONS.map((preset) => (
                       <SelectItem key={preset.value} className="text-xs" value={preset.value}>
                         <span
-                          className="size-2.5 rounded-full"
+                          aria-hidden="true"
+                          className="size-3 shrink-0 rounded-full border border-border"
                           style={{
-                            backgroundColor:
-                              (resolvedThemeMode ?? "light") === "dark" ? preset.primary.dark : preset.primary.light,
+                            backgroundColor: resolvedThemeMode === "dark" ? preset.primary.dark : preset.primary.light,
                           }}
                         />
                         {preset.label}

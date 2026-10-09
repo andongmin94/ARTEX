@@ -204,7 +204,7 @@ export function FindingsTable({
                       <Link
                         href={`/function/findings/detail?id=${f.finding_id}`}
                         onClick={(e) => e.stopPropagation()}
-                        className="truncate font-medium hover:text-primary hover:underline"
+                        className="truncate font-medium hover:text-primary-text hover:underline"
                         title="취약점 상세 보기"
                       >
                         {f.name || f.vulnclass || "미분류"}
@@ -259,7 +259,7 @@ export function FindingsTable({
                     <Link
                       href={`/function/tasks/detail?id=${f.task_id}`}
                       onClick={(e) => e.stopPropagation()}
-                      className="inline-flex max-w-full items-center gap-1 text-primary hover:underline"
+                      className="inline-flex max-w-full items-center gap-1 text-primary-text hover:underline"
                       title={f.task_description}
                     >
                       <span className="truncate">{f.task_description}</span>

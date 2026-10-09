@@ -436,7 +436,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <TargetIcon className="size-4 text-primary" /> 작업 설명 및 목표
+            <TargetIcon className="size-4 text-primary-text" /> 작업 설명 및 목표
           </CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -455,7 +455,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <ListChecksIcon className="size-4 text-primary" /> 목표 관리
+            <ListChecksIcon className="size-4 text-primary-text" /> 목표 관리
             <span className="text-muted-foreground text-xs font-normal">
               (최종적으로 검증 가능한 목표, 총 {goals.length} 건 · 추가하거나 수정하면 계획 에이전트에 알리고 작업을 재개합니다)
             </span>

@@ -1,4 +1,4 @@
-import type { ResolvedThemeMode, ThemeMode } from "./theme";
+import type { ResolvedThemeMode, ThemeMode, ThemePreset } from "./theme";
 
 export function resolveThemeMode(mode: ThemeMode): ResolvedThemeMode {
   if (mode === "system") {
@@ -21,7 +21,7 @@ export function applyThemeMode(mode: ThemeMode): ResolvedThemeMode {
   return resolved;
 }
 
-export function applyThemePreset(value: string) {
+export function applyThemePreset(value: ThemePreset) {
   document.documentElement.setAttribute("data-theme-preset", value);
 }
 

@@ -305,7 +305,7 @@ function FindingDetailInner() {
                   {finding.task_id ? (
                     <Link
                       href={`/function/tasks/detail?id=${finding.task_id}`}
-                      className="inline-flex max-w-[16rem] items-center gap-1 text-primary hover:underline"
+                      className="inline-flex max-w-[16rem] items-center gap-1 text-primary-text hover:underline"
                       title={finding.task_description}
                     >
                       <span className="truncate">{finding.task_description || `#${finding.task_id}`}</span>

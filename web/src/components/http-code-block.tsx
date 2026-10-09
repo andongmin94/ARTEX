@@ -33,9 +33,9 @@ function StartLine({ line }: { line: string }) {
   if (request) {
     return (
       <>
-        <span className="font-semibold text-primary">{request[1]}</span>
+        <span className="font-semibold text-primary-text">{request[1]}</span>
         {request[2]}
-        <span className="text-chart-2">{request[3]}</span>
+        <span className="text-syntax-value">{request[3]}</span>
         {request[4]}
         <span className="text-muted-foreground">{request[5]}</span>
       </>
@@ -50,9 +50,9 @@ function HeaderLine({ line }: { line: string }) {
   if (separator <= 0) return line;
   return (
     <>
-      <span className="text-primary">{line.slice(0, separator)}</span>
+      <span className="text-primary-text">{line.slice(0, separator)}</span>
       <span className="text-muted-foreground">:</span>
-      <span className="text-chart-2">{line.slice(separator + 1)}</span>
+      <span className="text-syntax-value">{line.slice(separator + 1)}</span>
     </>
   );
 }
@@ -64,9 +64,9 @@ function JsonBody({ body }: { body: string }) {
   for (const match of body.matchAll(tokens)) {
     const index = match.index ?? 0;
     if (index > cursor) parts.push(body.slice(cursor, index));
-    let className = "text-chart-4";
-    if (match[1]) className = match[2] ? "text-primary" : "text-chart-2";
-    else if (match[3]) className = "text-chart-3";
+    let className = "text-syntax-number";
+    if (match[1]) className = match[2] ? "text-primary-text" : "text-syntax-value";
+    else if (match[3]) className = "text-syntax-keyword";
     parts.push(
       <span key={`${index}-${match[0].length}`} className={className}>
         {match[0]}
@@ -86,7 +86,7 @@ function MarkupBody({ body }: { body: string }) {
     const index = match.index ?? 0;
     if (index > cursor) parts.push(body.slice(cursor, index));
     parts.push(
-      <span key={`${index}-${match[0].length}`} className="text-primary">
+      <span key={`${index}-${match[0].length}`} className="text-primary-text">
         {match[0]}
       </span>,
     );

@@ -643,7 +643,7 @@ export function BroadcastTab({ taskId }: { taskId: string }) {
         <button
           type="button"
           onClick={backToLive}
-          className="flex w-full items-center justify-center gap-1.5 border-b bg-primary/10 py-1.5 text-xs font-medium text-primary hover:bg-primary/15"
+          className="flex w-full items-center justify-center gap-1.5 border-b bg-primary/10 py-1.5 text-xs font-medium text-primary-text hover:bg-primary/15"
         >
           <ArrowUpToLineIcon className="size-3.5" />
           {pending > 99 ? "99+" : pending} 건의 새 활동 · 최신으로 이동
