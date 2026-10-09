@@ -868,11 +868,11 @@ export default function LLMPage() {
   return (
     <div className="flex flex-1 flex-col gap-4 md:gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0 space-y-1">
           <h1 className="font-semibold text-xl tracking-tight">LLM</h1>
           <p className="text-muted-foreground text-sm">
-            모든 에이전트가 공유하는 모델 설정입니다. API 설정은 카드를 눌러 편집하고, ChatGPT 구독은 아래에서 연결하세요.
-            별표는 현재 활성 설정입니다.
+            모든 에이전트가 공유하는 모델 설정입니다. API 설정은 카드를 눌러 편집하고, ChatGPT 구독은 아래에서
+            연결하세요. 별표는 현재 활성 설정입니다.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -891,7 +891,7 @@ export default function LLMPage() {
       </div>
 
       <Tabs defaultValue="profiles" className="flex-1">
-        <TabsList>
+        <TabsList variant="line" aria-label="모델 설정 항목" className="w-full justify-start">
           <TabsTrigger value="profiles">모델 설정</TabsTrigger>
           <TabsTrigger value="retry">재시도 및 백오프</TabsTrigger>
         </TabsList>
@@ -992,7 +992,7 @@ export default function LLMPage() {
             })}
             {profiles.length === 0 && (
               <div className="col-span-full rounded-lg border border-dashed p-10 text-center text-muted-foreground text-sm">
-                모델 설정이 없습니다. ChatGPT 구독을 연결하거나 오른쪽 위 「생성」으로 API 설정을 만드세요.
+                모델 설정이 없습니다. ChatGPT 구독을 연결하거나 「생성」으로 API 설정을 만드세요.
               </div>
             )}
           </div>

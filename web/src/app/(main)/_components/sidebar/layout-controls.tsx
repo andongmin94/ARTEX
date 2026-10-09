@@ -104,18 +104,8 @@ export function LayoutControls() {
           </div>
           <Tabs defaultValue="theme" className="flex-col gap-4">
             <TabsList aria-label="화면 설정 항목" className="h-9 w-full">
-              <TabsTrigger
-                value="theme"
-                className="data-[state=active]:border-border data-[state=active]:bg-background data-[state=active]:text-foreground"
-              >
-                테마
-              </TabsTrigger>
-              <TabsTrigger
-                value="layout"
-                className="data-[state=active]:border-border data-[state=active]:bg-background data-[state=active]:text-foreground"
-              >
-                화면 배치
-              </TabsTrigger>
+              <TabsTrigger value="theme">테마</TabsTrigger>
+              <TabsTrigger value="layout">화면 배치</TabsTrigger>
             </TabsList>
             <TabsContent value="theme" className="space-y-4">
               <div className="space-y-1">

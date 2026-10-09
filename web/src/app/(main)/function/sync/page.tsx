@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
 import type { SSProject, SSTask } from "@/lib/types";
 
@@ -35,19 +35,12 @@ const ASSET_TYPES: { key: string; label: string }[] = [
 
 export default function AssetSyncPage() {
   return (
-    <div className="p-4 md:p-6">
-      <div className="mb-4">
+    <div className="space-y-6">
+      <div className="space-y-1">
         <h1 className="font-semibold text-xl">자산 동기화</h1>
-        <p className="text-muted-foreground text-sm">외부 데이터 소스에서 자산을 동기화합니다</p>
+        <p className="text-muted-foreground text-sm">ScopeSentry에서 프로젝트·작업의 자산을 가져옵니다.</p>
       </div>
-      <Tabs defaultValue="scopesentry">
-        <TabsList>
-          <TabsTrigger value="scopesentry">ScopeSentry</TabsTrigger>
-        </TabsList>
-        <TabsContent value="scopesentry" className="mt-4">
-          <ScopeSentryPanel />
-        </TabsContent>
-      </Tabs>
+      <ScopeSentryPanel />
     </div>
   );
 }
@@ -72,22 +65,23 @@ function ScopeSentryPanel() {
   const ready = !!status && status.exists && status.configured && status.enabled;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <DataSourceCard status={status} loading={loadingStatus} onChanged={loadStatus} />
       {ready ? (
         <SyncWorkbench />
       ) : (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground text-sm">
-            데이터 소스가 준비되면 프로젝트/작업을 선택해 동기화할 수 있습니다.
-          </CardContent>
-        </Card>
+        !loadingStatus &&
+        status && (
+          <p className="text-muted-foreground text-sm">
+            ScopeSentry를 연결하고 활성화하면 동기화 대상을 선택할 수 있습니다.
+          </p>
+        )
       )}
     </div>
   );
 }
 
-// ── 데이터 소스 상태卡 ─────────────────────────────────────────────────────────────
+// ScopeSentry 연결 설정
 
 function DataSourceCard({
   status,
@@ -124,7 +118,9 @@ function DataSourceCard({
     setBusy(true);
     try {
       const r = await api.ssDatasource({ url: url.trim(), api_key: apiKey.trim() });
-      toast.success(r.enabled ? "데이터 소스를 저장하고 활성화했습니다" : "저장했습니다(아직 활성화 조건을 충족하지 않음)");
+      toast.success(
+        r.enabled ? "데이터 소스를 저장하고 활성화했습니다" : "저장했습니다(아직 활성화 조건을 충족하지 않음)",
+      );
       setApiKey("");
       onChanged();
     } catch (e) {
@@ -136,9 +132,9 @@ function DataSourceCard({
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <PlugZapIcon className="size-4" /> 데이터 소스 상태
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+        <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+          <PlugZapIcon className="size-4" aria-hidden="true" /> ScopeSentry
           <StatusBadge status={status} loading={loading} />
         </CardTitle>
         <Button variant="ghost" size="sm" onClick={onChanged} disabled={loading}>
@@ -146,57 +142,82 @@ function DataSourceCard({
         </Button>
       </CardHeader>
       <CardContent className="space-y-3">
-        {!status?.exists ? (
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-muted-foreground text-sm">
-              ScopeSentry 데이터 소스가 아직 없습니다. 생성하면 주소/키가 비어 있고 비활성화된 MCP 항목이 추가됩니다.
-            </p>
-            <Button onClick={create} disabled={busy}>
-              데이터 소스 생성
-            </Button>
-          </div>
-        ) : (
-          <>
-            {!status.configured && (
-              <p className="text-amber-600 text-sm dark:text-amber-500">
-                데이터 소스가 생성되었지만 설정되지 않았습니다. MCP 주소와 API Key를 입력한 뒤 활성화하세요.
-              </p>
-            )}
-            {status.configured && !status.enabled && (
-              <p className="text-amber-600 text-sm dark:text-amber-500">데이터 소스가 설정되었지만 비활성화 상태입니다. 저장하면 자동 활성화됩니다.</p>
-            )}
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label>MCP 주소</Label>
-                <Input placeholder="http://<호스트>:8082/mcp" value={url} onChange={(e) => setUrl(e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>API Key（X-API-Key，비워두면 기존 값 유지）</Label>
-                <Input
-                  type="password"
-                  placeholder="ssk_..."
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button onClick={save} disabled={busy}>
-                저장 및 활성화
-              </Button>
-              {status.enabled && status.tools.length > 0 && (
-                <span className="text-muted-foreground text-xs">도구 {status.tools.length}개 발견</span>
-              )}
-            </div>
-          </>
+        {loading && (
+          <p role="status" className="text-muted-foreground text-sm">
+            연결 상태를 확인하고 있습니다.
+          </p>
         )}
+        {!loading && !status && (
+          <p role="alert" className="text-destructive text-sm">
+            연결 상태를 불러오지 못했습니다. 새로고침해 다시 확인하세요.
+          </p>
+        )}
+        {!loading &&
+          status &&
+          (!status.exists ? (
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <p className="max-w-prose text-muted-foreground text-sm">
+                ScopeSentry를 연결하려면 먼저 데이터 소스를 생성한 뒤 MCP 주소와 API 키를 입력하세요.
+              </p>
+              <Button onClick={create} disabled={busy}>
+                데이터 소스 생성
+              </Button>
+            </div>
+          ) : (
+            <>
+              {!status.configured && (
+                <p className="text-muted-foreground text-sm">
+                  MCP 주소와 API 키를 입력한 뒤 저장하면 연결이 활성화됩니다.
+                </p>
+              )}
+              {status.configured && !status.enabled && (
+                <p className="text-muted-foreground text-sm">
+                  데이터 소스가 설정되었지만 비활성화 상태입니다. 저장하면 자동 활성화됩니다.
+                </p>
+              )}
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="scopesentry-url">MCP 주소</Label>
+                  <Input
+                    id="scopesentry-url"
+                    placeholder="http://<호스트>:8082/mcp"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="scopesentry-api-key">API 키</Label>
+                  <Input
+                    id="scopesentry-api-key"
+                    type="password"
+                    placeholder="ssk_..."
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    aria-describedby="scopesentry-api-key-help"
+                  />
+                  <p id="scopesentry-api-key-help" className="text-muted-foreground text-xs">
+                    비워 두면 저장된 키를 유지합니다.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button onClick={save} disabled={busy}>
+                  저장 및 활성화
+                </Button>
+                {status.enabled && status.tools.length > 0 && (
+                  <span className="text-muted-foreground text-xs">도구 {status.tools.length}개 발견</span>
+                )}
+              </div>
+            </>
+          ))}
       </CardContent>
     </Card>
   );
 }
 
 function StatusBadge({ status, loading }: { status: SSStatus | null; loading: boolean }) {
-  if (loading || !status) return <Badge variant="secondary">확인 중…</Badge>;
+  if (loading) return <Badge variant="secondary">확인 중…</Badge>;
+  if (!status) return <Badge variant="destructive">확인 실패</Badge>;
   if (!status.exists) return <Badge variant="destructive">미생성</Badge>;
   if (!status.configured) return <Badge variant="outline">미설정</Badge>;
   if (!status.enabled) return <Badge variant="outline">비활성화</Badge>;
@@ -213,7 +234,7 @@ function StatusBadge({ status, loading }: { status: SSStatus | null; loading: bo
   );
 }
 
-// ── 同步工作区（프로젝트 / 작업维度）────────────────────────────────────────────────
+// 프로젝트·작업 기준의 동기화 대상 선택
 
 function SyncWorkbench() {
   const [dimension, setDimension] = React.useState<Dimension>("project");
@@ -335,12 +356,12 @@ function SyncWorkbench() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">데이터 동기화 선택</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* 维度切换 */}
+    <section aria-labelledby="sync-target-title" className="space-y-4">
+      <h2 id="sync-target-title" className="font-semibold text-base">
+        동기화 대상
+      </h2>
+      <div className="space-y-4">
+        {/* 동기화 기준 */}
         <Tabs
           value={dimension}
           onValueChange={(v) => {
@@ -354,7 +375,7 @@ function SyncWorkbench() {
           </TabsList>
         </Tabs>
 
-        {/* 资产类型 + 选项 */}
+        {/* 자산 유형과 저장 옵션 */}
         <div className="flex flex-wrap items-center gap-4">
           <span className="font-medium text-sm">동기화 자산:</span>
           {ASSET_TYPES.map((t) => (
@@ -375,8 +396,8 @@ function SyncWorkbench() {
           )}
         </div>
 
-        {/* 搜索 + 操作 */}
-        <div className="flex items-center gap-2">
+        {/* 검색과 동기화 */}
+        <div className="flex flex-wrap items-center gap-2">
           <div className="relative max-w-xs flex-1">
             <SearchIcon className="absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -393,6 +414,7 @@ function SyncWorkbench() {
             />
           </div>
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+            <span className="sr-only">동기화 대상 새로고침</span>
             <RefreshCwIcon className={loading ? "size-4 animate-spin" : "size-4"} />
           </Button>
           <div className="flex-1" />
@@ -402,33 +424,31 @@ function SyncWorkbench() {
           </Button>
         </div>
 
-        {/* 列表 */}
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10">
-                  <Checkbox checked={rows.length > 0 && selected.size === rows.length} onCheckedChange={toggleAll} />
-                </TableHead>
-                <TableHead>{dimension === "project" ? "프로젝트 이름" : "작업 이름"}</TableHead>
-                {dimension === "project" ? (
-                  <>
-                    <TableHead>태그</TableHead>
-                    <TableHead className="text-right">자산 수</TableHead>
-                  </>
-                ) : (
-                  <>
-                    <TableHead>상태</TableHead>
-                    <TableHead>시간</TableHead>
-                  </>
-                )}
-              </TableRow>
-            </TableHeader>
-            <TableBody>{renderRows()}</TableBody>
-          </Table>
-        </div>
+        {/* 대상 목록 */}
+        <Table className="bg-card">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-10">
+                <Checkbox checked={rows.length > 0 && selected.size === rows.length} onCheckedChange={toggleAll} />
+              </TableHead>
+              <TableHead>{dimension === "project" ? "프로젝트 이름" : "작업 이름"}</TableHead>
+              {dimension === "project" ? (
+                <>
+                  <TableHead>태그</TableHead>
+                  <TableHead className="text-right">자산 수</TableHead>
+                </>
+              ) : (
+                <>
+                  <TableHead>상태</TableHead>
+                  <TableHead>시간</TableHead>
+                </>
+              )}
+            </TableRow>
+          </TableHeader>
+          <TableBody>{renderRows()}</TableBody>
+        </Table>
 
-        {/* 分页 */}
+        {/* 페이지 이동 */}
         <div className="flex items-center justify-end gap-2">
           <Button variant="outline" size="sm" disabled={page <= 1 || loading} onClick={() => setPage((p) => p - 1)}>
             이전 페이지
@@ -444,10 +464,10 @@ function SyncWorkbench() {
           </Button>
         </div>
 
-        {/* 结果 */}
+        {/* 동기화 결과 */}
         {result && <SyncResult result={result} />}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 
