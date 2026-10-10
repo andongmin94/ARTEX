@@ -133,7 +133,13 @@ WAL, 연결별 foreign_keys와 busy_timeout을 검증한다. 단일 연결에 PR
 Electron의 Node 런타임이 외부 MCP용 일반 `node`/`npm` 명령을 제공한다고 가정하지 않는다.
 Windows의 셸/PTY/프로세스 트리와 Linux 명령 의존을 별도 검증한다. 필수 도구 누락은 기능 실행 전 명확히 표시한다.
 렌더러 sandbox는 Go가 실행하는 외부 명령의 sandbox가 아니다. 별도 권한·작업 공간·네트워크 제한이 필요하다.
-Windows 도구는 capability 없는 AppContainer와 프로세스 수·메모리 제한 및 KILL_ON_JOB_CLOSE Job Object를 사용한다. 지정 작업 폴더의 쓰기 권한만 부여하고 종료 후 SID ACL을 회수한다. 셸/PTY/Python/Node/Git/stdio MCP는 실제 호출부에 연결했으며 브라우저 내부 IPC·승인 대상 네트워크 중계와 다른 OS의 실행 격리는 미완료 상태로 차단한다.
+Windows의 셸/PTY/Python/Node/Git/stdio MCP는 capability 없는 작업별 AppContainer와 프로세스 수·메모리 제한 및 KILL_ON_JOB_CLOSE Job Object를 사용한다. 지정 작업 폴더의 쓰기 권한만 부여하고 종료 후 SID ACL을 회수한다.
+
+브라우저는 별도 Chrome 번들 대신 Electron 메인의 `BrowserBroker`와 Go의 `browserRuntime`을 사용한다. 실행마다 새 메모리 partition과 Node/preload 없는 sandbox 창을 만들며, Go가 시작과 탐색·요청 시 실제 PID/실행 파일·AppContainer·capability0·Untrusted integrity·NULL restricted SID를 확인한다. Chromium의 AppContainer SID 자체는 고정이며 작업마다 다른 SID라고 표현하지 않는다. renderer에 작업/사용자 파일 ACL을 부여하지 않고 메모리 프로필과 Go 작업 소유자를 연결한다. 공개 Electron 실행 폴더만 AAP RX를 부여하며 데이터 홈 중첩·private 저장소·reparse 경로는 거부한다.
+
+Go/Electron 메인 사이의 loopback RPC는 매 백엔드 시작의 앱 세션 키와 정확한 Host·Origin/Cookie 부재를 검증한다. 키는 renderer에 전달하지 않는다. 브라우저 MCP는 기존 에이전트 권한과 Norma 호출 승인을 유지하고, 승인된 호출 동안만 context lease를 연다. Go relay는 실제 `task_scope`와 자산 허용/차단 규칙을 DNS 전후마다 다시 읽고 모든 응답 IP를 검사한 뒤 첫 승인 IP로 고정해 연결한다. 파생 `task_asset_links`를 네트워크 범위로 사용하지 않는다. 앱/UI·제어 RPC·deny proxy·트래픽 프록시 자체 주소는 허용하지 않는다. Chromium의 HTTP/HTTPS·Worker 요청과 redirect는 이 relay를 다시 거치며 deny proxy·WebRTC 정책·CSP로 우회 소켓을 차단한다. relay의 실패 진단은 URL/peer status/프록시 인증을 숨긴다.
+
+relay는 표준 TLS 검증·30초/요청8MiB/응답32MiB/헤더64KiB 제한과 Go의 명시적 프록시만 사용한다. 트래픽 수집을 켰을 때 실제 응답을 기존 SQLite/본문에 직접 기록하며 캡처 프록시를 통한 재요청/재DNS를 하지 않는다. 쿠키는 Go 표준 parser와 실행별 메모리 저장소를 연결하며 HttpOnly·SameSite·자격증명 생략을 적용한다. partitioned cookie는 저장하지 않는다. PNG는 Go만 작업 루트에 저장한다. 종료·취소·renderer/네트워크 실행 실패·백엔드 재시작에는 세션/프로필을 정리하고 만료 lease의 후속 통신을 거부한다. 잘못된 입력이나 PNG 저장 오류를 모든 세션 종료로 표현하지 않는다. 다른 OS의 실행 격리는 준비되지 않아 차단한다.
 
 최종 업데이트 소유자는 Electron 하나다. 서명/업데이트/Go/정적 UI가 같은 배포 버전으로 움직인다.
 기존 Go 자체 업데이트 API와 스크립트 경로는 제거했다. Windows 설치/업데이트 코드는 버전별 설치·고정 RSA 배포 서명·파일 SHA256·Authenticode·설치 준비 ACK·데이터 사전 백업·실제 ready 확인 후 실행 포인터 확정을 연결한다. 개발 설치물은 자동 업데이트 미구성이며 공인 서명/운영 배포와 다른 OS 실제 실행은 별도 검증한다.

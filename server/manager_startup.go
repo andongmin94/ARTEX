@@ -111,6 +111,9 @@ func newManagerFromDB(dir, proxyAddr string, store *pgdb.DB) (result *Manager, e
 }
 
 func (m *Manager) syncBrowserMCPProxy() error {
+	if desktopToolSession() {
+		return nil // The task browser uses the Go policy relay, never CLI proxy flags.
+	}
 	servers, err := m.pg.ListMCP()
 	if err != nil {
 		return fmt.Errorf("browser MCP 설정 읽기: %w", err)

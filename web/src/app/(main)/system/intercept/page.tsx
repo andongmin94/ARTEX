@@ -235,12 +235,12 @@ function JudgeCard() {
   }, []);
 
   React.useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   // 开启后(含初次加载把开关读为 true 时)拉取审批用量统计。
   React.useEffect(() => {
-    if (cfg.enabled) loadUsage();
+    if (cfg.enabled) void loadUsage();
   }, [cfg.enabled, loadUsage]);
 
   function patch(p: Partial<JudgeConfig>) {
@@ -294,7 +294,7 @@ function JudgeCard() {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className="text-xs text-muted-foreground">{cfg.enabled ? "활성화됨" : "비활성화"}</span>
-          <Switch checked={cfg.enabled} disabled={loading} onCheckedChange={(v) => patch({ enabled: v })} />
+          <Switch aria-label="모델 명령 판정 활성화" checked={cfg.enabled} disabled={loading} onCheckedChange={(v) => patch({ enabled: v })} />
         </div>
       </div>
 
@@ -364,7 +364,7 @@ function JudgeCard() {
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">판정 모델 및 정책</p>
                 <Field label="승인 모델">
                   <Select value={String(cfg.profile_id || 0)} onValueChange={(v) => patch({ profile_id: Number(v) })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger aria-label="명령 판정 모델"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value={FOLLOW_ACTIVE}>활성 설정 따름</SelectItem>
                       {profiles.map((p) => (
@@ -388,7 +388,7 @@ function JudgeCard() {
                 </Field>
                 <Field label="모델 실패 시(오류 / 시간 초과 / 해석 불가)">
                   <Select value={cfg.fail_action} onValueChange={(v) => patch({ fail_action: v as JudgeConfig["fail_action"] })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger aria-label="모델 판정 실패 시 처리"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="allow">허용</SelectItem>
                       <SelectItem value="ask">수동 승인으로 전환</SelectItem>
@@ -415,7 +415,7 @@ function JudgeCard() {
                 </Field>
                 <Field label="시간 초과 후 기본 동작">
                   <Select value={cfg.ask_timeout_action} onValueChange={(v) => patch({ ask_timeout_action: v as JudgeConfig["ask_timeout_action"] })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger aria-label="승인 시간 초과 시 처리"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="deny">차단</SelectItem>
                       <SelectItem value="allow">허용</SelectItem>
@@ -479,7 +479,7 @@ export default function InterceptPage() {
     }
   }, []);
 
-  React.useEffect(() => { load(); loadScope(); }, [load, loadScope]);
+  React.useEffect(() => { void load(); void loadScope(); }, [load, loadScope]);
 
   React.useEffect(() => {
     if (form.match_type !== "regex" || !form.pattern) { setRegexErr(""); setRegexWarn(false); return; }
@@ -533,7 +533,7 @@ export default function InterceptPage() {
         toast.success("규칙을 생성했습니다");
       }
       setOpen(false);
-      load();
+      void load();
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -545,7 +545,7 @@ export default function InterceptPage() {
     try {
       await api.deleteInterceptRule(id);
       toast.success("규칙을 삭제했습니다");
-      load();
+      void load();
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -554,7 +554,7 @@ export default function InterceptPage() {
   async function handleToggle(rule: InterceptRule) {
     try {
       await api.toggleInterceptRule(rule.id, !rule.enabled);
-      load();
+      void load();
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -722,20 +722,20 @@ export default function InterceptPage() {
                       <ActionBadge action={rule.action} />
                     </TableCell>
                     <TableCell className="text-center">
-                      <Switch
+                      <Switch aria-label={`규칙 ${rule.pattern} 활성화`}
                         checked={rule.enabled}
                         onCheckedChange={() => handleToggle(rule)}
                       />
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-end gap-0.5">
-                        <Button
+                        <Button aria-label="규칙 편집"
                           size="icon" variant="ghost" className="h-7 w-7"
                           onClick={() => openEdit(rule)}
                         >
                           <PencilIcon className="h-3.5 w-3.5" />
                         </Button>
-                        <Button
+                        <Button aria-label="삭제"
                           size="icon" variant="ghost"
                           className="h-7 w-7 text-destructive hover:text-destructive"
                           onClick={() => handleDelete(rule.id)}
@@ -782,7 +782,7 @@ export default function InterceptPage() {
               <Input
                 type="number"
                 value={form.priority}
-                onChange={(e) => set({ priority: parseInt(e.target.value) || 0 })}
+                onChange={(e) => set({ priority: parseInt(e.target.value, 10) || 0 })}
               />
             </Field>
 
@@ -793,7 +793,7 @@ export default function InterceptPage() {
                 value={form.match_target}
                 onValueChange={(v) => set({ match_target: v as RuleForm["match_target"] })}
               >
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-label="규칙 일치 대상"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="tool_name">도구 이름（tool_name）</SelectItem>
                   <SelectItem value="tool_input">입력 내용（tool_input JSON）</SelectItem>
@@ -806,7 +806,7 @@ export default function InterceptPage() {
                 value={form.match_type}
                 onValueChange={(v) => set({ match_type: v as RuleForm["match_type"] })}
               >
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-label="규칙 일치 방식"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="string">문자열 포함</SelectItem>
                   <SelectItem value="regex">정규식</SelectItem>
@@ -836,7 +836,7 @@ export default function InterceptPage() {
                 value={form.action}
                 onValueChange={(v) => set({ action: v as InterceptAction })}
               >
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-label="규칙 일치 시 처리"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="allow">허용 — 즉시 통과하고 이후 규칙 건너뛰기</SelectItem>
                   <SelectItem value="deny">금지 — 실행을 막고 모델에 거부 메시지 반환</SelectItem>
@@ -865,7 +865,7 @@ export default function InterceptPage() {
                     <p className="text-sm font-medium">승인 대기 시간 제한 사용</p>
                     <p className="text-xs text-muted-foreground">시간 초과 시 자동 처리하고 더 이상 대기하지 않습니다</p>
                   </div>
-                  <Switch
+                  <Switch aria-label="승인 응답 제한 시간 사용"
                     checked={form.timeout_enabled}
                     onCheckedChange={(v) => set({ timeout_enabled: v })}
                   />
@@ -889,7 +889,7 @@ export default function InterceptPage() {
                         value={form.timeout_action}
                         onValueChange={(v) => set({ timeout_action: v as "deny" | "allow" })}
                       >
-                        <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+                        <SelectTrigger aria-label="규칙 시간 초과 시 처리" className="w-32"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="deny">자동 거부</SelectItem>
                           <SelectItem value="allow">자동 허용</SelectItem>

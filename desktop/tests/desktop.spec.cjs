@@ -4,6 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 const http = require("node:http");
 const { spawn } = require("node:child_process");
+const { assertAccessibleControls } = require("./ui-accessibility.cjs");
 const isolatedEnvironment = { ...process.env };
 for (const key of Object.keys(isolatedEnvironment)) {
   if (key.startsWith("ARTEX_") || ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"].includes(key)) delete isolatedEnvironment[key];
@@ -104,7 +105,7 @@ test("실제 Electron 자동 진입·모델 저장·재시작·화면·격리", 
     await expect(page.locator('input[type="password"]')).toHaveCount(0);
     expect((await page.evaluate(() => localStorage.getItem("artex_token"))).split(".")).toHaveLength(3);
     expect(await api("/auth/status")).toMatchObject({ mode: "desktop" });
-    expect(await api("/runtime/tools")).toMatchObject({ ready: false, mode: "desktop", components: expect.arrayContaining([expect.objectContaining({ key: "shell", state: "verified", execution: "available" }), expect.objectContaining({ key: "pty", state: "verified", execution: "available" }), expect.objectContaining({ key: "browser", state: "verified", execution: "blocked" })]), isolation: { state: "available", process_tree: "job_object", workspace: "appcontainer_acl", network: "denied" } });
+    expect(await api("/runtime/tools")).toMatchObject({ ready: true, mode: "desktop", components: expect.arrayContaining([expect.objectContaining({ key: "shell", state: "verified", execution: "available" }), expect.objectContaining({ key: "pty", state: "verified", execution: "available" }), expect.objectContaining({ key: "browser", state: "verified", execution: "available" })]), isolation: { state: "available", process_tree: "job_object", workspace: "appcontainer_acl", network: "denied" } });
   }
   try {
     await launch();
@@ -328,16 +329,28 @@ test("실제 Electron 자동 진입·모델 저장·재시작·화면·격리", 
           const errors = [];
           const response = (result) => { if (result.url().includes("/api/") && result.status() >= 400) errors.push(`${result.status()} ${new URL(result.url()).pathname}`); };
           page.on("response", response);
+          const runtimeResponse = route === "system/settings"
+            ? page.waitForResponse((result) => new URL(result.url()).pathname === "/api/runtime/tools", { timeout: 30_000 })
+            : null;
           await page.goto(`${origin}/${route}/`);
           await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
           await expect(page.locator('[data-slot="sidebar"] a[aria-current="page"]')).toHaveCount(1);
           await expect(page.locator("main").first()).toBeVisible();
           if (route === "system/settings") {
-            await expect(page.getByText("일부 도구 사용 가능", { exact: true })).toBeVisible();
-            await expect(page.getByText("사용 가능", { exact: true })).toHaveCount(5);
-            await expect(page.getByText("실행 차단", { exact: true })).toHaveCount(1);
+            const runtime = await (await runtimeResponse).json();
+            expect(runtime.mode).toBe("desktop");
+            expect(runtime.isolation.state).toBe("available");
+            expect(runtime.components.map((component) => component.key).sort()).toEqual(["browser", "cli", "node", "pty", "python", "shell"]);
+            expect(runtime.components.filter((component) => component.key !== "browser").every((component) => component.execution === "available")).toBe(true);
+            const available = runtime.components.filter((component) => component.execution === "available").length;
+            const blocked = runtime.components.filter((component) => component.execution !== "available" && component.state === "verified").length;
+            expect(runtime.ready).toBe(available === runtime.components.length);
+            await expect(page.getByText(runtime.ready ? "실행 환경 준비됨" : "일부 도구 사용 가능", { exact: true })).toBeVisible();
+            await expect(page.getByText("사용 가능", { exact: true })).toHaveCount(available);
+            await expect(page.getByText("실행 차단", { exact: true })).toHaveCount(blocked);
             await expect(page.getByRole("button", { name: "다시 탐색", exact: true })).toHaveCount(0);
-            await expect(page.getByText(/명령·스크립트·PTY는 검증된 앱 도구/)).toBeVisible();
+            await expect(page.getByText(runtime.message, { exact: true })).toBeVisible();
+            await testInfo.attach(`runtime-tools-${theme}-${width}`, { body: JSON.stringify(runtime, null, 2), contentType: "application/json" });
             await expect(page.getByText("자동 업데이트 미구성", { exact: true })).toBeVisible();
           }
           if (route === "system/mcp") {
@@ -353,6 +366,7 @@ test("실제 Electron 자동 진입·모델 저장·재시작·화면·격리", 
             }))).toEqual([]);
           }
           await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+          await assertAccessibleControls(page, testInfo, `${route.replaceAll("/", "-")}-${theme}-${width}`);
           await page.screenshot({ path: testInfo.outputPath(`${route.replaceAll("/", "-")}-${theme}-${width}.png`) });
           page.off("response", response);
           expect(errors, `${route} API 실패`).toEqual([]);
@@ -377,6 +391,7 @@ test("실제 Electron 자동 진입·모델 저장·재시작·화면·격리", 
       await expect(modelDialog.getByLabel("이름", { exact: true })).toBeInViewport({ ratio: 1 });
       await expect(modelDialog.getByRole("combobox").first()).toBeInViewport({ ratio: 1 });
       await expect(modelDialog.getByRole("button", { name: "닫기", exact: true })).toBeInViewport({ ratio: 1 });
+      await assertAccessibleControls(page, testInfo, `model-dialog-${zoom}`);
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       // Playwright's viewport screenshot crops Electron zoomed content on this
       // Windows display. Capture the complete actual webContents instead.

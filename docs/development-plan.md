@@ -2,9 +2,43 @@
 
 목표: **기존 ARTEX + Electron + Go + SQLite**, Docker/PG 없는 로컬 데스크톱 앱.
 UI 기준: **[andongmin94/neobrutal-ui](https://github.com/andongmin94/neobrutal-ui)**. 기존 기능·한국어·화면 흐름을 유지하고 시각·상호작용을 통일한다.
-작업 기준: **main 단일 브랜치**. 최종 갱신: 2026-10-10.
+작업 기준: **main 단일 브랜치**. 최종 갱신: 2026-10-11.
 
-## 현재 단위 — 2026-10-10 작업 파일 경계·시작 안정성·신뢰성·UI 검수
+## 현재 단위 — 2026-10-11 브라우저·UI/접근성·장기 안정성과 파일 보호
+
+미커밋 변경 없는 로컬/원격 main `5449b5aed707e7a59ae3df8dcd612bfb8005cdfd`에서 시작했다. 사용자가 남은 1·2·3번을 모두 진행하고 **4번 서명/운영 자동 업데이트와 5번 macOS/Linux 지원은 제외**하도록 지정했다. 이번 단위는 Windows 브라우저 연결, 화면/접근성, 장기 부하와 파일 보호를 다룬다. 이전 성공과 새 구현/검증을 구분하며, 실행되지 않은 물리 IME/OS 배율·디스크 장애를 제어 검사로 완료 처리하지 않는다.
+
+- [x] Windows 브라우저의 내부 sandbox·작업 격리·승인 대상 통신과 실제9개 도구 호출 연결
+- [x] 전체 UI 린트 오류/접근성 문제 수정과 실제 화면·상태·키보드 회귀
+- [x] 실제150% Windows 모니터의 기본 zoom/DPR1.5 LLM 화면 확인, 한글 IME 시도 결과와 미검증 범위 기록
+- [x] 삭제·보관·복원의 관리 폴더 이동 중 경로 교체 보호와 실제 Windows 경쟁 검사
+- [x] 업무8개 lane의120초 부하·쓰기/권한 오류·데이터 보존과 복구 검사
+- [x] 최종 전체 Go 검사·계획 갱신. main의 원격 SHA는 완료 보고에서 확인
+- [x] 최종 앱/포터블 회귀·ZIP 내용 검증
+
+브라우저는 같은 Electron의 숨긴 sandbox 창과 실행별 메모리 partition을 사용한다. Go가 실제 renderer AppContainer 토큰과 권한·제한 SID를 확인하고 기존 에이전트/MCP 승인과 호출 lease를 연결한다. HTTP/HTTPS·Worker·redirect는 Go의 작업 범위·전역/작업 차단·DNS 전체 주소·내부 listener 금지 검사를 거치며 트래픽 수집을 켜면 같은 응답을 기존 저장소에 기록한다. Chromium SID는 고정이며 작업마다 다르다고 표현하지 않는다. 작업 공간/홈 ACL을 renderer에 추가하지 않으며 공개 Electron 폴더에만 AAP RX를 준비한다. 기존 Chrome for Testing 번들은 제거했다. 정상 초기화의 전체 도구 상태는 이제 `ready=true`이며 누락·변조·격리 준비 실패는 계속 차단한다. 브라우저 MCP의 초기 비활성과 호출 승인 정책은 유지한다.
+
+관리 폴더 이동은 열린 source/parent handle과 no-replace native rename을 사용한다. 보관 입력·출력, traffic/evidence 본문 및 GC도 열린 Root를 사용한다. 본문은 임시 파일에 기록·동기화하고 기존 이름을 교체하지 않는 링크로 게시한 뒤 길이·SHA를 다시 확인한다. 기존 손상 파일·하드 링크를 덮어쓰거나 삭제하지 않고 실패를 반환한다. 물리 전원 장애의 디렉터리 동기화까지 보장한다고 주장하지 않는다.
+
+| 검사 | 결과와 실제 범위 |
+| --- | --- |
+| 전체 Go | 지정Go1.26.3·modernc1.52.0·norma0.4.3·CGO=0, 실제 도구 root/manifest digest와 Electron 실행 파일을 지정했다. `./...`에서 server 외22개 검사 패키지 통과 후 오래된 browser fixture의 기대를 수정해 server 전체85.145초 재검사 통과. 최종23개 검사 패키지·최상위931개/하위 포함1518개 통과·미해결 실패0·test skip2개. skip은 외부 모델 설정이 필요한 `TestLiveContextReview`와 Windows가 staging rename을 거부한 native 경쟁 검사이며 `report`는 test 파일이 없다. 단일 최초 전체 명령의 종료1을 최종 종료0으로 바꿔 기록하지 않는다. |
+| 브라우저 native/race | 실제 Windows Go/modernc/Electron broker의9개 MCP 도구, renderer capability0·Untrusted/NULL restricted SID, 두 작업의 쿠키/localStorage·파일·프로세스 접근 거부, 실제PNG, lease 만료·취소·정리 통과. 최종 브라우저 집중 race31개(하위 포함)와 제어 채널2개 통과·skip0. 추가 C:/D: 분리·동일 볼륨 별칭 경로 회귀13개와 기존 보호2개 race 통과. WS/WebRTC의 STUN UDP/TURN TCP 수신0·ICE후보0 확인. 실제 HTTP403은 정상 응답, 미승인 redirect/내부 주소는 오류다. |
+| 경로·본문 보호 | 실제 Windows300회 관리 parent rename 경쟁 거부·50회 이동, held-parent junction 변경 뒤 native rename 거부·외부 파일 보존, 보관 traffic/evidence Root 교체 거부 통과. 실제 활성 evidence child-junction의 기록/읽기/GC 거부·외부 bytes/mtime·DB rows0 확인. 기존 본문/manifest 하드 링크·손상 본문 보존·복구·동시 게시 통과. 최종 evidence race12.965초, traffic 전체 race41.958초, relay 전체 race1.878초 통과. 내부 staging 교체 검사는 Windows의 열린 파일 rename 거부로 skip1이며 가능한 모든 경쟁창을 검증했다고 표현하지 않는다. |
+| 장기/권한 |120초8개 lane cycles=`[2203 2872 2800 2604 114 444 1680 1681]`, actual worker 재개→부분 모델 SSE→pause/cancel→drain2회·재시작 행/본문/integrity/FK 보존 통과. Engine2회는 초기에 실행하며120초 연속 Engine 부하가 아니다. 최종 경계 수정 후 기본3초 혼합 검사와 FindingTraffic/export/archive/retry 집중 검사12.451초 통과. 실제 NTFS workspace/관리 이동 ACL 쓰기 거부·파일 보존·권한 복구 통과. DB ACL은 modernc 초기화 전 writable-file preflight 거부이며 중간 DB ACL 장애와 구분한다. |
+| 웹 | TypeScript·한국어·입력 정적 검사·unit8개·정적 export31페이지 통과. Biome146파일 오류0·기존 warning131/info721·접근성 오류0. 공식 ChatGPT SVG 두 개는 byte 그대로 유지하며 두 자산의 title 경고만 한정한다. |
+| 실제 UI | 기존 Electron/Chrome6개 회귀 통과2.8분, 새 UI 상태 검사 최종10.0초 통과. 실제21페이지×2모드×2폭의 접근성 트리에서 이름 없는 컨트롤0, 작업 상세10탭·모델 저장/재시작·백업/복원·단일 인스턴스·시작 실패/재시도·DOM composition/확대 검증. MCP 로딩/500오류/키보드 재시도·폼 검증·두 모드 Checkbox 색/Switch thumb·Radio·Sheet Tab/Escape 포커스 복귀 통과. 대표 MCP/내보내기 캡처를 직접 확인했다. |
+| 물리 UI | 실제150% 모니터의 기본zoom·DPR1.5 LLM 화면과 overflow0 확인. 열린 Sheet 전체 물리 배율·125% 물리 모니터·네이티브 한글 조합은 미검증. 지원되지 않은 Hangul 키 입력과 RightAlt의 메뉴 동작을 성공으로 기록하지 않는다. |
+| Node/앱/포터블 | backend·backup·distribution 기존 Node regression106개35.5초 통과. 최종 Go embedui 빌드/vet 통과. 새 포터블 실제부팅·재시작·모델/도구 준비·작업 파일 CRUD/경계/보존2개55.5초 통과. 설치/서명/운영 업데이트를 이번 결과로 처리하지 않는다. |
+| ZIP | `ARTEX-2.2.0-Windows-x64-portable-browser.zip`,3174파일·이름/크기/중복 검사와 Electron/Go/broker/main/manifest/CSP/fonts/라이선스/포트 정의 등12개 내용 해시 일치.395,323,178바이트·SHA256 `55B882CA70006090B25FADC3DFA439A8C629BAF296BB10A6A28362CEC656658A`.5개 manifest component와 별도Chrome/미완성stage 없음 확인. 기존 실행 폴더·ZIP은 보존했다. |
+
+초기 native race의 zero restricted SID buffer checkptr 실패와 큰 evaluate 반환값을 수정하고 재검증했다. 다른 드라이브 경로를 중첩으로 오판하던 오류도 보완했다. 초기 relay prefetched tunnel fixture가 요청 전에 응답을 내보낸 가정은 실제 dial stream 검사로 수정했다. UI 선택색 검사는 CSS transition 종료를 기다리도록 바로잡고 제품을 우회하지 않았다. 공식 도구 ZIP의 최초 PowerShell 추출 timeout은 실패 stage를 보존한 뒤 동일 고정 배포물을 재준비해 통과했다. ZIP 검사의 빈 directory entry를 파일로 세던 오류를 수정했고 생성한 ZIP을 교체하지 않고 다시 검증했다. 초기 실패 로그/trace와 최종 로그·SQLite·PNG는 저장소 밖 로컬에만 보존한다.
+
+변경 범위는 Electron browser/backend/main·고정 도구 구성과 실제 UI/포터블 검사, Go browserrelay/toolruntime/server의 호출 승인·범위·본문·native 관리 경로, evidence/traffic 저장·보관·회귀 검사, 공통 Radix 컨트롤과 화면 이름/label/로딩/오류/키보드, 제품/구조/개발/UI 안내와 이 계획이다. 원본v0.3.15 이후 한글화 이력은 변경하지 않는다. Actions·릴리스 태그·운영 게시·원격 artifact 업로드는 하지 않는다. 원격 반영 SHA는 완료 보고와 이 단위 Git 커밋에서 확인한다.
+
+**다음 시작점은 남은 실기 검수**다. 네이티브 한글 IME·물리125%와 열린 오버레이의150%·모든 데이터/오류/승인 상태 수동 검수, 물리 디스크 고장/전원 장애·전체 OS ACL 장애를 완료 처리하지 않는다. 서명·운영 업데이트(4)와 macOS/Linux 실제 지원(5)은 사용자 요청으로 이 단위에서 제외했다.
+
+## 이전 단위 — 2026-10-10 작업 파일 경계·시작 안정성·신뢰성·UI 검수
 
 미커밋 변경이 없는 원격/로컬 main `b6c3781dd6a2a69880e371ab3a82c5a4752fd9ae`에서 시작했다. 사용자 요청으로 남은 계획을 진행하며 작업 파일과 앱 관리 파일의 경계, 간헐적인 금지 포트 선택, 실제 SQLite 부하·저장 오류와 Windows 설치 등록을 확인한다. 원본 v0.3.15와 한글화 시작 이후의 이력 순서는 변경하지 않는다.
 
@@ -455,7 +489,7 @@ DB 선택 스위치/SQL 번역기/PG fallback/구 데이터 자동 이전기/임
 UI 지침과 최신 지정 원본을 읽었고 원본 SHA b4da2463fe710a77bf464c65125a1a7f40424722가 동일함을 확인했다.
 
 - [x] 공통 Mono 색상 토큰/Pretendard 단일 로컬 글꼴/컨트롤/표/오버레이와 호출부 연결, MIT/OFL/기존 저작권 보존.
-- [ ] 셸/전체 업무 화면의 기본 21개 페이지 ×2모드×2폭 검사는 통과. 모든 데이터·오류·승인 상태의 시각 검수는 미완료.
+- [x] 셸/전체 업무 화면의 기본21개 페이지×2모드×2폭·접근 가능한 컨트롤 이름 검사. 모든 데이터·오류·승인 상태의 수동 검수와 구분한다.
 - [x] Electron 메인/렌더러 분리, lockfile/Go/정적 UI, 단일 인스턴스/userData/ready/장애/정상 종료.
 - [x] 앱 세션/Origin/Host/IPC/CSP/탐색·부모 EOF와 Windows Go 강제 kill·관리된 도구의 detached 자손 정리 검사. 다른 OS의 자손 정리는 별도 미검증.
 - [x] 서명되지 않은 Windows 실행 패키지의 실제 resources/userData/Go/SQLite 부팅·재실행·사용자 스킬 보존·라이선스 검사.
@@ -467,18 +501,20 @@ UI 지침과 최신 지정 원본을 읽었고 원본 SHA b4da2463fe710a77bf464c
 ## M4/M5. 도구·신뢰성·배포
 
 - [x] Windows x64 셸/PTY/Python/Node/Git/stdio MCP, 공식 경로·버전·출처·전체 해시·라이선스·누락/변조/미지원 준비 상태 차단.
-- [ ] Windows 브라우저 내부 IPC·승인 대상 네트워크 중계와 브라우저 MCP의 실제 호출부 연결. 전체 도구 `ready=false`를 유지한다.
+- [x] Windows 브라우저 내부 IPC·Go 승인 대상 네트워크 중계·실제9개 MCP 도구 연결. 정상 초기화에서 전체 도구 `ready=true`, 실패/변조는 차단한다.
 - [x] Windows AppContainer의 작업 공간/네트워크/인증 환경변수 차단, Job 자손 정리·kill·손상·쓰기 실패와 일관된 DB+증거 백업/새 폴더 복원.
 - [x] 실제 SQLite 독립2풀의12writer/4reader·1,920회 커밋·재열기 및 용량 한도/읽기 전용 오류의 rollback·복구. Windows 집중 race28개+하위4개 통과.
 - [x] 작업 파일의 독립 루트·실제7개 API·첨부/도구 연결, Windows junction/하드 링크와 보관 유출 거부·구 파일 보존.
 - [x] 공유 Chromium 금지 포트 정의의 동적 소켓 선택·명시 포트/ready 거부·실제 앱 실패/재시도.
-- [ ] 전체 업무가 동시에 수행되는 장기 부하·물리 디스크 장애/OS ACL 전체·관리 폴더 간 이동의 동시 경로 교체 보호. 위 용량/읽기 전용 제어 및 API 열린 루트 보호와 구분한다.
+- [x] 실제120초8개 업무 lane·초기Engine 실행/취소2회·재시작 보존, Windows 관리 폴더 이동/보관 Root 경로 교체와 workspace/이동 ACL 거부·복구.
+- [ ] 물리 디스크 고장/전원 장애·전체 OS ACL 장애·120초 연속 Engine 실행·모든 물리 UI 상태 검수. 제어 검사/초기화 preflight/교차 컴파일과 구분한다.
 - [ ] macOS/Linux 도구/PTY/네트워크/자손 격리의 실제 실행. 교차 컴파일을 실행 검증으로 처리하지 않는다.
 - [x] Go 자체 업데이트/시작 스크립트/Docker/PG 안내·의존성·구 배포 workflow 제거. 사용자 데이터 보존. Electron 자동 업데이트 배포는 별도 미완료.
 - [x] README와 개발 안내를 현재 Electron/SQLite 빌드·검사·데이터 경로·미완료 상태로 교체.
 - [x] 최종 Windows 임시 설치·업그레이드·제거와 실제 Go/UI 준비·기존 데이터 보존. 2.2.1은 동일 코드의 메타데이터 검사 fixture.
 - [x] 실제 Windows 시작 메뉴 바로가기·HKCU 제거 등록, 업그레이드 후 대상/버전과 제거 후 해제·데이터 보존. 기존 ARTEX 등록이 없던 PC의 임시 설치로 확인.
-- [ ] 공인 Windows 코드 서명·운영 HTTPS 업데이트, macOS/Linux 실제 지원 검증, 전체 스타일/접근성 수동 확인.
+- [ ] 공인 Windows 코드 서명·운영 HTTPS 업데이트. 이번 사용자 요청에서 제외(4).
+- [ ] macOS/Linux 실제 지원 검증. 이번 사용자 요청에서 제외(5).
 
 ## 이전 단위의 로컬 검증 — 2026-10-07 SQLite/Electron 연결
 

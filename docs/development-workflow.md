@@ -49,6 +49,10 @@ npm run build:static
 
 ## 환경 제약
 
+Windows 브라우저의 실제 통합 검사는 `ARTEX_TEST_BROWSER_EXECUTABLE`에 공개 Electron 실행 파일을 지정하고 `TestWindowsBrowserBrokerIntegration`을 실행한다. 제품의 `-prepare-browser-runtime EXE -browser-runtime-home HOME` 경로로 공개 실행 폴더만 준비하며 Chromium 전용 SID ACL이나 사용자 홈 권한을 추가하지 않는다. 이 검사는 실제 renderer 토큰·9개 MCP 도구·Go 대상 범위·저장소/파일/프로세스 격리를 사용하며 실행 파일을 지정하지 않으면 skip이다.
+
+`ARTEX_TEST_TOOL_ROOT`와 `ARTEX_TEST_TOOL_MANIFEST_SHA256`은 빌드한 도구 폴더와 해당 manifest의 SHA256을 지정한다. 별도 Chrome은 포함하지 않으며 실제 브라우저는 Electron을 사용한다. `ARTEX_STABILITY_SECONDS=120`의 `TestDesktopBusinessSoakPreservesDataAfterRestart`는 8개 업무 lane과 로컬 모델 fixture의 초기 Engine 실행·취소2회, 재열기 후 행/본문/integrity/FK를 검사한다. Engine이 전체120초 내내 실행되는 부하나 물리 디스크 장애로 표현하지 않는다. Windows `-race`에는 별도로 확인한 C 컴파일러를 프로세스 환경에만 지정한다.
+
 지정 Go/의존성 다운로드가 실패하면 버전을 낮추거나 Actions로 우회하지 않는다.
 표준 라이브러리만 쓰는 정확한 업무 함수의 격리 검사는 가능하지만 경계 타입/오류 주입 드라이버를 명시한다.
 Python SQLite에서 SQL을 실행한 결과는 Go 스캔/드라이버/전체 앱 부팅의 증거가 아니다.

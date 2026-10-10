@@ -9,7 +9,7 @@ function scan(dir) {
     if (entry.isDirectory()) { scan(file); continue; }
     if (!/\.tsx?$/.test(file)) continue;
     const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
-    function visit(node) {
+    const visit = (node) => {
       if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node) || ts.isJsxText(node)) && han.test(node.text)) {
         errors.push(`${file}:${source.getLineAndCharacterOfPosition(node.pos).line + 1}: ${node.text.slice(0, 120)}`);
       }

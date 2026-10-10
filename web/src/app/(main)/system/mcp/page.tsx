@@ -44,6 +44,7 @@ const emptyForm: FormState = {
 };
 
 export default function MCPPage() {
+  const controlId = React.useId();
   const [servers, setServers] = React.useState<MCPServer[]>([]);
   const [agents, setAgents] = React.useState<Agent[]>([]);
   const [visibility, setVisibility] = React.useState<Record<number, string[]>>({});
@@ -56,21 +57,27 @@ export default function MCPPage() {
   const [tools, setTools] = React.useState<MCPTool[]>([]);
   const [toolsLoading, setToolsLoading] = React.useState(false);
   const [refreshing, setRefreshing] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState("");
+  const [toolsError, setToolsError] = React.useState("");
 
   const load = React.useCallback(() => {
-    api.agents().then(setAgents).catch(() => {});
+    setLoading(true);
+    setLoadError("");
+    api.agents().then(setAgents).catch((error: Error) => toast.error(`불러오기 실패: ${error.message}`));
     api
       .mcpServers()
       .then((ss) => {
         setServers(ss);
-        ss.forEach((s) =>
+        ss.forEach((s) => {
           api
             .resourceVisibility("mcp", s.id)
             .then((ids) => setVisibility((v) => ({ ...v, [s.id]: ids })))
-            .catch(() => {}),
-        );
+            .catch((error: Error) => toast.error(`접근 권한 불러오기 실패: ${error.message}`));
+        });
       })
-      .catch(() => {});
+      .catch((error: Error) => setLoadError(error.message))
+      .finally(() => setLoading(false));
   }, []);
   React.useEffect(() => {
     load();
@@ -103,6 +110,7 @@ export default function MCPPage() {
     setEditing(null);
     setForm(emptyForm);
     setTools([]);
+    setToolsError("");
     setTab("config");
     setOpen(true);
   }
@@ -120,15 +128,16 @@ export default function MCPPage() {
     });
     setTab("config");
     setOpen(true);
-    loadTools(s.id);
+    void loadTools(s.id);
   }
 
   async function loadTools(id: number) {
     setToolsLoading(true);
+    setToolsError("");
     try {
       setTools(await api.mcpTools(id));
-    } catch {
-      setTools([]);
+    } catch (error) {
+      setToolsError((error as Error).message);
     } finally {
       setToolsLoading(false);
     }
@@ -188,6 +197,7 @@ export default function MCPPage() {
     try {
       const t = await api.refreshMcpServer(editing.id);
       setTools(t);
+      setToolsError("");
       toast.success(`도구 ${t.length}개 발견`);
       load();
     } catch (e) {
@@ -233,10 +243,11 @@ export default function MCPPage() {
       <div className="grid gap-4 py-4">
         <div className="grid gap-2">
           <Label>전송 방식</Label>
-          <div className="flex gap-2">
+          <fieldset aria-label="전송 방식" className="flex gap-2">
             <Button
               type="button"
               variant={form.transport === "stdio" ? "default" : "outline"}
+              aria-pressed={form.transport === "stdio"}
               onClick={() => setF({ transport: "stdio" })}
             >
               stdio(로컬)
@@ -244,6 +255,7 @@ export default function MCPPage() {
             <Button
               type="button"
               variant={form.transport === "http" ? "default" : "outline"}
+              aria-pressed={form.transport === "http"}
               onClick={() => setF({ transport: "http" })}
             >
               http(원격)
@@ -251,11 +263,12 @@ export default function MCPPage() {
             <Button
               type="button"
               variant={form.transport === "sse" ? "default" : "outline"}
+              aria-pressed={form.transport === "sse"}
               onClick={() => setF({ transport: "sse" })}
             >
               sse(레거시)
             </Button>
-          </div>
+          </fieldset>
         </div>
         <div className="grid gap-2">
           <Label htmlFor="m-name">이름</Label>
@@ -299,8 +312,8 @@ export default function MCPPage() {
               value={form.url}
               onChange={(e) => setF({ url: e.target.value })}
             />
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
+            <label htmlFor={`${controlId}-1`} className="flex items-center gap-2 text-sm">
+              <Checkbox id={`${controlId}-1`}
                 checked={form.insecure}
                 onCheckedChange={(v) => setF({ insecure: v === true })}
               />
@@ -338,7 +351,9 @@ export default function MCPPage() {
           </Button>
         </div>
         {toolsLoading ? (
-          <p className="text-muted-foreground text-sm">불러오는 중…</p>
+          <p role="status" className="text-muted-foreground text-sm">불러오는 중…</p>
+        ) : toolsError ? (
+          <p role="alert" className="text-destructive text-sm">도구 목록을 불러오지 못했습니다: {toolsError}</p>
         ) : tools.length === 0 ? (
           <p className="text-muted-foreground text-sm">도구가 없습니다. 새로고침하여 다시 가져오세요.</p>
         ) : (
@@ -366,7 +381,14 @@ export default function MCPPage() {
         <p className="text-muted-foreground text-sm">외부 MCP 도구 서버 · 에이전트별 접근 권한 설정</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {loading ? (
+        <p role="status" className="text-muted-foreground text-sm">MCP 서버를 불러오는 중…</p>
+      ) : loadError ? (
+        <div role="alert" className="flex flex-wrap items-center gap-3 text-destructive text-sm">
+          <span>MCP 서버를 불러오지 못했습니다: {loadError}</span>
+          <Button variant="outline" size="sm" onClick={load}>다시 시도</Button>
+        </div>
+      ) : <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <button
           type="button"
           onClick={openAdd}
@@ -379,19 +401,18 @@ export default function MCPPage() {
         {servers.map((s) => (
           <Card
             key={s.id}
-            onClick={() => openEdit(s)}
-            className="hover:border-primary/60 cursor-pointer gap-3 transition hover:shadow-sm"
+            className="gap-3"
           >
             <CardHeader className="gap-3">
               <div className="flex min-w-0 items-start gap-2">
                 <ServerIcon className="text-muted-foreground size-4 shrink-0" />
-                <CardTitle className="min-w-0 break-words text-base">{s.name}</CardTitle>
+                <CardTitle className="min-w-0 break-words text-base"><button type="button" className="cursor-pointer text-left underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring" onClick={() => openEdit(s)} aria-label={`${s.name} 설정 열기`}>{s.name}</button></CardTitle>
               </div>
               <div className="flex items-center justify-between gap-2">
                 <Badge variant="outline" className="uppercase">
                   {s.transport}
                 </Badge>
-                <div className="flex shrink-0 items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                <div className="flex shrink-0 items-center gap-2">
                   <Switch
                     checked={s.enabled}
                     onCheckedChange={() => toggleEnabled(s)}
@@ -412,12 +433,12 @@ export default function MCPPage() {
               <p className="text-muted-foreground text-sm">
                 {s.tools && s.tools.length > 0 ? `${s.tools.length}개 도구` : "도구 미발견"}
               </p>
-              <div className="grid gap-2" onClick={(e) => e.stopPropagation()}>
+              <div className="grid gap-2">
                 <span className="text-muted-foreground text-xs"> 접근 권한(에이전트별)</span>
                 <div className="flex flex-wrap gap-x-4 gap-y-2">
                   {agents.map((a) => (
-                    <label key={a.key} className="flex items-center gap-2 text-sm">
-                      <Checkbox
+                    <label htmlFor={`${controlId}-2-${s.id}-${a.key}`} key={a.key} className="flex items-center gap-2 text-sm">
+                      <Checkbox id={`${controlId}-2-${s.id}-${a.key}`}
                         checked={(visibility[s.id] ?? []).includes(a.id)}
                         onCheckedChange={() => toggleVisibility(s.id, a.id, a.name)}
                       />
@@ -429,7 +450,7 @@ export default function MCPPage() {
             </CardContent>
           </Card>
         ))}
-      </div>
+      </div>}
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent

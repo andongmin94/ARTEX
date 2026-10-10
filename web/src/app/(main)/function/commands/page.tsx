@@ -153,7 +153,7 @@ export default function CommandsPage() {
           onChange={(e) => setTaskFilter(e.target.value.replace(/\D/g, ""))}
         />
         <Select value={String(size)} onValueChange={(v) => setSize(Number(v))}>
-          <SelectTrigger size="sm" className="w-28">
+          <SelectTrigger aria-label="페이지당 항목 수" size="sm" className="w-28">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -174,7 +174,7 @@ export default function CommandsPage() {
           <span className="tabular-nums">
             {rangeStart}–{rangeEnd} / {total}
           </span>
-          <Button
+          <Button aria-label="이전 페이지"
             variant="outline"
             size="icon"
             className="size-8"
@@ -186,7 +186,7 @@ export default function CommandsPage() {
           <span className="tabular-nums">
             {page + 1} / {totalPages}
           </span>
-          <Button
+          <Button aria-label="다음 페이지"
             variant="outline"
             size="icon"
             className="size-8"

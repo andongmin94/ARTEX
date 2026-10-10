@@ -488,8 +488,8 @@ func (m *Manager) SetWebSearch(on bool, backend string, braveKey, tavilyKey, pro
 	return nil
 }
 
-// browserMCPName is the seeded Playwright MCP whose proxy args + CA env are kept
-// in sync with the traffic-capture toggle.
+// browserMCPName selects the native browser broker in desktop mode. The
+// standalone MCP configuration keeps its traffic proxy arguments in sync.
 const browserMCPName = "browser"
 
 func decodeStrSlice(raw json.RawMessage) []string {
@@ -1374,6 +1374,7 @@ type stagedTaskPath struct {
 }
 
 type taskFileDeleteStage struct {
+	dataDir  string
 	stageDir string
 	moves    []stagedTaskPath
 	deleted  bool
@@ -1387,7 +1388,7 @@ func stageTaskFiles(dataDir, taskID string, explorationID int64) (*taskFileDelet
 	if err := validateWorkspaceArtifactPath(dataDir, filepath.Join("tasks", taskID)); err != nil {
 		return nil, err
 	}
-	stage := &taskFileDeleteStage{}
+	stage := &taskFileDeleteStage{dataDir: dataDir}
 	var targets []string
 	taskDir := filepath.Join(workspaceDirectory(dataDir), "tasks", taskID)
 	if _, err := os.Lstat(taskDir); err == nil {
@@ -1418,16 +1419,16 @@ func stageTaskFiles(dataDir, taskID string, explorationID int64) (*taskFileDelet
 	}
 
 	parent := filepath.Join(dataDir, ".delete-staging")
-	if err := os.MkdirAll(parent, 0o700); err != nil {
+	if err := managedMkdirAll(dataDir, parent); err != nil {
 		return nil, err
 	}
-	stage.stageDir, err = os.MkdirTemp(parent, "task-"+taskID+"-")
+	stage.stageDir, err = managedMkdirTemp(dataDir, parent, "task-"+taskID+"-")
 	if err != nil {
 		return nil, err
 	}
 	for _, source := range targets {
 		staged := filepath.Join(stage.stageDir, fmt.Sprintf("%d-%s", len(stage.moves), filepath.Base(source)))
-		if err := os.Rename(source, staged); err != nil {
+		if err := managedMove(dataDir, source, staged); err != nil {
 			cause := fmt.Errorf("stage task file %s: %w", source, err)
 			if restoreErr := stage.rollback(); restoreErr != nil {
 				return nil, errors.Join(cause, fmt.Errorf("restore partially staged task files: %w", restoreErr))
@@ -1444,7 +1445,7 @@ func (s *taskFileDeleteStage) commit() error {
 	if s == nil || s.done {
 		return nil
 	}
-	err := os.RemoveAll(s.stageDir)
+	err := managedRemoveAll(s.dataDir, s.stageDir)
 	s.done = true
 	return err
 }
@@ -1463,16 +1464,12 @@ func (s *taskFileDeleteStage) rollback() error {
 			errs = append(errs, fmt.Errorf("inspect restore destination %s: %w", move.source, err))
 			continue
 		}
-		if err := os.MkdirAll(filepath.Dir(move.source), 0o755); err != nil {
-			errs = append(errs, fmt.Errorf("create restore parent for %s: %w", move.source, err))
-			continue
-		}
-		if err := os.Rename(move.staged, move.source); err != nil {
+		if err := managedMove(s.dataDir, move.staged, move.source); err != nil {
 			errs = append(errs, fmt.Errorf("restore %s: %w", move.source, err))
 		}
 	}
 	if len(errs) == 0 && s.stageDir != "" {
-		if err := os.RemoveAll(s.stageDir); err != nil {
+		if err := managedRemoveAll(s.dataDir, s.stageDir); err != nil {
 			errs = append(errs, fmt.Errorf("remove task file stage: %w", err))
 		}
 	}

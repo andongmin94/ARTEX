@@ -146,11 +146,20 @@ func (s *Server) archiveTask(job *pgdb.TaskArchive) (runErr error) {
 			runErr = errors.Join(runErr, fileStage.rollback())
 		}
 	}()
-	streamPath := filepath.Join(fileStage.payload, filepath.FromSlash(pgdb.TaskArchiveLLMRecordsPath))
-	if err := os.MkdirAll(filepath.Dir(streamPath), archiveDirMode); err != nil {
+	payload, closePayload, err := openManagedDirectory(s.m.dir, fileStage.payload, false)
+	if err != nil {
 		return err
 	}
-	streamFile, err := os.OpenFile(streamPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, archiveFileMode)
+	defer func() {
+		if closePayload != nil {
+			_ = closePayload()
+		}
+	}()
+	streamRelative := filepath.FromSlash(pgdb.TaskArchiveLLMRecordsPath)
+	if err := payload.MkdirAll(filepath.Dir(streamRelative), archiveDirMode); err != nil {
+		return err
+	}
+	streamFile, err := payload.OpenFile(streamRelative, os.O_CREATE|os.O_EXCL|os.O_WRONLY, archiveFileMode)
 	if err != nil {
 		return err
 	}
@@ -164,13 +173,21 @@ func (s *Server) archiveTask(job *pgdb.TaskArchive) (runErr error) {
 	if err := errors.Join(snapshotErr, syncErr, closeErr); err != nil {
 		return err
 	}
+	if err := closePayload(); err != nil {
+		return err
+	}
+	closePayload = nil
 	if snapshot.ExplorationID != task.ExplorationID {
 		return errors.New("보관 스냅샷 생성 중 작업 탐색 기록이 변경되었습니다")
 	}
 	if s.m.traffic != nil && len(snapshot.Hosts) > 0 {
 		_ = s.m.pg.UpdateTaskArchiveProgress(job.ID, "snapshot_traffic", 38)
-		trafficCount, err := s.m.traffic.ExportHosts(snapshot.Hosts, filepath.Join(fileStage.payload, "traffic"))
+		trafficRoot, closeTraffic, err := openManagedDirectory(s.m.dir, filepath.Join(fileStage.payload, "traffic"), true)
 		if err != nil {
+			return err
+		}
+		trafficCount, exportErr := s.m.traffic.ExportHosts(snapshot.Hosts, trafficRoot)
+		if err := errors.Join(exportErr, closeTraffic()); err != nil {
 			return err
 		}
 		snapshot.DataCounts["traffic"] = trafficCount
@@ -180,18 +197,23 @@ func (s *Server) archiveTask(job *pgdb.TaskArchive) (runErr error) {
 	if err != nil {
 		return err
 	}
-	if err = s.evidenceStore().CopySnapshots(s.ctx, evidenceSnapshots, filepath.Join(fileStage.payload, "evidence")); err != nil {
+	evidenceRoot, closeEvidence, err := openManagedDirectory(s.m.dir, filepath.Join(fileStage.payload, "evidence"), true)
+	if err != nil {
+		return err
+	}
+	copyErr := s.evidenceStore().CopySnapshots(s.ctx, evidenceSnapshots, evidenceRoot)
+	if err := errors.Join(copyErr, closeEvidence()); err != nil {
 		return err
 	}
 	_ = s.m.pg.UpdateTaskArchiveProgress(job.ID, "compress", 50)
-	originalSize, compressedSize, checksum, err := writeTaskArchivePackage(archivePath, fileStage.payload, snapshot)
+	originalSize, compressedSize, checksum, err := writeTaskArchivePackage(s.m.dir, archivePath, fileStage.payload, snapshot)
 	if err != nil {
 		return err
 	}
 	removePackage := true
 	defer func() {
 		if removePackage {
-			_ = os.Remove(archivePath)
+			runErr = errors.Join(runErr, managedRemoveAll(s.m.dir, archivePath))
 		}
 	}()
 	var trafficStage *traffic.HostDeleteStage
@@ -242,7 +264,7 @@ func (s *Server) restoreTaskArchive(job *pgdb.TaskArchive) (runErr error) {
 	if restored, err := s.m.pg.IsTaskArchiveRestored(job.ID); err != nil {
 		return err
 	} else if restored {
-		if err := os.Remove(job.ArchivePath); err != nil && !os.IsNotExist(err) {
+		if err := managedRemoveAll(s.m.dir, job.ArchivePath); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 		if err := s.m.pg.CompleteTaskArchiveRestore(job.ID); err != nil {
@@ -252,18 +274,23 @@ func (s *Server) restoreTaskArchive(job *pgdb.TaskArchive) (runErr error) {
 	}
 	_ = s.m.pg.UpdateTaskArchiveProgress(job.ID, "verify_package", 10)
 	restoreParent := filepath.Join(taskArchiveRoot(s.m.dir), ".restore")
-	if err := os.MkdirAll(restoreParent, archiveDirMode); err != nil {
+	if err := managedMkdirAll(s.m.dir, restoreParent); err != nil {
 		return err
 	}
-	extracted, err := os.MkdirTemp(restoreParent, fmt.Sprintf("%d-", job.ID))
+	extracted, err := managedMkdirTemp(s.m.dir, restoreParent, fmt.Sprintf("%d-", job.ID))
 	if err != nil {
 		return err
 	}
-	defer func() { _ = os.RemoveAll(extracted) }()
-	if err := extractTaskArchivePackage(job.ArchivePath, job.SHA256, extracted); err != nil {
+	defer func() { _ = managedRemoveAll(s.m.dir, extracted) }()
+	if err := extractTaskArchivePackage(s.m.dir, job.ArchivePath, job.SHA256, extracted); err != nil {
 		return err
 	}
-	manifestRaw, err := os.ReadFile(filepath.Join(extracted, "manifest.json"))
+	payload, closePayload, err := openManagedDirectory(s.m.dir, extracted, false)
+	if err != nil {
+		return err
+	}
+	manifestRaw, err := payload.ReadFile("manifest.json")
+	err = errors.Join(err, closePayload())
 	if err != nil {
 		return err
 	}
@@ -291,8 +318,16 @@ func (s *Server) restoreTaskArchivePayload(job *pgdb.TaskArchive, snapshot *pgdb
 		return pgdb.ErrTaskArchiveFormatMismatch
 	}
 	if hasStreamedLLMRecords {
-		llmRecordsFile, err = os.Open(filepath.Join(extracted, filepath.FromSlash(relative)))
+		payload, closePayload, err := openManagedDirectory(s.m.dir, extracted, false)
 		if err != nil {
+			return err
+		}
+		llmRecordsFile, err = payload.Open(filepath.FromSlash(relative))
+		err = errors.Join(err, closePayload())
+		if err != nil {
+			if llmRecordsFile != nil {
+				_ = llmRecordsFile.Close()
+			}
 			return err
 		}
 		defer func() {
@@ -303,8 +338,15 @@ func (s *Server) restoreTaskArchivePayload(job *pgdb.TaskArchive, snapshot *pgdb
 	}
 	if s.m.traffic != nil {
 		_ = s.m.pg.UpdateTaskArchiveProgress(job.ID, "restore_traffic", 35)
-		if _, err := s.m.traffic.ImportArchive(filepath.Join(extracted, "traffic")); err != nil {
+		trafficRoot, closeTraffic, err := openManagedDirectory(s.m.dir, filepath.Join(extracted, "traffic"), false)
+		if err != nil && !os.IsNotExist(err) {
 			return err
+		}
+		if err == nil {
+			_, importErr := s.m.traffic.ImportArchive(trafficRoot)
+			if err := errors.Join(importErr, closeTraffic()); err != nil {
+				return err
+			}
 		}
 	}
 	_ = s.m.pg.UpdateTaskArchiveProgress(job.ID, "restore_files", 55)
@@ -323,7 +365,11 @@ func (s *Server) restoreTaskArchivePayload(job *pgdb.TaskArchive, snapshot *pgdb
 	// Bodies are pinned and metadata is restored under the SAME SQLite writer.
 	// File/traffic preparation, progress updates and post-commit runtime loading
 	// must stay outside this callback: another Begin would wait for itself.
-	err = s.evidenceStore().WithInstalledSnapshots(s.ctx, evidenceSnapshots, filepath.Join(extracted, "evidence"), func(tx *sql.Tx) error {
+	evidenceRoot, closeEvidence, err := openManagedDirectory(s.m.dir, filepath.Join(extracted, "evidence"), len(evidenceSnapshots) == 0)
+	if err != nil {
+		return err
+	}
+	err = s.evidenceStore().WithInstalledSnapshots(s.ctx, evidenceSnapshots, evidenceRoot, func(tx *sql.Tx) error {
 		var records io.Reader
 		if llmRecordsFile != nil {
 			records = llmRecordsFile
@@ -336,6 +382,7 @@ func (s *Server) restoreTaskArchivePayload(job *pgdb.TaskArchive, snapshot *pgdb
 		}
 		return restoreErr
 	})
+	err = errors.Join(err, closeEvidence())
 	if err != nil {
 		return err
 	}
@@ -354,7 +401,7 @@ func (s *Server) restoreTaskArchivePayload(job *pgdb.TaskArchive, snapshot *pgdb
 		return err
 	}
 	_ = s.m.pg.UpdateTaskArchiveProgress(job.ID, "consume_package", 95)
-	if err := os.Remove(job.ArchivePath); err != nil && !os.IsNotExist(err) {
+	if err := managedRemoveAll(s.m.dir, job.ArchivePath); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	if err := s.m.pg.CompleteTaskArchiveRestore(job.ID); err != nil {
@@ -399,19 +446,19 @@ func (s *Server) deleteTaskArchive(job *pgdb.TaskArchive) error {
 		return err
 	}
 	_ = s.m.pg.UpdateTaskArchiveProgress(job.ID, "stage_package_delete", 35)
-	staged, moved, err := stageTaskArchivePackageDelete(job.ArchivePath, job.ID)
+	staged, moved, err := stageTaskArchivePackageDelete(s.m.dir, job.ArchivePath, job.ID)
 	if err != nil {
 		return err
 	}
 	_ = s.m.pg.UpdateTaskArchiveProgress(job.ID, "delete_metadata", 70)
 	if err := s.m.pg.DeleteTaskArchiveStub(job.ID); err != nil {
 		if moved {
-			_ = os.Rename(staged, job.ArchivePath)
+			_ = managedMove(s.m.dir, staged, job.ArchivePath)
 		}
 		return err
 	}
 	if moved {
-		if err := os.Remove(staged); err != nil && !os.IsNotExist(err) {
+		if err := managedRemoveAll(s.m.dir, staged); err != nil && !os.IsNotExist(err) {
 			log.Printf("[task-archive] archived task %d metadata deleted; stale package cleanup failed: %v", job.TaskID, err)
 		}
 	}

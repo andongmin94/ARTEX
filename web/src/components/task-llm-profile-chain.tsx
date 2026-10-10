@@ -200,7 +200,7 @@ export function TaskLLMProfileChain({
             onValueChange={onActiveProfileChange}
             disabled={disabled}
           >
-            <SelectTrigger size="sm" className="w-full sm:min-w-48 sm:max-w-64">
+            <SelectTrigger aria-label="현재 작업 모델" size="sm" className="w-full sm:min-w-48 sm:max-w-64">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

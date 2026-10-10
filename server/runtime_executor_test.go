@@ -265,7 +265,7 @@ func TestManagedDesktopPTYAndBackgroundLifecycle(t *testing.T) {
 	}
 }
 
-func TestManagedRuntimeReportsSupportedExecutionAndBlockedBrowser(t *testing.T) {
+func TestManagedRuntimeRequiresNativeBrowserBroker(t *testing.T) {
 	managedBundleEnvironment(t)
 	w := httptest.NewRecorder()
 	(&Server{}).runtimeTools(w, httptest.NewRequest("GET", "/api/runtime/tools", nil))
@@ -285,10 +285,12 @@ func TestManagedRuntimeReportsSupportedExecutionAndBlockedBrowser(t *testing.T) 
 	}
 	for _, component := range status.Components {
 		expected := "available"
+		expectedState := "verified"
 		if component.Key == "browser" {
 			expected = "blocked"
+			expectedState = "not_prepared"
 		}
-		if component.State != "verified" || component.Execution != expected {
+		if component.State != expectedState || component.Execution != expected {
 			t.Fatal(w.Body.String())
 		}
 	}

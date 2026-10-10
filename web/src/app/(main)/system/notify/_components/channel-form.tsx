@@ -66,7 +66,7 @@ export function ConfigField({
       <div className="grid gap-2">
         <Label>{def.label}</Label>
         <Select value={raw || def.options?.[0]?.value} onValueChange={onChange}>
-          <SelectTrigger>
+          <SelectTrigger aria-label={def.label}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { toast } from "sonner";
 import {
   RadioIcon,
   SearchIcon,
@@ -168,7 +169,7 @@ export default function LLMRecordsPage() {
     api
       .settings()
       .then((s) => { if (alive) setRecEnabled(!!s.llm_record); })
-      .catch(() => {});
+      .catch((error: Error) => toast.error(`기록 처리 실패: ${error.message}`));
     return () => { alive = false; };
   }, []);
 
@@ -191,12 +192,14 @@ export default function LLMRecordsPage() {
     return () => clearTimeout(t);
   }, [session]);
 
-  // Reset page on filter change.
+  // Reset pagination when filters change; these values intentionally trigger the effect.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Changing a filter must reset the page even though the effect only writes page.
   React.useEffect(() => {
     setPage(0);
   }, [sessionQ, model, size, pickedTask]);
 
   // Load list.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadTick intentionally refetches unchanged filters after deletion.
   React.useEffect(() => {
     let alive = true;
     setLoading(true);
@@ -207,12 +210,12 @@ export default function LLMRecordsPage() {
         setRecords(r.records ?? []);
         setTotal(r.total ?? 0);
       })
-      .catch(() => {})
+      .catch((error: Error) => toast.error(`기록 처리 실패: ${error.message}`))
       .finally(() => alive && setLoading(false));
     api
       .llmTasks()
       .then((r) => { if (alive) setTasks(r.tasks ?? []); })
-      .catch(() => {});
+      .catch((error: Error) => toast.error(`기록 처리 실패: ${error.message}`));
     return () => { alive = false; };
   }, [page, size, sessionQ, model, pickedTask, reloadTick]);
 
@@ -229,7 +232,7 @@ export default function LLMRecordsPage() {
         setPage(0);
         setReloadTick((t) => t + 1);
       })
-      .catch(() => {})
+      .catch((error: Error) => toast.error(`기록 처리 실패: ${error.message}`))
       .finally(() => setDeleting(false));
   };
 
@@ -245,7 +248,7 @@ export default function LLMRecordsPage() {
     api
       .llmRecordDetail(selected.id)
       .then((d) => { if (alive) setDetail(d); })
-      .catch(() => {})
+      .catch((error: Error) => toast.error(`기록 처리 실패: ${error.message}`))
       .finally(() => { if (alive) setDetailLoading(false); });
     return () => { alive = false; };
   }, [selected]);
@@ -283,7 +286,7 @@ export default function LLMRecordsPage() {
           onChange={(e) => setModel(e.target.value)}
         />
         <Select value={pickedTask} onValueChange={setPickedTask}>
-          <SelectTrigger size="sm" className="w-56">
+          <SelectTrigger aria-label="기록 작업 필터" size="sm" className="w-56">
             <SelectValue placeholder="작업 선택…" />
           </SelectTrigger>
           <SelectContent>
@@ -313,7 +316,7 @@ export default function LLMRecordsPage() {
           작업 대화 삭제
         </Button>
         <Select value={String(size)} onValueChange={(v) => setSize(Number(v))}>
-          <SelectTrigger size="sm" className="w-28">
+          <SelectTrigger aria-label="페이지당 항목 수" size="sm" className="w-28">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -349,7 +352,7 @@ export default function LLMRecordsPage() {
           <span className="tabular-nums">
             {rangeStart}–{rangeEnd} / {total}
           </span>
-          <Button
+          <Button aria-label="이전 페이지"
             variant="outline"
             size="icon"
             className="size-8"
@@ -361,7 +364,7 @@ export default function LLMRecordsPage() {
           <span className="tabular-nums">
             {page + 1} / {totalPages}
           </span>
-          <Button
+          <Button aria-label="다음 페이지"
             variant="outline"
             size="icon"
             className="size-8"

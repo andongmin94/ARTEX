@@ -31,7 +31,7 @@ const levelDot: Record<LogLine["level"], string> = {
 
 function fmtTime(ts: string) {
   const d = new Date(ts);
-  if (isNaN(d.getTime())) return "";
+  if (Number.isNaN(d.getTime())) return "";
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
@@ -125,6 +125,7 @@ export default function LogsPage() {
     );
   }, [lines, q, level]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Each new filtered result must update the sticky scroll position.
   React.useEffect(() => {
     if (stick.current && !paused) bottom.current?.scrollIntoView();
   }, [filtered, paused]);

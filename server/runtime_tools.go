@@ -51,6 +51,8 @@ func (s *Server) runtimeTools(w http.ResponseWriter, r *http.Request) {
 	}
 	mode, message := "standalone", "앱 전용 도구 배포와 검증이 완료되지 않았습니다. 호스트 도구는 준비 완료로 표시하지 않습니다"
 	isolated := toolruntime.Isolation()
+	ready := false
+	browser := component{ComponentStatus: toolruntime.ComponentStatus{Key: "browser", State: "not_prepared", Source: "https://github.com/electron/electron", License: "MIT/Chromium third-party notices"}, Execution: "blocked"}
 	if desktopToolSession() {
 		mode = "desktop"
 		bundle, err := toolruntime.FromEnvironment()
@@ -79,12 +81,24 @@ func (s *Server) runtimeTools(w http.ResponseWriter, r *http.Request) {
 				if status.Key == "pty" && status.State == "verified" && !toolruntime.TerminalAvailable() {
 					components[index].Message = "관리된 대화형 PTY 연결은 아직 준비되지 않았습니다"
 				}
-				if status.Key == "browser" && status.State == "verified" {
-					components[index].Message = "브라우저 파일은 검증됐지만 Windows AppContainer 내부 IPC와 승인 대상 네트워크 중계가 아직 준비되지 않았습니다"
+			}
+			if s.browser != nil && bundleValid && isolated.State == "available" {
+				if available, diagnostic := s.browser.health(r.Context()); available {
+					browser.State, browser.Execution, browser.Message = "verified", "available", diagnostic
+				} else {
+					browser.Message = diagnostic
 				}
 			}
-			message = "명령·스크립트·PTY는 검증된 앱 도구를 AppContainer 작업 폴더와 네트워크 차단 안에서 실행합니다. 브라우저의 격리된 대상 연결은 아직 준비되지 않았습니다"
+			ready = browser.Execution == "available"
+			for _, component := range components {
+				ready = ready && component.Execution == "available"
+			}
+			message = "명령·스크립트·PTY는 작업별 AppContainer에서 실행하며 브라우저는 Chromium lockdown AppContainer와 작업 승인 대상 중계를 사용합니다"
+			if !ready {
+				message = "일부 도구의 배포 또는 실제 OS 격리 검증이 완료되지 않았습니다. 진단을 확인하세요"
+			}
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ready": false, "mode": mode, "message": message, "components": components, "isolation": isolated})
+	components = append(components, browser)
+	writeJSON(w, http.StatusOK, map[string]any{"ready": ready, "mode": mode, "message": message, "components": components, "isolation": isolated})
 }

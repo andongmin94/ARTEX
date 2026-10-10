@@ -409,7 +409,9 @@ func (s *sink) Response(f *mproxy.Flow) {
 	if f.Request == nil || f.Response == nil {
 		return
 	}
-	s.t.record(f)
+	if err := s.t.record(f); err != nil {
+		log.Printf("[traffic] 요청 기록 실패: %v", err)
+	}
 }
 
 // RequestError fires when a request through an established MITM tunnel fails. If
@@ -449,13 +451,13 @@ func proxyCausedErr(err error) bool {
 // record persists one exchange entirely in SQLite: metadata, bodies and the
 // full-text index. Nothing is written to a per-request directory — only bodies
 // above maxInlineBody spill to the content-addressed blob store.
-func (t *Traffic) record(f *mproxy.Flow) {
+func (t *Traffic) record(f *mproxy.Flow) error {
 	// The write lock covers blob + index writes, so DeleteHost (and its blob GC)
 	// can run under the same lock without racing a concurrent record.
 	t.wmu.Lock()
 	defer t.wmu.Unlock()
 	if t.stopping() {
-		return
+		return errors.New("트래픽 저장소가 종료됐습니다")
 	}
 	host := f.Request.URL.Hostname()
 	method := f.Request.Method
@@ -470,13 +472,18 @@ func (t *Traffic) record(f *mproxy.Flow) {
 	respHead := fmt.Sprintf("HTTP %d\n%s", f.Response.StatusCode, headerLines(f.Response.Header))
 	// Bodies are spilled before the transaction opens: blob writes are filesystem
 	// work and must not sit inside the SQLite write lock.
-	reqB := t.spill(f.Request.Body, f.Request.Header.Get("Content-Type"))
-	respB := t.spill(f.Response.Body, ct)
+	reqB, err := t.spill(f.Request.Body, f.Request.Header.Get("Content-Type"))
+	if err != nil {
+		return err
+	}
+	respB, err := t.spill(f.Response.Body, ct)
+	if err != nil {
+		return err
+	}
 
 	tx, err := t.db.Begin()
 	if err != nil {
-		log.Printf("[traffic] %s 기록 실패(트랜잭션 시작): %v", url, err)
-		return
+		return fmt.Errorf("트래픽 트랜잭션 시작: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck // no-op once committed
 
@@ -487,20 +494,17 @@ VALUES(?,?,?,?,?,?,?,?,?,?,'')`,
 		id, now.Unix(), host, method, tmpl, url, f.Response.StatusCode, ct,
 		len(f.Request.Body), len(f.Response.Body))
 	if err != nil {
-		log.Printf("[traffic] %s 기록 실패(색인 쓰기): %v", url, err)
-		return
+		return fmt.Errorf("트래픽 색인 쓰기: %w", err)
 	}
 	rowid, err := res.LastInsertId()
 	if err != nil {
-		log.Printf("[traffic] %s 기록 실패(rowid 조회): %v", url, err)
-		return
+		return fmt.Errorf("트래픽 rowid 조회: %w", err)
 	}
 
 	if _, err := tx.Exec(`INSERT OR REPLACE INTO exchange_bodies(id,req_head,req_body,req_blob,resp_head,resp_body,resp_blob)
 VALUES(?,?,?,?,?,?,?)`,
 		id, reqHead, reqB.inline, nullIfEmpty(reqB.hash), respHead, respB.inline, nullIfEmpty(respB.hash)); err != nil {
-		log.Printf("[traffic] %s 기록 실패(본문 쓰기): %v", url, err)
-		return
+		return fmt.Errorf("트래픽 본문 쓰기: %w", err)
 	}
 
 	for _, h := range []string{reqB.hash, respB.hash} {
@@ -508,8 +512,7 @@ VALUES(?,?,?,?,?,?,?)`,
 			continue
 		}
 		if _, err := tx.Exec(`INSERT OR IGNORE INTO blob_refs(hash,exchange_id) VALUES(?,?)`, h, id); err != nil {
-			log.Printf("[traffic] %s 기록 실패(blob 참조 등록): %v", url, err)
-			return
+			return fmt.Errorf("트래픽 blob 참조 등록: %w", err)
 		}
 	}
 
@@ -518,14 +521,11 @@ VALUES(?,?,?,?,?,?,?)`,
 		// fully searchable even though only its preview is stored inline.
 		idx := strings.Join([]string{url, reqHead, reqB.index, respHead, respB.index}, "\n")
 		if _, err := tx.Exec(`INSERT INTO ex_fts(rowid,content) VALUES(?,?)`, rowid, idx); err != nil {
-			log.Printf("[traffic] %s 기록 실패(전문 색인 쓰기): %v", url, err)
-			return
+			return fmt.Errorf("트래픽 전문 색인 쓰기: %w", err)
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		log.Printf("[traffic] %s 기록 실패(커밋): %v", url, err)
-	}
+	return tx.Commit()
 }
 
 // storedBody is one body after the inline/spill decision: inline is what goes in
@@ -542,9 +542,9 @@ type storedBody struct {
 // reader can identify them without fetching the blob. Either way, text bodies
 // are handed to the full-text index in full (up to maxIndexBody) — indexing is
 // independent of where the bytes end up.
-func (t *Traffic) spill(body []byte, contentType string) storedBody {
+func (t *Traffic) spill(body []byte, contentType string) (storedBody, error) {
 	if len(body) == 0 {
-		return storedBody{}
+		return storedBody{}, nil
 	}
 	text := !isBinaryBody(contentType, body)
 	indexText := func() string {
@@ -554,7 +554,7 @@ func (t *Traffic) spill(body []byte, contentType string) storedBody {
 		return string(clipBytes(body, maxIndexBody))
 	}
 	if len(body) <= maxInlineBody {
-		return storedBody{inline: body, index: indexText()}
+		return storedBody{inline: body, index: indexText()}, nil
 	}
 
 	sum := sha256.Sum256(body)
@@ -562,16 +562,8 @@ func (t *Traffic) spill(body []byte, contentType string) storedBody {
 	// One bucket level (256 buckets) is enough to keep any single directory small;
 	// the store only ever holds bodies above maxInlineBody, deduplicated by hash.
 	blobDir := filepath.Join(t.dir, "_blobs", "sha256", h[:2])
-	if err := os.MkdirAll(blobDir, 0o755); err != nil {
-		log.Printf("[traffic] blob 디렉터리 생성 실패: %v", err)
-		return storedBody{inline: clipBytes(body, blobPreview), index: indexText()}
-	}
-	blobPath := filepath.Join(blobDir, h+".bin")
-	if _, err := os.Stat(blobPath); os.IsNotExist(err) {
-		if err := os.WriteFile(blobPath, body, 0o644); err != nil {
-			log.Printf("[traffic] blob %s 쓰기 실패: %v", h, err)
-			return storedBody{inline: clipBytes(body, blobPreview), index: indexText()}
-		}
+	if err := t.storeBlob(blobDir, h, body); err != nil {
+		return storedBody{}, err
 	}
 	sb := storedBody{hash: h, index: indexText()}
 	if text {
@@ -579,7 +571,7 @@ func (t *Traffic) spill(body []byte, contentType string) storedBody {
 	} else {
 		sb.inline = []byte(binaryTag(contentType, body))
 	}
-	return sb
+	return sb, nil
 }
 
 // binaryTypes are content-type prefixes whose bodies are never worth indexing or

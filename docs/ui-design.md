@@ -128,6 +128,14 @@ LLM의 모델 설정/재시도 및 백오프는 `line` 변형의 밑줄형 탭�
 현재 Windows 표시 환경에서 Playwright의 확대 일반/전체 페이지 PNG가 실제 viewport보다 작게 잘리는 현상을 실제 좌표·클릭·clip 없는 CDP/네이티브 캡처로 확인했다. 확대 상태의 시각 증거는 Electron `webContents.capturePage()`로 저장하며 앱 패널의 배치 오류와 검사 도구의 캡처 오류를 구분한다.
 자산 커버리지 그래프는 작은 그래프를 자동으로 과대 확대하지 않도록 맞춤 후 확대율1을 넘으면 원래 크기로 중앙 정렬하고 가장자리 여백24px을 둔다. 큰 그래프의 자동 축소와 사용자의 휠 확대·드래그는 유지한다. 설치된 G6 5.1.1의 타입/구현과 [공식 viewport API](https://g6.antv.antgroup.com/en/api/viewport)를 확인했으며 레이블·그래프 데이터·대상 정책은 변경하지 않는다.
 
+## 2026-10-11 접근성·선택 상태·키보드
+
+아이콘 동작 버튼은 작업을 설명하는 접근 가능한 이름을 제공하고 입력·선택·토글은 실제 label과 연결한다. 클릭 가능한 일반 요소를 native 버튼으로 바꾸며 로딩·오류·빈 목록을 각각 표시한다. MCP 오류의 재시도는 키보드로도 실행한다.
+
+Checkbox·Radio·Switch는 설치된 Radix의 `data-state`를 사용해 선택 배경과 thumb 위치를 맞춘다. MCP와 모델 생성 Sheet는 Tab 포커스를 내부에 유지하고 Escape로 닫을 때 실제 열기 버튼으로 포커스를 돌려준다. 호출부의 명시적 close-auto-focus 처리는 유지한다.
+
+실제 Electron의 접근성 트리에서 버튼·입력·선택·탭 이름을 검사하고, 두 모드의 MCP 로딩/실패/재시도·폼 검증·선택 색·Switch 이동·내보내기 Radio·Enter/Space/Tab/Escape를 검사한다. lint 접근성 오류0은 모든 화면 상태의 수동 검수가 완료됐다는 의미가 아니다. 이 PC의 실제 150% 모니터·기본 zoom·DPR1.5 LLM 화면은 확인했으나 열린 오버레이의 모든 물리 배율과 네이티브 한글 IME 조합 입력은 미검증이다.
+
 ## ChatGPT 구독 연결 버튼 자산
 
 OpenAI의 [Sign in with ChatGPT UI 지침](https://developers.openai.com/siwc/token-sharing-open-source/ui-ux-guidelines)에 따라 `Continue with ChatGPT` 버튼과 최초 연결 안내를 제공한다.

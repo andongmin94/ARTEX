@@ -154,6 +154,7 @@ function ToolEditor({
   onSaved: () => void;
   onClose: () => void;
 }) {
+  const controlId = React.useId();
   // traffic tools can't be bound/enabled until the global 流量捕获 switch is on.
   const trafficGated = TRAFFIC_TOOL_KEYS.has(tool.key) && !captureOn;
   const [description, setDescription] = React.useState(tool.description);
@@ -210,8 +211,8 @@ function ToolEditor({
             <Label className="text-muted-foreground text-xs">연결 에이전트(이 도구를 사용할 에이전트)</Label>
             <div className="flex flex-wrap gap-3">
               {agents.map((ag) => (
-                <label key={ag.key} className="flex items-center gap-2 text-sm">
-                  <Checkbox
+                <label htmlFor={`${controlId}-1-${ag.key}`} key={ag.key} className="flex items-center gap-2 text-sm">
+                  <Checkbox id={`${controlId}-1-${ag.key}`}
                     checked={bound.includes(ag.key)}
                     disabled={trafficGated}
                     onCheckedChange={() => toggleAgent(ag.key)}
@@ -375,8 +376,8 @@ export default function ToolsPage() {
   }, []);
   React.useEffect(() => {
     reload();
-    api.agents().then(setAgents).catch(() => {});
-    api.settings().then((s) => setCaptureOn(!!s.traffic_capture)).catch(() => {});
+    api.agents().then(setAgents).catch((error: Error) => toast.error(`불러오기 실패: ${error.message}`));
+    api.settings().then((s) => setCaptureOn(!!s.traffic_capture)).catch((error: Error) => toast.error(`불러오기 실패: ${error.message}`));
   }, [reload]);
 
   const [query, setQuery] = React.useState("");
@@ -544,6 +545,7 @@ function CustomToolDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const controlId = React.useId();
   const isNew = edit === "new";
   const tool = edit && edit !== "new" ? edit : null;
   const [key, setKey] = React.useState("");
@@ -696,7 +698,7 @@ function CustomToolDialog({
           <div className="grid gap-1.5">
             <Label className="text-xs">유형</Label>
             <Select value={kind} onValueChange={(v) => setKind(v as "shell" | "command" | "script" | "http")}>
-              <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label="도구 실행 방식" className="w-56"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="shell">shell(Bash 환경 선언)</SelectItem>
                 <SelectItem value="command">command(Shell 명령 템플릿)</SelectItem>
@@ -750,8 +752,8 @@ function CustomToolDialog({
                   <Label className="text-xs">프록시 URL(비워두면 직접 연결)</Label>
                   <Input className="font-sans text-xs w-56" value={ex.proxy} onChange={(e) => setEx({ ...ex, proxy: e.target.value })} />
                 </div>
-                <label className="mt-4 flex items-center gap-2 text-sm">
-                  <Checkbox checked={ex.use_recording_proxy} onCheckedChange={(v) => setEx({ ...ex, use_recording_proxy: !!v })} />
+                <label htmlFor={`${controlId}-2`} className="mt-4 flex items-center gap-2 text-sm">
+                  <Checkbox id={`${controlId}-2`} checked={ex.use_recording_proxy} onCheckedChange={(v) => setEx({ ...ex, use_recording_proxy: !!v })} />
                   기록 프록시 경유
                 </label>
               </div>
@@ -782,8 +784,8 @@ function CustomToolDialog({
             <Label className="text-muted-foreground text-xs">연결 에이전트</Label>
             <div className="flex flex-wrap gap-3">
               {agents.map((a) => (
-                <label key={a.key} className="flex items-center gap-2 text-sm">
-                  <Checkbox checked={bound.includes(a.key)} onCheckedChange={() => toggleAgent(a.key)} />
+                <label htmlFor={`${controlId}-3-${a.key}`} key={a.key} className="flex items-center gap-2 text-sm">
+                  <Checkbox id={`${controlId}-3-${a.key}`} checked={bound.includes(a.key)} onCheckedChange={() => toggleAgent(a.key)} />
                   {a.name}<span className="text-muted-foreground font-sans text-xs">{a.key}</span>
                 </label>
               ))}
@@ -791,12 +793,12 @@ function CustomToolDialog({
           </div>
 
           <div className="flex items-center gap-6">
-            <label className="flex items-center gap-2 text-sm">
-              <Switch checked={enabled} onCheckedChange={setEnabled} /> 활성화
+            <label htmlFor={`${controlId}-4`} className="flex items-center gap-2 text-sm">
+              <Switch id={`${controlId}-4`} checked={enabled} onCheckedChange={setEnabled} /> 활성화
             </label>
             {kind !== "shell" && (
-              <label className="flex items-center gap-2 text-sm">
-                <Switch checked={deferred} onCheckedChange={setDeferred} /> 지연 로딩(자주 쓰지 않는 도구가 많을 때 사용)
+              <label htmlFor={`${controlId}-5`} className="flex items-center gap-2 text-sm">
+                <Switch id={`${controlId}-5`} checked={deferred} onCheckedChange={setDeferred} /> 지연 로딩(자주 쓰지 않는 도구가 많을 때 사용)
               </label>
             )}
           </div>
@@ -832,7 +834,7 @@ function CustomToolDialog({
             <SaveIcon /> {isNew ? "생성" : "저장"}
           </Button>
           {!isNew && (
-            <Button size="sm" variant="outline" className="text-destructive" onClick={del}>
+            <Button aria-label="삭제" size="sm" variant="outline" className="text-destructive" onClick={del}>
               <Trash2Icon /> 삭제
             </Button>
           )}

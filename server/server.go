@@ -51,6 +51,7 @@ type Server struct {
 	jwtKey         []byte // HS256 signing key loaded from / generated into dataDir/jwt.key
 	desktopSession []byte
 	desktopHost    string
+	browser        *browserRuntime
 	chatGPT        *chatgpt.Client
 
 	// concMu serializes concurrency-cap decisions (admission + reconcile) so a
@@ -168,6 +169,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 		profChatAgents: map[int64]*agent.ChatAgent{},
 		provByProfile:  map[int64]*provEntry{}, llmHealth: newLLMHealthRegistry(m.pg),
 		taskAgents: map[string]*taskAgentBundle{}, archiveWake: make(chan struct{}, 1)}
+	s.browser = newBrowserRuntime(s)
 	defer func() {
 		if err != nil {
 			closeCtx, closeCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -247,7 +249,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 			}
 			return a.TaskTimeoutWrapupMaxTurns, true
 		}
-		wireAgentAugment(m.pg, s.skillDir, s.hostTools) // 可见 skills/MCP + 流量/编排 host 工具装配进 agent 工具集
+		wireAgentAugment(m.pg, s.skillDir, s.hostTools, s.connectMCP)
 		domainReg := buildDomainReg(m.Assets())
 		if err := wireTools(m.pg, domainReg); err != nil {
 			return nil, err
@@ -312,6 +314,9 @@ func (s *Server) runBackground(fn func()) {
 // Close cancels and drains owned background services before the caller closes
 // the Manager's stores. A bounded parent shutdown must not hang indefinitely.
 func (s *Server) Close(ctx context.Context) error {
+	if s.browser != nil {
+		s.browser.Close()
+	}
 	if s.chatGPT != nil {
 		if err := s.chatGPT.Close(); err != nil {
 			return err
@@ -788,6 +793,8 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/runtime/tools", s.runtimeTools)
+	mux.HandleFunc("POST /api/runtime/browser/verify/{session}", s.browserVerify)
+	mux.HandleFunc("POST /api/runtime/browser/relay/{session}", s.browserRelay)
 	mux.HandleFunc("GET /api/stats", s.stats)
 	mux.HandleFunc("GET /api/logs", s.getLogs)
 	mux.HandleFunc("GET /api/logs/history", s.getLogsHistory)
@@ -2290,7 +2297,13 @@ func (s *Server) findingsExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer os.RemoveAll(stage)
-	if err = s.evidenceStore().StageFindingsExport(r.Context(), fs, stage, format == "md-zip"); err != nil {
+	stageRoot, err := os.OpenRoot(stage)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	exportErr := s.evidenceStore().StageFindingsExport(r.Context(), fs, stageRoot, format == "md-zip")
+	if err = errors.Join(exportErr, stageRoot.Close()); err != nil {
 		evidenceError(w, err)
 		return
 	}

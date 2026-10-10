@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	pgdb "github.com/Autumn-27/artex/db"
+	"github.com/google/uuid"
 	"github.com/klauspost/compress/zstd"
 )
 
@@ -44,6 +45,7 @@ type archiveRestoreJournal struct {
 }
 
 type taskArchiveFileStage struct {
+	dataDir string
 	root    string
 	payload string
 	journal archiveStageJournal
@@ -56,29 +58,10 @@ type restoredArchivePath struct {
 }
 
 type taskArchiveRestoreFiles struct {
+	dataDir   string
 	extracted string
 	moves     []restoredArchivePath
 	done      bool
-}
-
-func writeArchiveJournal(path string, value any) error {
-	raw, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, archiveFileMode)
-	if err != nil {
-		return err
-	}
-	if _, err := file.Write(raw); err != nil {
-		_ = file.Close()
-		return err
-	}
-	if err := file.Sync(); err != nil {
-		_ = file.Close()
-		return err
-	}
-	return file.Close()
 }
 
 func taskArchiveRoot(dataDir string) string {
@@ -99,7 +82,7 @@ func stageTaskArchiveFiles(dataDir string, archiveID int64, taskID string, explo
 		return nil, err
 	}
 	root := filepath.Join(taskArchiveRoot(dataDir), ".staging", strconv.FormatInt(archiveID, 10))
-	stage := &taskArchiveFileStage{root: root, payload: filepath.Join(root, "payload")}
+	stage := &taskArchiveFileStage{dataDir: dataDir, root: root, payload: filepath.Join(root, "payload")}
 	journalPath := filepath.Join(root, "journal.json")
 	if raw, err := os.ReadFile(journalPath); err == nil {
 		if err := json.Unmarshal(raw, &stage.journal); err != nil {
@@ -109,7 +92,7 @@ func stageTaskArchiveFiles(dataDir string, archiveID int64, taskID string, explo
 		// the payload is complete: a previous round may have failed mid-loop with a
 		// rollback that itself errored, which leaves the root in place. Replay the moves
 		// rather than packaging a payload that is missing transcripts or workspace files.
-		if err := os.MkdirAll(filepath.Join(stage.payload, "files"), archiveDirMode); err != nil {
+		if err := managedMkdirAll(dataDir, filepath.Join(stage.payload, "files")); err != nil {
 			return nil, err
 		}
 		if err := stage.applyMoves(); err != nil {
@@ -120,7 +103,7 @@ func stageTaskArchiveFiles(dataDir string, archiveID int64, taskID string, explo
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Join(stage.payload, "files"), archiveDirMode); err != nil {
+	if err := managedMkdirAll(dataDir, filepath.Join(stage.payload, "files")); err != nil {
 		return nil, err
 	}
 	stage.journal = archiveStageJournal{ArchiveID: archiveID, TaskID: taskID}
@@ -149,7 +132,7 @@ func stageTaskArchiveFiles(dataDir string, archiveID int64, taskID string, explo
 	// Persist the complete plan before the first rename. Recovery can therefore
 	// roll back any prefix of the moves after an abrupt process termination.
 	stage.journal.Moves = targets
-	if err := writeArchiveJournal(journalPath, stage.journal); err != nil {
+	if err := writeArchiveJournal(dataDir, journalPath, stage.journal); err != nil {
 		_ = stage.rollback()
 		return nil, err
 	}
@@ -167,6 +150,11 @@ func (s *taskArchiveFileStage) applyMoves() error {
 	for _, move := range s.journal.Moves {
 		destination := filepath.Join(s.payload, move.Relative)
 		if _, err := os.Lstat(destination); err == nil {
+			if _, sourceErr := os.Lstat(move.Source); sourceErr == nil {
+				return fmt.Errorf("archive staging source and destination both exist: %s", move.Source)
+			} else if !os.IsNotExist(sourceErr) {
+				return sourceErr
+			}
 			continue
 		} else if !os.IsNotExist(err) {
 			return err
@@ -179,10 +167,7 @@ func (s *taskArchiveFileStage) applyMoves() error {
 			}
 			return err
 		}
-		if err := os.MkdirAll(filepath.Dir(destination), archiveDirMode); err != nil {
-			return err
-		}
-		if err := os.Rename(move.Source, destination); err != nil {
+		if err := managedMove(s.dataDir, move.Source, destination); err != nil {
 			return fmt.Errorf("stage task archive path %s: %w", move.Source, err)
 		}
 	}
@@ -210,16 +195,12 @@ func (s *taskArchiveFileStage) rollback() error {
 			errs = append(errs, err)
 			continue
 		}
-		if err := os.MkdirAll(filepath.Dir(move.Source), 0o755); err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		if err := os.Rename(staged, move.Source); err != nil {
+		if err := managedMove(s.dataDir, staged, move.Source); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	if len(errs) == 0 {
-		if err := os.RemoveAll(s.root); err != nil {
+		if err := managedRemoveAll(s.dataDir, s.root); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -232,11 +213,11 @@ func (s *taskArchiveFileStage) commit() error {
 		return nil
 	}
 	s.done = true
-	return os.RemoveAll(s.root)
+	return managedRemoveAll(s.dataDir, s.root)
 }
 
 func installTaskArchiveFiles(dataDir, extractedDir, taskID string, archiveID int64) (*taskArchiveRestoreFiles, error) {
-	stage := &taskArchiveRestoreFiles{extracted: extractedDir}
+	stage := &taskArchiveRestoreFiles{dataDir: dataDir, extracted: extractedDir}
 	numericTaskID, err := strconv.ParseInt(taskID, 10, 64)
 	if err != nil || numericTaskID <= 0 {
 		return nil, fmt.Errorf("invalid restore task id %q", taskID)
@@ -270,15 +251,11 @@ func installTaskArchiveFiles(dataDir, extractedDir, taskID string, archiveID int
 	}
 	stage.moves = sources
 	journal := archiveRestoreJournal{ArchiveID: archiveID, TaskID: numericTaskID, Moves: sources}
-	if err := writeArchiveJournal(filepath.Join(extractedDir, "restore-journal.json"), journal); err != nil {
+	if err := writeArchiveJournal(dataDir, filepath.Join(extractedDir, "restore-journal.json"), journal); err != nil {
 		return nil, err
 	}
 	for _, move := range sources {
-		if err := os.MkdirAll(filepath.Dir(move.Destination), 0o755); err != nil {
-			_ = stage.rollback()
-			return nil, err
-		}
-		if err := os.Rename(move.Source, move.Destination); err != nil {
+		if err := managedMove(dataDir, move.Source, move.Destination); err != nil {
 			_ = stage.rollback()
 			return nil, err
 		}
@@ -306,11 +283,7 @@ func (s *taskArchiveRestoreFiles) rollback() error {
 			errs = append(errs, err)
 			continue
 		}
-		if err := os.MkdirAll(filepath.Dir(move.Source), archiveDirMode); err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		if err := os.Rename(move.Destination, move.Source); err != nil {
+		if err := managedMove(s.dataDir, move.Destination, move.Source); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -323,11 +296,11 @@ func (s *taskArchiveRestoreFiles) commit() error {
 		return nil
 	}
 	s.done = true
-	return os.RemoveAll(s.extracted)
+	return managedRemoveAll(s.dataDir, s.extracted)
 }
 
 // recoverTaskArchiveRestoreStages resolves file installs left by an interrupted
-// restore. If PostgreSQL committed, installed files are authoritative and only
+// restore. If SQLite committed, installed files are authoritative and only
 // the extraction directory is stale. Otherwise all completed renames are moved
 // back so the persistent restore job can retry from a clean destination.
 func recoverTaskArchiveRestoreStages(dataDir string, pg *pgdb.DB) error {
@@ -348,7 +321,7 @@ func recoverTaskArchiveRestoreStages(dataDir string, pg *pgdb.DB) error {
 		raw, err := os.ReadFile(filepath.Join(root, "restore-journal.json"))
 		if os.IsNotExist(err) {
 			// Extraction was interrupted before any destination rename.
-			if err := os.RemoveAll(root); err != nil {
+			if err := managedRemoveAll(dataDir, root); err != nil {
 				errs = append(errs, err)
 			}
 			continue
@@ -377,17 +350,17 @@ func recoverTaskArchiveRestoreStages(dataDir string, pg *pgdb.DB) error {
 			continue
 		}
 		if restored {
-			if err := os.RemoveAll(root); err != nil {
+			if err := managedRemoveAll(dataDir, root); err != nil {
 				errs = append(errs, err)
 			}
 			continue
 		}
-		stage := &taskArchiveRestoreFiles{extracted: root, moves: journal.Moves}
+		stage := &taskArchiveRestoreFiles{dataDir: dataDir, extracted: root, moves: journal.Moves}
 		if err := stage.rollback(); err != nil {
 			errs = append(errs, err)
 			continue
 		}
-		if err := os.RemoveAll(root); err != nil {
+		if err := managedRemoveAll(dataDir, root); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -420,7 +393,7 @@ func recoverTaskArchiveStages(dataDir string, pg *pgdb.DB) error {
 			// copies already inside the package. Without a journal there is nothing to
 			// roll back, and reporting an error here keeps the archive worker from ever
 			// starting, so discard the directory instead.
-			if err := os.RemoveAll(root); err != nil {
+			if err := managedRemoveAll(dataDir, root); err != nil {
 				errs = append(errs, err)
 			}
 			continue
@@ -440,17 +413,19 @@ func recoverTaskArchiveStages(dataDir string, pg *pgdb.DB) error {
 			continue
 		}
 		if archive != nil && archive.State == pgdb.ArchiveReady {
-			if err := os.RemoveAll(root); err != nil {
+			if err := managedRemoveAll(dataDir, root); err != nil {
 				errs = append(errs, err)
 			}
 			continue
 		}
-		stage := &taskArchiveFileStage{root: root, payload: filepath.Join(root, "payload"), journal: journal}
+		stage := &taskArchiveFileStage{dataDir: dataDir, root: root, payload: filepath.Join(root, "payload"), journal: journal}
 		if err := stage.rollback(); err != nil {
 			errs = append(errs, err)
 		}
 		if archive != nil && archive.ArchivePath != "" {
-			_ = os.Remove(archive.ArchivePath)
+			if err := managedRemoveAll(dataDir, archive.ArchivePath); err != nil {
+				errs = append(errs, err)
+			}
 		}
 	}
 	return errors.Join(errs...)
@@ -487,7 +462,7 @@ func recoverTaskArchiveDeletePackages(dataDir string, pg *pgdb.DB) error {
 			continue
 		}
 		if archive == nil {
-			if err := os.Remove(staged); err != nil && !os.IsNotExist(err) {
+			if err := managedRemoveAll(dataDir, staged); err != nil && !os.IsNotExist(err) {
 				errs = append(errs, err)
 			}
 			continue
@@ -503,14 +478,14 @@ func recoverTaskArchiveDeletePackages(dataDir string, pg *pgdb.DB) error {
 			errs = append(errs, err)
 			continue
 		}
-		if err := os.Rename(staged, original); err != nil {
+		if err := managedMove(dataDir, staged, original); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
 }
 
-func stageTaskArchivePackageDelete(archivePath string, archiveID int64) (string, bool, error) {
+func stageTaskArchivePackageDelete(dataDir, archivePath string, archiveID int64) (string, bool, error) {
 	staged := archivePath + fmt.Sprintf(".deleting-%d", archiveID)
 	if _, err := os.Lstat(staged); err == nil {
 		if _, originalErr := os.Lstat(archivePath); originalErr == nil {
@@ -522,7 +497,7 @@ func stageTaskArchivePackageDelete(archivePath string, archiveID int64) (string,
 	} else if !os.IsNotExist(err) {
 		return staged, false, err
 	}
-	if err := os.Rename(archivePath, staged); err == nil {
+	if err := managedMove(dataDir, archivePath, staged); err == nil {
 		return staged, true, nil
 	} else if !os.IsNotExist(err) {
 		return staged, false, err
@@ -530,37 +505,29 @@ func stageTaskArchivePackageDelete(archivePath string, archiveID int64) (string,
 	return staged, false, nil
 }
 
-func writeTaskArchivePackage(path, payloadDir string, snapshot *pgdb.TaskArchiveSnapshot) (originalSize, compressedSize int64, checksum string, err error) {
+func writeTaskArchivePackage(dataDir, path, payloadDir string, snapshot *pgdb.TaskArchiveSnapshot) (originalSize, compressedSize int64, checksum string, err error) {
 	if snapshot == nil {
 		return 0, 0, "", errors.New("nil task archive snapshot")
 	}
-	payload, err := os.OpenRoot(payloadDir)
+	payload, closePayload, err := openManagedDirectory(dataDir, payloadDir, false)
 	if err != nil {
 		return 0, 0, "", err
 	}
-	defer payload.Close()
-	if err = os.MkdirAll(filepath.Dir(path), archiveDirMode); err != nil {
+	defer closePayload()
+	if _, err := managedRelative(dataDir, path); err != nil {
 		return 0, 0, "", err
 	}
-	manifestFile, err := os.OpenFile(
-		filepath.Join(payloadDir, "manifest.json"),
-		os.O_CREATE|os.O_TRUNC|os.O_WRONLY,
-		archiveFileMode,
-	)
+	parent, closeParent, err := openManagedDirectory(dataDir, filepath.Dir(path), true)
 	if err != nil {
 		return 0, 0, "", err
 	}
-	encodeErr := json.NewEncoder(manifestFile).Encode(snapshot)
-	var syncErr error
-	if encodeErr == nil {
-		syncErr = manifestFile.Sync()
-	}
-	if err := errors.Join(encodeErr, syncErr, manifestFile.Close()); err != nil {
+	defer closeParent()
+	manifest, err := json.Marshal(snapshot)
+	if err != nil {
 		return 0, 0, "", err
 	}
-	temporary := path + ".partial"
-	_ = os.Remove(temporary)
-	file, err := os.OpenFile(temporary, os.O_CREATE|os.O_EXCL|os.O_WRONLY, archiveFileMode)
+	temporary := filepath.Base(path) + ".partial-" + uuid.NewString()
+	file, err := parent.OpenFile(temporary, os.O_CREATE|os.O_EXCL|os.O_WRONLY, archiveFileMode)
 	if err != nil {
 		return 0, 0, "", err
 	}
@@ -568,7 +535,7 @@ func writeTaskArchivePackage(path, payloadDir string, snapshot *pgdb.TaskArchive
 	defer func() {
 		_ = file.Close()
 		if !committed {
-			_ = os.Remove(temporary)
+			_ = parent.Remove(temporary)
 		}
 	}()
 	hasher := sha256.New()
@@ -581,12 +548,26 @@ func writeTaskArchivePackage(path, payloadDir string, snapshot *pgdb.TaskArchive
 		return 0, 0, "", err
 	}
 	tarWriter := tar.NewWriter(encoder)
+	if err := tarWriter.WriteHeader(&tar.Header{Name: "manifest.json", Mode: int64(archiveFileMode), Size: int64(len(manifest))}); err != nil {
+		tarWriter.Close()
+		encoder.Close()
+		return 0, 0, "", err
+	}
+	if _, err := tarWriter.Write(manifest); err != nil {
+		tarWriter.Close()
+		encoder.Close()
+		return 0, 0, "", err
+	}
+	originalSize = int64(len(manifest))
 	walkErr := fs.WalkDir(payload.FS(), ".", func(relative string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
 		if relative == "." {
 			return nil
+		}
+		if relative == "manifest.json" {
+			return errors.New("보관 payload에 중복 manifest.json 파일이 있습니다")
 		}
 		info, err := entry.Info()
 		if err != nil {
@@ -645,31 +626,50 @@ func writeTaskArchivePackage(path, payloadDir string, snapshot *pgdb.TaskArchive
 	if err := file.Sync(); err != nil {
 		return 0, 0, "", err
 	}
-	if err := file.Close(); err != nil {
-		return 0, 0, "", err
-	}
-	stat, err := os.Stat(temporary)
+	stat, err := file.Stat()
 	if err != nil {
 		return 0, 0, "", err
 	}
 	compressedSize = stat.Size()
 	checksum = hex.EncodeToString(hasher.Sum(nil))
-	if err := os.Rename(temporary, path); err != nil {
+	if err := file.Close(); err != nil {
 		return 0, 0, "", err
 	}
-	if err := os.Chmod(path, archiveFileMode); err != nil {
+	if err := managedMove(dataDir, filepath.Join(filepath.Dir(path), temporary), path); err != nil {
 		return 0, 0, "", err
 	}
 	committed = true
 	return originalSize, compressedSize, checksum, nil
 }
 
-func extractTaskArchivePackage(path, expectedSHA, destination string) error {
-	file, err := os.Open(path)
+func extractTaskArchivePackage(dataDir, path, expectedSHA, destination string) error {
+	if _, err := managedRelative(dataDir, path); err != nil {
+		return err
+	}
+	parent, closeParent, err := openManagedDirectory(dataDir, filepath.Dir(path), false)
+	if err != nil {
+		return err
+	}
+	defer closeParent()
+	before, err := parent.Lstat(filepath.Base(path))
+	if err != nil {
+		return err
+	}
+	if workspaceLink(before) || !before.Mode().IsRegular() {
+		return errors.New("연결된 보관 패키지는 복원할 수 없습니다")
+	}
+	file, err := parent.Open(filepath.Base(path))
 	if err != nil {
 		return err
 	}
 	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(before, info) || !info.Mode().IsRegular() || workspaceMultipleLinks(file, info) {
+		return errors.New("보관 패키지가 일반 파일이 아니거나 다른 파일과 연결돼 있습니다")
+	}
 	if expectedSHA != "" {
 		hasher := sha256.New()
 		if _, err := io.Copy(hasher, file); err != nil {
@@ -688,9 +688,11 @@ func extractTaskArchivePackage(path, expectedSHA, destination string) error {
 	}
 	defer decoder.Close()
 	tarReader := tar.NewReader(decoder)
-	if err := os.MkdirAll(destination, archiveDirMode); err != nil {
+	extracted, closeExtracted, err := openManagedDirectory(dataDir, destination, true)
+	if err != nil {
 		return err
 	}
+	defer closeExtracted()
 	var entries int
 	var total int64
 	for {
@@ -706,24 +708,20 @@ func extractTaskArchivePackage(path, expectedSHA, destination string) error {
 			return errors.New("task archive exceeds extraction safety limits")
 		}
 		total += header.Size
-		clean := filepath.Clean(filepath.FromSlash(header.Name))
-		if clean == "." || filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		clean, err := workspacePath(header.Name)
+		if err != nil || clean == "." {
 			return fmt.Errorf("unsafe task archive path %q", header.Name)
-		}
-		target := filepath.Join(destination, clean)
-		if relative, err := filepath.Rel(destination, target); err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			return fmt.Errorf("unsafe task archive target %q", header.Name)
 		}
 		switch header.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(target, archiveDirMode); err != nil {
+			if err := extracted.MkdirAll(clean, archiveDirMode); err != nil {
 				return err
 			}
 		case tar.TypeReg, tar.TypeRegA:
-			if err := os.MkdirAll(filepath.Dir(target), archiveDirMode); err != nil {
+			if err := extracted.MkdirAll(filepath.Dir(clean), archiveDirMode); err != nil {
 				return err
 			}
-			output, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, fs.FileMode(header.Mode)&0o777)
+			output, err := extracted.OpenFile(clean, os.O_CREATE|os.O_EXCL|os.O_WRONLY, fs.FileMode(header.Mode)&0o777)
 			if err != nil {
 				return err
 			}

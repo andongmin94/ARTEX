@@ -39,14 +39,18 @@ Playwright는 실제 Electron과 임시 userData의 Go/SQLite를 사용한다. �
 `npm run test:electron`은 새 홈/기존 비밀번호 데이터의 자동 진입·잘못된 토큰 복구·인증 실패 재시도·모델 저장·작업 생성/일시 중지·자산 등록/수정/삭제/연결·실제 HTTP 캡처·취약점 증거 연결·보관/복원·재시작 후 보존을 검사한다.
 21개 업무 화면을 밝은/어두운 모드와 1280/1440 폭으로 확인하고, 작업 상세 10개 탭·취약점 증거 화면·한국어 입력 조합 이벤트·125/150% 확대·reduced motion을 검사한다. 물리 IME/OS DPI 검사는 별도다.
 렌더러 격리·CSP·외부 탐색/새 창 차단·단일 인스턴스·앱 세션 없는 HTTP 차단·Go 종료·프록시 충돌 후 시작 실패/재시도도 확인한다.
-`npm run package` 후 `npm run test:package`는 실제 `app.isPackaged` 실행 경로에서 자동 진입·DB 생성·기존 비밀번호 데이터 재시작·사용자 스킬 파일 보존·미준비 상태 표시와 포함 라이선스를 검사한다.
+`npm run package` 후 `npm run test:package`는 실제 `app.isPackaged` 실행 경로에서 자동 진입·DB 생성·기존 비밀번호 데이터 재시작·사용자 스킬 파일 보존·실제6개 도구 준비 상태와 포함 라이선스를 검사한다.
 기존 출력을 보존한 별도 실행 폴더를 검사할 때는 `$env:ARTEX_PACKAGE_TEST_BUNDLE = '<Windows 실행 폴더 절대 경로>'`를 지정한다. 작업 파일 검사는 새 임시 홈에서 파일 CRUD·앱 DB 경계·Windows junction/하드 링크·재시작 보존을 확인한다. 시작 응답 집중 검사는 `node --test backend-tests/ready.test.cjs`로 실행한다.
 일반 브라우저용 회귀 검사는 설치된 Chrome을 검사 도구로 사용해 Go 단독 실행의 비밀번호 설정·로그인·약관을 확인한다. Chrome 설치를 앱의 도구 런타임 준비로 간주하지 않는다.
 실제 앱 부팅 실패는 실패로 반환하며 mock 또는 검사 skip으로 바꾸지 않는다.
 스크린샷/trace/임시 DB는 로컬 검사 증거로 남으며 커밋하지 않는다.
-Windows x64의 앱 전용 도구는 `tools.lock.json`에 버전·공식 출처·배포물 SHA256·라이선스를 고정한다. 빌드는 공식 ZIP을 검증해 `resources/tools`에 만들고, 실행 시 Go는 manifest와 모든 파일·추가 파일·링크를 검증한다. 변경/누락 시 실행을 차단하며 host PATH로 우회하지 않는다. `ARTEX_TOOL_CACHE`는 빌드 캐시를 별도 절대 경로로 지정할 때만 사용한다. 기본 캐시는 LocalAppData의 `ARTEX-development-tools`다. Python/Node/PowerShell/Git 및 각 배포물의 라이선스·제3자 고지를 포함하며 Chrome for Testing의 고지는 포함한 브라우저의 `chrome://credits`와 NOTICE에서 확인할 수 있다.
+Windows x64의 앱 전용 도구는 `tools.lock.json`에 버전·공식 출처·배포물 SHA256·라이선스를 고정한다. 빌드는 공식 ZIP을 검증해 `resources/tools`에 만들고, 실행 시 Go는 manifest와 모든 파일·추가 파일·링크를 검증한다. 변경/누락 시 실행을 차단하며 host PATH로 우회하지 않는다. `ARTEX_TOOL_CACHE`는 빌드 캐시를 별도 절대 경로로 지정할 때만 사용한다. 기본 캐시는 LocalAppData의 `ARTEX-development-tools`다. Python/Node/PowerShell/Git과 각 배포물의 라이선스·제3자 고지를 포함한다. 브라우저는 같은 앱의 Electron을 사용하며 별도 Chrome for Testing 번들은 제거했다. 패키지의 Electron `LICENSE`와 `LICENSES.chromium.html`을 보존한다.
 
-Go는 별도 Windows AppContainer와 Job Object에서 도구를 실행한다. 작업마다 다른 SID를 사용해 지정된 업무 폴더만 쓰게 하고 네트워크 capability를 부여하지 않는다. 호스트의 인증 환경변수는 상속하지 않는다. 취소/강제 종료에는 자손까지 종료하며 작업이 끝나면 부여한 SID ACL을 회수한다. 일반 네트워크가 차단된 도구를 온라인 스캐너로 사용 가능하다고 표시하지 않는다. 브라우저의 내부 IPC·승인 대상 네트워크 연결은 별도 준비 상태이며 설정 화면에 실제 차단 이유를 표시한다. 다른 OS의 도구 실행 격리는 준비되지 않아 차단한다.
+Go는 별도 Windows AppContainer와 Job Object에서 셸/PTY/Python/Node/Git/stdio MCP를 실행한다. 작업마다 다른 SID를 사용해 지정된 업무 폴더만 쓰게 하고 네트워크 capability를 부여하지 않는다. 호스트의 인증 환경변수는 상속하지 않는다. 취소/강제 종료에는 자손까지 종료하며 작업이 끝나면 부여한 SID ACL을 회수한다. 일반 네트워크가 차단된 도구를 온라인 스캐너로 사용 가능하다고 표시하지 않는다.
+
+브라우저는 Electron 메인 프로세스가 실행별 메모리 프로필과 숨긴 창을 관리한다. renderer의 실제 AppContainer·capability0·Untrusted/NULL 제한 SID를 Go가 검증하며 Node/preload·파일·팝업·다운로드·권한·직접 소켓 통신을 차단한다. Chromium의 고정 AppContainer SID를 사용하지만 작업 폴더/인증 파일 권한을 부여하지 않는다. 공개 실행 파일 폴더에만 AAP 읽기/실행 권한을 준비하며 사용자 데이터 홈과 겹치면 거부한다. 두 작업의 프로필·파일·프로세스 접근 거부는 실제 Windows에서 확인했다.
+
+탐색·snapshot·클릭·입력·키·페이지 함수·스크린샷·텍스트 대기·닫기 9개 도구를 기존 MCP 권한/호출 승인에 연결했다. HTTP/HTTPS는 Go가 매 요청과 DNS 확인 뒤에 작업 범위·전역/작업 차단·주소별 허용·내부 주소 금지를 검사하고 승인 IP로 전달한다. 리다이렉트도 다시 검사한다. 프록시는 Go의 설정만 사용하며 트래픽 수집을 켰을 때 같은 SQLite/본문 저장소에 한 번 기록한다. 승인 호출 종료·취소·백엔드 재시작 후에는 이전 창의 후속 요청을 허용하지 않는다. 브라우저 MCP는 초기 데이터에서 비활성 상태이며 필요한 에이전트에 활성화/권한을 지정한다. 다른 OS의 도구 실행 격리는 준비되지 않아 차단한다.
 
 ## 백업과 새 폴더 복원
 

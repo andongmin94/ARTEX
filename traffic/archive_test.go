@@ -1,11 +1,111 @@
 package traffic
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestTrafficArchiveRejectsExistingCorruptBlobAndRecovers(t *testing.T) {
+	source, _ := openTraffic(t)
+	body := []byte(strings.Repeat("archived fixture body ", maxInlineBody))
+	flow := newFlow("archive.fixture.example", "GET", "/body", nil, body, withRespType("text/plain"))
+	if err := source.record(flow); err != nil {
+		t.Fatal(err)
+	}
+	archive := t.TempDir()
+	archiveRoot := archiveFixtureRoot(t, archive)
+	if count, err := source.ExportHosts([]string{"archive.fixture.example"}, archiveRoot); err != nil || count != 1 {
+		t.Fatal("export failed", count, err)
+	}
+	destination, directory := openTraffic(t)
+	sum := sha256.Sum256(body)
+	hash := hex.EncodeToString(sum[:])
+	bucket := filepath.Join(directory, "_blobs", "sha256", hash[:2])
+	if err := os.MkdirAll(bucket, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(bucket, hash+".bin")
+	corrupt := bytes.Repeat([]byte("x"), len(body))
+	if err := os.WriteFile(path, corrupt, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := destination.ImportArchive(archiveRoot); err == nil || count != 0 {
+		t.Fatal("corrupt prior blob accepted", count, err)
+	}
+	if actual, err := os.ReadFile(path); err != nil || !bytes.Equal(actual, corrupt) {
+		t.Fatal("prior blob changed", err)
+	}
+	var rows int
+	if err := destination.DB().QueryRow("SELECT COUNT(*) FROM exchanges").Scan(&rows); err != nil || rows != 0 {
+		t.Fatal("failed restore committed an exchange", rows, err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := destination.ImportArchive(archiveRoot); err != nil || count != 1 {
+		t.Fatal("restore did not recover", count, err)
+	}
+	if actual, err := os.ReadFile(path); err != nil || !bytes.Equal(actual, body) {
+		t.Fatal("restored blob changed", err)
+	}
+	if count, err := destination.ImportArchive(archiveRoot); err != nil || count != 0 {
+		t.Fatal("valid prior blob rejected on repeated restore", count, err)
+	}
+}
+
+func TestTrafficArchivePublicationPreservesExistingFiles(t *testing.T) {
+	for _, name := range []string{"manifest-hardlink", "blob-hardlink"} {
+		t.Run(name, func(t *testing.T) {
+			source, _ := openTraffic(t)
+			body := []byte(strings.Repeat("archive hardlink fixture ", maxInlineBody))
+			if err := source.record(newFlow("archive.fixture.example", "GET", "/body", nil, body, withRespType("text/plain"))); err != nil {
+				t.Fatal(err)
+			}
+			archive := t.TempDir()
+			root := archiveFixtureRoot(t, archive)
+			if err := root.Mkdir("blobs", 0700); err != nil {
+				t.Fatal(err)
+			}
+			protected := filepath.Join(t.TempDir(), "application-fixture.txt")
+			prior := []byte("preserve local application fixture")
+			if err := os.WriteFile(protected, prior, 0600); err != nil {
+				t.Fatal(err)
+			}
+			destination := filepath.Join(archive, "traffic.json")
+			if name == "blob-hardlink" {
+				sum := sha256.Sum256(body)
+				destination = filepath.Join(archive, "blobs", hex.EncodeToString(sum[:])+".bin")
+			}
+			if err := os.Link(protected, destination); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := source.ExportHosts([]string{"archive.fixture.example"}, root); err == nil {
+				t.Fatal("existing export file was accepted")
+			}
+			for _, path := range []string{protected, destination} {
+				if actual, err := os.ReadFile(path); err != nil || !bytes.Equal(actual, prior) {
+					t.Fatal("existing file changed", path, err)
+				}
+			}
+			if err := filepath.WalkDir(archive, func(path string, entry os.DirEntry, err error) error {
+				if err != nil {
+					return err
+				}
+				if strings.HasPrefix(entry.Name(), ".archive-") {
+					t.Error("temporary archive file remained", path)
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
 
 func TestTrafficArchiveRoundTripAndCurrentRowWins(t *testing.T) {
 	trafficDir := t.TempDir()
@@ -31,7 +131,8 @@ VALUES(?,?,?,?,?)`, id, requestHead, []byte("payload"), responseHead, []byte(`{"
 	}
 
 	archiveDir := filepath.Join(t.TempDir(), "traffic")
-	count, err := tr.ExportHosts([]string{host, host}, archiveDir)
+	archiveRoot := archiveFixtureRoot(t, archiveDir)
+	count, err := tr.ExportHosts([]string{host, host}, archiveRoot)
 	if err != nil || count != 1 {
 		t.Fatalf("ExportHosts count=%d err=%v", count, err)
 	}
@@ -51,7 +152,7 @@ VALUES(?,?,?,?,?)`, id, requestHead, []byte("payload"), responseHead, []byte(`{"
 	if _, _, err := tr.Get(id); err == nil {
 		t.Fatal("deleted exchange remained readable")
 	}
-	imported, err := tr.ImportArchive(archiveDir)
+	imported, err := tr.ImportArchive(archiveRoot)
 	if err != nil || imported != 1 {
 		t.Fatalf("ImportArchive imported=%d err=%v", imported, err)
 	}
@@ -62,7 +163,7 @@ VALUES(?,?,?,?,?)`, id, requestHead, []byte("payload"), responseHead, []byte(`{"
 	if _, err := tr.DB().Exec(`UPDATE exchange_bodies SET resp_body=? WHERE id=?`, []byte(`{"current":true}`), id); err != nil {
 		t.Fatal(err)
 	}
-	imported, err = tr.ImportArchive(archiveDir)
+	imported, err = tr.ImportArchive(archiveRoot)
 	if err != nil || imported != 0 {
 		t.Fatalf("idempotent import imported=%d err=%v", imported, err)
 	}
@@ -70,6 +171,19 @@ VALUES(?,?,?,?,?)`, id, requestHead, []byte("payload"), responseHead, []byte(`{"
 	if err != nil || !strings.Contains(resp, `{"current":true}`) || strings.Contains(resp, `{"ok":true}`) {
 		t.Fatalf("archive overwrote current exchange resp=%q err=%v", resp, err)
 	}
+}
+
+func archiveFixtureRoot(t *testing.T, dir string) *os.Root {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = root.Close() })
+	return root
 }
 
 func TestRecoverArchiveHostDeleteStageRollsBackBeforePostgresCommit(t *testing.T) {

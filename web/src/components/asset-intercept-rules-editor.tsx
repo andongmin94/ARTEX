@@ -1,6 +1,5 @@
 "use client";
 
-import * as React from "react";
 
 import { PlusIcon, Trash2Icon } from "lucide-react";
 
@@ -83,7 +82,7 @@ export function AssetInterceptRulesEditor({
               value={r.note}
               onChange={(e) => update(i, { note: e.target.value })}
             />
-            <Button
+            <Button aria-label="삭제"
               type="button"
               size="icon"
               variant="ghost"

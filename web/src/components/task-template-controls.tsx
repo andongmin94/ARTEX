@@ -303,7 +303,7 @@ function TaskTemplateManager({
           </div>
           <SheetFooter className="border-t px-6 py-4 sm:flex-row sm:items-center">
             {selectedID != null && (
-              <Button type="button" variant="destructive" className="sm:mr-auto" onClick={() => setDeleteOpen(true)}>
+              <Button aria-label="삭제" type="button" variant="destructive" className="sm:mr-auto" onClick={() => setDeleteOpen(true)}>
                 <Trash2Icon data-icon="inline-start" />
                 템플릿 삭제
               </Button>

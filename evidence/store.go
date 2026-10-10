@@ -3,11 +3,9 @@ package evidence
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"io/fs"
 	"log"
@@ -30,6 +28,25 @@ func New(pg *db.DB, tr *traffic.Traffic, dir string) *Store {
 	return &Store{DB: pg, Traffic: tr, Dir: dir}
 }
 
+// Dir is the evidence child of a caller-owned app-data or export directory.
+// Resolve that child inside its parent Root, rejecting a junction/symlink that
+// attempts to turn an evidence path into a different storage root.
+func (s *Store) storeRoot(create bool) (*os.Root, error) {
+	path := filepath.Clean(s.Dir)
+	parent, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		return nil, err
+	}
+	defer parent.Close()
+	name := filepath.Base(path)
+	if create {
+		if err := parent.MkdirAll(name, 0o700); err != nil {
+			return nil, err
+		}
+	}
+	return parent.OpenRoot(name)
+}
+
 func hashPath(dir, hash string) (string, error) {
 	if len(hash) != 64 {
 		return "", errors.New("invalid evidence hash")
@@ -40,79 +57,20 @@ func hashPath(dir, hash string) (string, error) {
 	return filepath.Join(dir, "blobs", hash[:2], hash+".bin"), nil
 }
 
-func verifyFile(path, hash string, length int64) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	h := sha256.New()
-	n, err := io.Copy(h, f)
-	if err != nil {
-		return err
-	}
-	if n != length || hex.EncodeToString(h.Sum(nil)) != hash {
-		return fmt.Errorf("증거 본문 검증 실패: %s", hash)
-	}
-	return nil
-}
-
 // A new body becomes visible only after a durable write. Failed SQL commits may
 // leave unreferenced files; GC reaps those after a full day's grace period.
-func (s *Store) writeBody(r io.Reader, expectedLength int64, expectedHash string) (hash string, err error) {
-	stage := filepath.Join(s.Dir, ".staging")
-	if err = os.MkdirAll(stage, 0o700); err != nil {
-		return
-	}
-	f, err := os.CreateTemp(stage, "body-")
+func (s *Store) writeBody(r io.Reader, expectedLength int64, expectedHash string) (string, error) {
+	root, err := s.storeRoot(true)
 	if err != nil {
 		return "", err
 	}
-	defer func() { f.Close(); os.Remove(f.Name()) }()
-	h := sha256.New()
-	n, err := io.Copy(io.MultiWriter(f, h), r)
-	if err != nil {
-		return "", err
-	}
-	hash = hex.EncodeToString(h.Sum(nil))
-	if n != expectedLength {
-		return "", fmt.Errorf("본문이 완전하지 않습니다. 예상 %d바이트, 읽은 크기 %d바이트", expectedLength, n)
-	}
-	if expectedHash != "" && expectedHash != hash {
-		return "", errors.New("원본 트래픽 본문 해시가 일치하지 않습니다")
-	}
-	if err = f.Sync(); err != nil {
-		return "", err
-	}
-	if err = f.Close(); err != nil {
-		return "", err
-	}
-	path, err := hashPath(s.Dir, hash)
-	if err != nil {
-		return "", err
-	}
-	if _, err = os.Stat(path); err == nil {
-		if err = verifyFile(path, hash, n); err != nil {
-			return "", err
-		}
-		// Refresh the grace period for a restored but not-yet-committed body.
-		now := time.Now()
-		return hash, os.Chtimes(path, now, now)
-	} else if !os.IsNotExist(err) {
-		return "", err
-	}
-	if err = os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return "", err
-	}
-	if err = installBodyFile(f.Name(), path); err != nil {
-		return "", err
-	}
-	return hash, nil
+	defer root.Close()
+	return publishBody(root, r, expectedLength, expectedHash)
 }
 
 // StageFindingsExport freezes bindings/report versions and makes private body
 // copies before the HTTP response is started. The caller owns and removes dest.
-func (s *Store) StageFindingsExport(ctx context.Context, findings []*db.DBFinding, dest string, copyBodies bool) error {
+func (s *Store) StageFindingsExport(ctx context.Context, findings []*db.DBFinding, dest *os.Root, copyBodies bool) error {
 	return s.DB.WithEvidenceTx(ctx, func(tx *sql.Tx) error {
 		var snapshots []db.TrafficEvidenceSnapshot
 		for _, f := range findings {
@@ -224,7 +182,7 @@ func (s *Store) WithBinding(ctx context.Context, findingID, bindingID int64, fn 
 
 // Binding resolves one binding's metadata under the evidence lock and releases
 // the lock before returning. Callers that then stream a body to a client must
-// use this instead of WithBinding: verifyFile+io.Copy is O(body size), so a
+// use this instead of WithBinding: verification+io.Copy is O(body size), so a
 // large download (or a slow client) holding WithEvidenceTx would block every
 // evidence write process-wide. Reading the blob afterwards is safe — blobs are
 // content-addressed and GC only reaps unreferenced files after a 24h grace
@@ -246,24 +204,22 @@ func (s *Store) OpenBody(snapshot db.TrafficEvidenceSnapshot, side string) (*os.
 	} else if side != "request" {
 		return nil, 0, errors.New("side는 request 또는 response여야 합니다")
 	}
-	path, err := hashPath(s.Dir, hash)
+	root, err := s.storeRoot(false)
 	if err != nil {
 		return nil, 0, err
 	}
-	if err = verifyFile(path, hash, length); err != nil {
-		return nil, 0, err
-	}
-	f, err := os.Open(path)
+	defer root.Close()
+	f, err := openVerifiedBody(root, hash, length)
 	return f, length, err
 }
 
 // CopySnapshots is used by both report downloads and portable task archives.
 // The destination owns real copies, never links into either disposable store.
-func (s *Store) CopySnapshots(ctx context.Context, snapshots []db.TrafficEvidenceSnapshot, dest string) error {
+func (s *Store) CopySnapshots(ctx context.Context, snapshots []db.TrafficEvidenceSnapshot, dest *os.Root) error {
 	return s.DB.WithEvidenceTx(ctx, func(*sql.Tx) error { return s.copySnapshots(snapshots, dest) })
 }
 
-func (s *Store) copySnapshots(snapshots []db.TrafficEvidenceSnapshot, dest string) error {
+func (s *Store) copySnapshots(snapshots []db.TrafficEvidenceSnapshot, dest *os.Root) error {
 	for _, v := range snapshots {
 		for _, side := range []string{"request", "response"} {
 			if err := func() error {
@@ -276,24 +232,8 @@ func (s *Store) copySnapshots(snapshots []db.TrafficEvidenceSnapshot, dest strin
 				if side == "response" {
 					hash = v.RespHash
 				}
-				target, err := hashPath(dest, hash)
-				if err != nil {
-					return err
-				}
-				if err = os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-					return err
-				}
-				out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
-				if os.IsExist(err) {
-					return verifyFile(target, hash, length)
-				}
-				if err != nil {
-					return err
-				}
-				_, copyErr := io.Copy(out, f)
-				syncErr := out.Sync()
-				closeErr := out.Close()
-				return errors.Join(copyErr, syncErr, closeErr)
+				_, err = publishBody(dest, f, length, hash)
+				return err
 			}(); err != nil {
 				return err
 			}
@@ -302,13 +242,13 @@ func (s *Store) copySnapshots(snapshots []db.TrafficEvidenceSnapshot, dest strin
 	return nil
 }
 
-func (s *Store) InstallSnapshots(ctx context.Context, snapshots []db.TrafficEvidenceSnapshot, source string) error {
+func (s *Store) InstallSnapshots(ctx context.Context, snapshots []db.TrafficEvidenceSnapshot, source *os.Root) error {
 	return s.WithInstalledSnapshots(ctx, snapshots, source, func(*sql.Tx) error { return nil })
 }
 
 // WithInstalledSnapshots pins installed bodies until the metadata restore finishes.
 // The callback uses the supplied transaction for every database write.
-func (s *Store) WithInstalledSnapshots(ctx context.Context, snapshots []db.TrafficEvidenceSnapshot, source string, restore func(*sql.Tx) error) error {
+func (s *Store) WithInstalledSnapshots(ctx context.Context, snapshots []db.TrafficEvidenceSnapshot, source *os.Root, restore func(*sql.Tx) error) error {
 	return s.DB.WithEvidenceTx(ctx, func(tx *sql.Tx) error {
 		for _, v := range snapshots {
 			if v.ID != db.TrafficSnapshotID(v) {
@@ -319,11 +259,7 @@ func (s *Store) WithInstalledSnapshots(ctx context.Context, snapshots []db.Traff
 				length int64
 			}{{v.ReqHash, v.ReqLen}, {v.RespHash, v.RespLen}} {
 				if err := func() error {
-					path, err := hashPath(source, body.hash)
-					if err != nil {
-						return err
-					}
-					f, err := os.Open(path)
+					f, err := openVerifiedBody(source, body.hash, body.length)
 					if err != nil {
 						return err
 					}
@@ -367,8 +303,16 @@ AND NOT EXISTS(SELECT 1 FROM finding_traffic_bindings b WHERE b.snapshot_id=s.id
 		if err != nil {
 			return err
 		}
-		for _, root := range []string{filepath.Join(s.Dir, "blobs"), filepath.Join(s.Dir, ".staging")} {
-			err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		root, err := s.storeRoot(false)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		defer root.Close()
+		for _, directory := range []string{"blobs", ".staging"} {
+			err := fs.WalkDir(root.FS(), directory, func(path string, entry fs.DirEntry, err error) error {
 				if os.IsNotExist(err) {
 					return nil
 				}
@@ -388,7 +332,7 @@ AND NOT EXISTS(SELECT 1 FROM finding_traffic_bindings b WHERE b.snapshot_id=s.id
 				if now.Sub(info.ModTime()) < 24*time.Hour {
 					return nil
 				}
-				return os.Remove(path)
+				return root.Remove(path)
 			})
 			if err != nil {
 				return err

@@ -1,12 +1,15 @@
 package traffic
 
 import (
+	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -41,16 +44,22 @@ type ArchiveExchange struct {
 	RespBlob    string `json:"resp_blob,omitempty"`
 }
 
-// ExportHosts writes an exact-host snapshot to dir. It holds the traffic writer
+// ExportHosts writes an exact-host snapshot to the caller's pinned root.
+// It holds the traffic writer
 // lock while reading SQLite and blobs, so each body and its index row come from
 // one consistent point in time.
-func (t *Traffic) ExportHosts(hosts []string, dir string) (int64, error) {
+func (t *Traffic) ExportHosts(hosts []string, root *os.Root) (int64, error) {
 	if t == nil || len(hosts) == 0 {
 		return 0, nil
 	}
-	if err := os.MkdirAll(filepath.Join(dir, "blobs"), 0o700); err != nil {
+	if err := root.MkdirAll("blobs", 0o700); err != nil {
 		return 0, err
 	}
+	sourceRoot, err := os.OpenRoot(t.dir)
+	if err != nil {
+		return 0, err
+	}
+	defer sourceRoot.Close()
 	t.wmu.Lock()
 	defer t.wmu.Unlock()
 	unique := uniqueArchiveHosts(hosts)
@@ -79,11 +88,11 @@ FROM exchanges WHERE host IN (`+strings.Join(placeholders, ",")+`) ORDER BY ts,i
 		err := t.db.QueryRow(`SELECT req_head,req_body,req_blob,resp_head,resp_body,resp_blob
 FROM exchange_bodies WHERE id=?`, item.ID).Scan(&item.ReqHead, &item.ReqBody, &reqBlob, &item.RespHead, &item.RespBody, &respBlob)
 		if errors.Is(err, sql.ErrNoRows) && strings.TrimSpace(legacyPath) != "" {
-			req, readErr := os.ReadFile(filepath.Join(t.dir, legacyPath, "request.http"))
+			req, readErr := sourceRoot.ReadFile(filepath.Join(legacyPath, "request.http"))
 			if readErr != nil && !os.IsNotExist(readErr) {
 				return 0, readErr
 			}
-			resp, readErr := os.ReadFile(filepath.Join(t.dir, legacyPath, "response.http"))
+			resp, readErr := sourceRoot.ReadFile(filepath.Join(legacyPath, "response.http"))
 			if readErr != nil && !os.IsNotExist(readErr) {
 				return 0, readErr
 			}
@@ -107,11 +116,19 @@ FROM exchange_bodies WHERE id=?`, item.ID).Scan(&item.ReqHead, &item.ReqBody, &r
 		if err != nil {
 			return 0, err
 		}
-		data, err := os.ReadFile(source)
+		name, err := filepath.Rel(t.dir, source)
+		if err != nil || !filepath.IsLocal(name) {
+			return 0, errors.New("traffic blob path is not local")
+		}
+		data, err := sourceRoot.ReadFile(name)
 		if err != nil {
 			return 0, err
 		}
-		if err := os.WriteFile(filepath.Join(dir, "blobs", hash+".bin"), data, 0o600); err != nil {
+		sum := sha256.Sum256(data)
+		if hex.EncodeToString(sum[:]) != hash {
+			return 0, errors.New("traffic blob checksum mismatch")
+		}
+		if err := publishArchiveFile(root, filepath.Join("blobs", hash+".bin"), data); err != nil {
 			return 0, err
 		}
 		snapshot.Blobs = append(snapshot.Blobs, hash)
@@ -121,7 +138,7 @@ FROM exchange_bodies WHERE id=?`, item.ID).Scan(&item.ReqHead, &item.ReqBody, &r
 	if err != nil {
 		return 0, err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "traffic.json"), raw, 0o600); err != nil {
+	if err := publishArchiveFile(root, "traffic.json", raw); err != nil {
 		return 0, err
 	}
 	return int64(len(snapshot.Exchanges)), nil
@@ -129,11 +146,11 @@ FROM exchange_bodies WHERE id=?`, item.ID).Scan(&item.ReqHead, &item.ReqBody, &r
 
 // ImportArchive imports only missing exchange IDs. Current hot rows always win,
 // and repeated restore attempts are safe after a partial external failure.
-func (t *Traffic) ImportArchive(dir string) (int64, error) {
+func (t *Traffic) ImportArchive(root *os.Root) (int64, error) {
 	if t == nil {
 		return 0, nil
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, "traffic.json"))
+	raw, err := root.ReadFile("traffic.json")
 	if os.IsNotExist(err) {
 		return 0, nil
 	}
@@ -153,7 +170,7 @@ func (t *Traffic) ImportArchive(dir string) (int64, error) {
 		if !blobHashRe.MatchString(hash) {
 			return 0, fmt.Errorf("invalid archived traffic blob %q", hash)
 		}
-		data, err := os.ReadFile(filepath.Join(dir, "blobs", hash+".bin"))
+		data, err := root.ReadFile(filepath.Join("blobs", hash+".bin"))
 		if err != nil {
 			return 0, err
 		}
@@ -161,14 +178,8 @@ func (t *Traffic) ImportArchive(dir string) (int64, error) {
 		if hex.EncodeToString(sum[:]) != hash {
 			return 0, fmt.Errorf("traffic blob checksum mismatch: %s", hash)
 		}
-		destination := filepath.Join(t.dir, "_blobs", "sha256", hash[:2], hash+".bin")
-		if _, err := os.Stat(destination); os.IsNotExist(err) {
-			if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
-				return 0, err
-			}
-			if err := os.WriteFile(destination, data, 0o644); err != nil {
-				return 0, err
-			}
+		if err := t.storeBlob(filepath.Join(t.dir, "_blobs", "sha256", hash[:2]), hash, data); err != nil {
+			return 0, err
 		}
 	}
 	tx, err := t.db.Begin()
@@ -216,6 +227,41 @@ VALUES(?,?,?,?,?,?,?)`, item.ID, item.ReqHead, item.ReqBody, nullIfEmpty(item.Re
 		return imported, err
 	}
 	return imported, nil
+}
+
+func publishArchiveFile(root *os.Root, name string, data []byte) error {
+	temporary := filepath.Join(filepath.Dir(name), ".archive-"+rand.Text())
+	file, err := root.OpenFile(temporary, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	defer root.Remove(temporary)
+	n, writeErr := file.Write(data)
+	if writeErr == nil && n != len(data) {
+		writeErr = io.ErrShortWrite
+	}
+	if err := errors.Join(writeErr, file.Sync(), file.Close()); err != nil {
+		return err
+	}
+	if err := root.Link(temporary, name); err != nil {
+		return err
+	}
+	posted, err := root.Open(name)
+	if err != nil {
+		return err
+	}
+	defer posted.Close()
+	info, err := posted.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() != int64(len(data)) {
+		return errors.New("traffic archive publication size/type mismatch")
+	}
+	digest := sha256.New()
+	n64, err := io.Copy(digest, io.LimitReader(posted, int64(len(data))+1))
+	want := sha256.Sum256(data)
+	if err != nil || n64 != int64(len(data)) || !bytes.Equal(digest.Sum(nil), want[:]) {
+		return errors.Join(err, errors.New("traffic archive publication checksum mismatch"))
+	}
+	return nil
 }
 
 func uniqueArchiveHosts(hosts []string) []string {

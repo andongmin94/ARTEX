@@ -13,8 +13,8 @@ assert.ok(fn, 'Chat submission handler missing');
 const submit = vm.runInNewContext(compile(fn.getText(source).replace(/^export /, '')) + '\nshouldSubmitOnKey;');
 function event(extra = {}) {
   return { key: 'Enter', shiftKey: false, ctrlKey: false, metaKey: false,
-    nativeEvent: { isComposing: false, keyCode: 13 }, preventDefault() {},
-    currentTarget: { blur() {} }, ...extra };
+    nativeEvent: { isComposing: false, keyCode: 13 }, preventDefault() { /* Synthetic event has no browser default. */ },
+    currentTarget: { blur() { /* Synthetic event has no active element. */ } }, ...extra };
 }
 for (const [mode, input, want] of [
   ['enter', {}, true], ['enter', { shiftKey: true }, false],
@@ -28,14 +28,14 @@ for (const [mode, input, want] of [
 let handlers = 0;
 for (const name of ['app/(main)/function/tasks/page.tsx', 'app/(main)/chat/page.tsx']) {
   const source = read(name);
-  function visit(node) {
+  const visit = (node) => {
     if (ts.isArrowFunction(node) && ts.isJsxAttribute(node.parent?.parent) &&
         node.parent.parent.name.getText(source) === 'onKeyDown' &&
         /onCommitRename|createAndSelect|saveCategory|cancelOnBlurRef/.test(node.getText(source))) {
       let actions = 0;
       const scope = { matchCount: 0, trimmed: '한국어', conv: { id: 'test' }, renameText: '한국어',
         onCommitRename() { actions++; }, createAndSelect() { actions++; }, saveCategory() { actions++; },
-        cancelOnBlurRef: { current: false }, cancelRenameRef: { current: false }, onCancelRename() {} };
+        cancelOnBlurRef: { current: false }, cancelRenameRef: { current: false }, onCancelRename() { /* Cancellation is outside this assertion. */ } };
       const handler = vm.runInNewContext(compile('(' + node.getText(source) + ')'), scope);
       for (const nativeEvent of [{ isComposing: true, keyCode: 13 }, { isComposing: false, keyCode: 229 }]) {
         handler(event({ nativeEvent, currentTarget: { blur() { actions++; } } }));

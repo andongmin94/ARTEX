@@ -12,10 +12,13 @@ import type { Edge, TaskNode } from "@/lib/types";
 export function FindingLineageView({ findingId }: { findingId: string }) {
   const [nodes, setNodes] = React.useState<TaskNode[]>([]);
   const [edges, setEdges] = React.useState<Edge[]>([]);
+  const [error, setError] = React.useState("");
   const [loaded, setLoaded] = React.useState(false);
 
   React.useEffect(() => {
     let alive = true;
+    setLoaded(false);
+    setError("");
     api
       .findingLineage(findingId)
       .then((g) => {
@@ -23,7 +26,7 @@ export function FindingLineageView({ findingId }: { findingId: string }) {
         setNodes(g.nodes ?? []);
         setEdges(g.edges ?? []);
       })
-      .catch(() => {})
+      .catch((error: Error) => { if (alive) setError(error.message); })
       .finally(() => {
         if (alive) setLoaded(true);
       });
@@ -31,6 +34,8 @@ export function FindingLineageView({ findingId }: { findingId: string }) {
       alive = false;
     };
   }, [findingId]);
+
+  if (error) return <p role="alert" className="p-6 text-destructive text-sm">탐색 경로를 불러오지 못했습니다: {error}</p>;
 
   if (loaded && nodes.length === 0) {
     return (

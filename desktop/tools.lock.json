@@ -38,15 +38,6 @@
       "sha256": "da35e72aa21c005a5a0d298cfbae110bc1609a815730ea0dde84b01a1b3cd3be",
       "license": "GPL-2.0-only",
       "entrypoint": "git/cmd/git.exe"
-    },
-    {
-      "name": "browser",
-      "version": "153.0.8010.12",
-      "file": "browser.zip",
-      "url": "https://storage.googleapis.com/chrome-for-testing-public/153.0.8010.12/win64/chrome-win64.zip",
-      "sha256": "415968b02065d4a9e2c10b85f0ae9f489b8fba500e94d9d0a7b7c4852a7234c1",
-      "license": "LicenseRef-Chrome-for-Testing",
-      "entrypoint": "browser/chrome-win64/chrome.exe"
     }
   ]
 }

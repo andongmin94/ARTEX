@@ -433,7 +433,7 @@ export default function NotifyPage() {
                   }}
                   disabled={!!editing}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="알림 채널 유형">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -480,7 +480,7 @@ export default function NotifyPage() {
               <div className="grid gap-2">
                 <Label>전송 시점</Label>
                 <Select value={form.mode} onValueChange={(v) => setF({ mode: v as "realtime" | "digest" })}>
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="알림 전송 방식">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -517,7 +517,7 @@ export default function NotifyPage() {
                       value={form.minSeverity || "all"}
                       onValueChange={(v) => setF({ minSeverity: v === "all" ? "" : v })}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger aria-label="알림 최소 심각도">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>

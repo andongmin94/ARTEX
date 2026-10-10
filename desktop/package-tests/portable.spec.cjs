@@ -63,9 +63,10 @@ test("Windows 실행 패키지의 실제 Go·SQLite·UI 부팅 및 재시작", a
     expect((await api("/auth/login", "POST", { username: "ARTEX", password: "패키지검증-12345678" })).token.split(".")).toHaveLength(3);
     await page.locator('a[href="/system/settings/"]').click();
     await expect(page.getByText("자동 업데이트 미구성", { exact: true })).toBeVisible();
-    await expect(page.getByText("일부 도구 사용 가능", { exact: true })).toBeVisible({ timeout: 40_000 });
-    await expect(page.getByText("사용 가능", { exact: true })).toHaveCount(5);
-    await expect(page.getByText("실행 차단", { exact: true })).toHaveCount(1);
+    await expect(page.getByText("실행 환경 준비됨", { exact: true })).toBeVisible({ timeout: 40_000 });
+    await expect(page.getByText("사용 가능", { exact: true })).toHaveCount(6);
+    await expect(page.getByText("실행 차단", { exact: true })).toHaveCount(0);
+    expect(await api("/runtime/tools")).toMatchObject({ ready: true, components: expect.arrayContaining([expect.objectContaining({ key: "browser", state: "verified", execution: "available" })]) });
     await page.screenshot({ path: testInfo.outputPath("portable-restarted.png") });
     fs.writeFileSync(testInfo.outputPath("temporary-home.txt"), home);
   } finally {

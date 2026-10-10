@@ -49,17 +49,26 @@ func main() {
 
 func run() (code int) {
 	var (
-		addr         = flag.String("addr", "127.0.0.1:8787", "HTTP listen address")
-		dataDir      = flag.String("data", "", "data directory (default: data/ under ARTEX_HOME or the executable directory)")
-		proxy        = flag.String("proxy", "127.0.0.1:8788", "traffic recording proxy address (empty to disable)")
-		readyStdout  = flag.Bool("ready-stdout", false, "emit a JSON ready event to stdout instead of the startup banner")
-		parentStdin  = flag.Bool("parent-stdin", false, "shut down when the supervising parent's stdin pipe closes")
-		backupPath   = flag.String("backup", "", "create a verified offline snapshot in a new absolute directory")
-		restorePath  = flag.String("restore", "", "restore a verified snapshot directory into a new home")
-		restoreHome  = flag.String("restore-home", "", "new absolute data home for snapshot restoration")
-		verifyBackup = flag.String("verify-backup", "", "verify every snapshot file and SQLite database")
+		addr           = flag.String("addr", "127.0.0.1:8787", "HTTP listen address")
+		dataDir        = flag.String("data", "", "data directory (default: data/ under ARTEX_HOME or the executable directory)")
+		proxy          = flag.String("proxy", "127.0.0.1:8788", "traffic recording proxy address (empty to disable)")
+		readyStdout    = flag.Bool("ready-stdout", false, "emit a JSON ready event to stdout instead of the startup banner")
+		parentStdin    = flag.Bool("parent-stdin", false, "shut down when the supervising parent's stdin pipe closes")
+		backupPath     = flag.String("backup", "", "create a verified offline snapshot in a new absolute directory")
+		restorePath    = flag.String("restore", "", "restore a verified snapshot directory into a new home")
+		restoreHome    = flag.String("restore-home", "", "new absolute data home for snapshot restoration")
+		verifyBackup   = flag.String("verify-backup", "", "verify every snapshot file and SQLite database")
+		browserRuntime = flag.String("prepare-browser-runtime", "", "prepare read-only access to the public Electron runtime")
+		browserHome    = flag.String("browser-runtime-home", "", "private data home excluded from public browser runtime access")
 	)
 	flag.Parse()
+	if *browserRuntime != "" {
+		if err := toolruntime.PrepareBrowserRuntimeAccess(*browserRuntime, *browserHome); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
 	if handled, result := maintenanceCommand(context.Background(), *backupPath, *restorePath, *restoreHome, *verifyBackup, *dataDir); handled {
 		return result
 	}

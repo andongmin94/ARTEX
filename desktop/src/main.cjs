@@ -2,9 +2,11 @@ const { app, BrowserWindow, dialog, ipcMain, protocol, session, shell } = requir
 const fs = require("node:fs");
 const path = require("node:path");
 const { randomBytes } = require("node:crypto");
+const { spawnSync } = require("node:child_process");
 const { Backend } = require("./backend.cjs");
 const { DesktopBackup } = require("./backup.cjs");
 const { DesktopUpdater } = require("./update.cjs");
+const { BrowserBroker } = require("./browser.cjs");
 
 protocol.registerSchemesAsPrivileged([{ scheme: "artex", privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
@@ -37,12 +39,29 @@ let updater;
 let maintenance;
 let status = { state: "starting", message: "로컬 저장소와 백엔드를 준비하는 중…" };
 const resourceRoot = app.isPackaged ? path.join(process.resourcesPath, "artex") : path.join(__dirname, "..", "resources");
+let browserPrepared = false;
+let browserPreparationError = null;
+let browserBroker;
+if (process.platform === "win32" && locked) {
+  const preparation = spawnSync(path.join(resourceRoot, "artex.exe"), ["-prepare-browser-runtime", app.getPath("exe"), "-browser-runtime-home", app.getPath("userData")], { windowsHide: true, encoding: "utf8" });
+  browserPrepared = !preparation.error && preparation.status === 0;
+  if (browserPrepared) {
+    app.enableSandbox();
+    app.commandLine.appendSwitch("enable-features", "RendererAppContainer");
+    app.commandLine.appendSwitch("host-resolver-rules", "MAP * ~NOTFOUND, EXCLUDE 127.0.0.1");
+    app.commandLine.appendSwitch("disable-quic");
+  } else {
+    browserPreparationError = preparation.error?.message || preparation.stderr?.trim() || "공개 브라우저 런타임 권한을 준비하지 못했습니다";
+    process.stderr.write(`[desktop] 브라우저 격리 준비 실패: ${browserPreparationError}\n`);
+  }
+}
 const trusted = (url) => {
   try { return url === "artex://startup/" || (origin && new URL(url).origin === origin); }
   catch { return false; }
 };
 
 async function failure(error) {
+  await browserBroker?.reset();
   origin = null;
   backendSession = null;
   status = { state: "failed", message: "백엔드를 시작할 수 없습니다. 진단 정보를 확인한 뒤 다시 시도하세요.", details: error.message };
@@ -54,13 +73,14 @@ async function startBackend(nextPath = "/") {
   status = { state: "starting", message: "로컬 저장소와 백엔드를 준비하는 중…" };
   try {
     await backend?.stop();
+    await browserBroker?.reset();
     const home = app.getPath("userData");
     fs.mkdirSync(home, { recursive: true });
     if (!backups) backups = new DesktopBackup({ executable: path.join(resourceRoot, process.platform === "win32" ? "artex.exe" : "artex"), home });
     if (!updater) updater = new DesktopUpdater({ resourceRoot, executable: app.getPath("exe"), currentVersion: app.getVersion(), home });
     fs.cpSync(path.join(resourceRoot, "skills"), path.join(home, "skills"), { recursive: true, force: false, errorOnExist: false });
     backendSession = randomBytes(32).toString("hex");
-    backend = new Backend({ executable: path.join(resourceRoot, process.platform === "win32" ? "artex.exe" : "artex"), home, sessionToken: backendSession, toolRoot: path.join(resourceRoot, "tools"), onFailure: failure });
+    backend = new Backend({ executable: path.join(resourceRoot, process.platform === "win32" ? "artex.exe" : "artex"), home, sessionToken: backendSession, toolRoot: path.join(resourceRoot, "tools"), browserControl: browserPrepared ? browserBroker?.url : null, browserExecutable: app.getPath("exe"), onFailure: failure });
     const ready = await backend.start();
     if (quitting) return;
     origin = ready.url;
@@ -137,6 +157,7 @@ app.on("before-quit", (event) => {
     catch (error) { process.stderr.write(`종료 전 유지 작업 실패: ${error.message}\n`); }
     try {
       await backend?.stop();
+      await browserBroker?.stop();
       await backups?.onQuit();
     } catch (error) { process.stderr.write(`종료 시 백업/정리 실패: ${error.message}\n`); }
     finally { cleanupComplete = true; app.quit(); }
@@ -146,6 +167,8 @@ app.on("before-quit", (event) => {
 if (locked) app.whenReady().then(async () => {
   const home = app.getPath("userData");
   fs.mkdirSync(home, { recursive: true });
+  browserBroker = new BrowserBroker({ token: () => backendSession, backendOrigin: () => origin, available: () => browserPrepared });
+  await browserBroker.start();
   protocol.handle("artex", (request) => {
     if (request.url === "artex://startup/fonts/PretendardVariable.woff2") return new Response(fs.readFileSync(path.join(resourceRoot, "fonts/PretendardVariable.woff2")), { headers: { "content-type": "font/woff2" } });
     const file = request.url === "artex://startup/" ? "startup.html" : request.url === "artex://startup/startup.js" ? "startup.js" : null;
@@ -174,6 +197,7 @@ if (locked) app.whenReady().then(async () => {
     title: "ARTEX", width: 1440, height: 960, minWidth: 1000, minHeight: 700,
     webPreferences: { preload: path.join(__dirname, "preload.cjs"), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, allowRunningInsecureContent: false, webviewTag: false },
   });
+  window.on("closed", () => app.quit());
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (event, url) => { if (!trusted(url)) event.preventDefault(); });
   window.webContents.on("will-redirect", (event, url) => { if (!trusted(url)) event.preventDefault(); });

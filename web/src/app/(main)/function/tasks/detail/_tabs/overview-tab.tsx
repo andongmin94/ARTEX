@@ -545,7 +545,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
                         {g.vulnclass}
                       </span>
                     )}
-                    <Button
+                    <Button aria-label="편집"
                       size="sm"
                       variant="ghost"
                       className="h-6 shrink-0 px-1.5"
@@ -554,7 +554,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
                     >
                       <PencilIcon className="size-3.5" />
                     </Button>
-                    <Button
+                    <Button aria-label="삭제"
                       size="sm"
                       variant="ghost"
                       className="h-6 shrink-0 px-1.5"
@@ -671,7 +671,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
                       {c.kind === "allow" ? "허용" : "금지"}
                     </span>
                     <span className="min-w-0 flex-1 break-words">{c.text}</span>
-                    <Button
+                    <Button aria-label="편집"
                       size="sm"
                       variant="ghost"
                       className="h-6 shrink-0 px-1.5"
@@ -680,7 +680,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
                     >
                       <PencilIcon className="size-3.5" />
                     </Button>
-                    <Button
+                    <Button aria-label="삭제"
                       size="sm"
                       variant="ghost"
                       className="h-6 shrink-0 px-1.5"
@@ -872,7 +872,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
                   <span className="min-w-0 flex-1 truncate font-sans text-xs">{scopeValue(row)}</span>
                   <span className="text-muted-foreground shrink-0 text-xs">{SCOPE_SOURCE_LABELS[row.source]}</span>
                   {row.task_id.toString() === taskId ? (
-                    <Button
+                    <Button aria-label="삭제"
                       size="sm"
                       variant="ghost"
                       className="h-6 shrink-0 px-1.5"
@@ -1289,7 +1289,7 @@ function TaskInterceptRulesCard({ taskId }: { taskId: string }) {
                     <span className="text-muted-foreground max-w-[120px] shrink-0 truncate text-xs">{r.note}</span>
                   )}
                   <Switch checked={r.enabled} onCheckedChange={() => void toggle(r)} />
-                  <Button
+                  <Button aria-label="편집"
                     size="sm"
                     variant="ghost"
                     className="h-6 shrink-0 px-1.5"
@@ -1298,7 +1298,7 @@ function TaskInterceptRulesCard({ taskId }: { taskId: string }) {
                   >
                     <PencilIcon className="size-3.5" />
                   </Button>
-                  <Button
+                  <Button aria-label="삭제"
                     size="sm"
                     variant="ghost"
                     className="h-6 shrink-0 px-1.5"

@@ -114,6 +114,10 @@ func extractToken(r *http.Request) string {
 func (s *Server) requireAuth(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := r.URL.Path
+		if strings.HasPrefix(p, "/api/runtime/browser/") && s.browserMainRequest(r) {
+			h.ServeHTTP(w, r)
+			return
+		}
 		switch p {
 		case "/api/auth/status", "/api/auth/init", "/api/auth/login", "/api/auth/change-password", "/api/auth/desktop-session", "/api/health":
 			h.ServeHTTP(w, r)

@@ -79,16 +79,12 @@ async function prepareTools(destination = path.join(desktop, "resources/tools"))
     if (!fs.existsSync(path.join(stage, archive.entrypoint))) throw new Error(`${archive.name} 실행 파일이 배포물에 없습니다`);
     metadata.set(archive.name, archive);
   }
-  // Chrome의 전체 제3자 고지는 실행 파일 내 chrome://credits에서 제공된다.
-  // 저장소 도구의 Apache 라이선스를 브라우저 바이너리의 라이선스로 바꾸지 않는다.
-  const browser = metadata.get("browser");
-  fs.writeFileSync(path.join(stage, "browser/NOTICE.txt"), `Chrome for Testing ${browser.version}\n공식 출처: ${browser.url}\nChrome 추가 약관: https://www.google.com/chrome/terms/\n전체 저작권·제3자 라이선스: 포함한 브라우저의 chrome://credits\nChromium 소스: https://chromium.googlesource.com/chromium/src/+/refs/tags/${browser.version}/\n`);
   const inventories = new Map();
   for (const archive of lock.archives) inventories.set(archive.name, await inventory(stage, path.join(stage, archive.name)));
   const components = [
     ["shell", "pwsh", "pwsh/pwsh.exe"], ["pty", "pwsh", "pwsh/pwsh.exe"],
     ["python", "python", "python/python.exe"], ["node", "node", "node/node.exe"],
-    ["browser", "browser", browser.entrypoint], ["cli", "git", "git/cmd/git.exe"],
+    ["cli", "git", "git/cmd/git.exe"],
   ].map(([key, name, entrypoint]) => {
     const archive = metadata.get(name);
     return { key, version: archive.version, source: archive.url, license: archive.license, entrypoint, files: inventories.get(name) };

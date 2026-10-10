@@ -84,7 +84,7 @@ function AgentGridCard({
           )}
         </div>
         <p className="text-muted-foreground line-clamp-2 min-h-8 text-xs">
-          {agent.description || "(설명 없음)"}
+          {agent.description?.trim() ? agent.description : "(설명 없음)"}
         </p>
         <div className="text-muted-foreground flex flex-wrap gap-1.5 text-[10px]">
           <span className="rounded border px-1.5 py-0.5">MCP {agent.mcp_count ?? 0}</span>
@@ -95,10 +95,10 @@ function AgentGridCard({
       {!agent.builtin && (
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button
+            <Button aria-label={`${agent.name} 삭제`}
               variant="ghost"
               size="icon-sm"
-              className="text-muted-foreground hover:text-destructive absolute top-2 right-2 opacity-0 transition-opacity group-hover:opacity-100"
+              className="text-muted-foreground hover:text-destructive absolute top-2 right-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
             >
               <Trash2Icon className="size-3.5" />
             </Button>

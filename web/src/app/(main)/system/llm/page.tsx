@@ -502,7 +502,7 @@ function ProfileSheet({
             <div className="grid gap-2">
               <Label>형식</Label>
               <Select value={format} onValueChange={(v) => setFormat(v as "anthropic" | "openai" | "openai-responses")}>
-                <SelectTrigger>
+                <SelectTrigger aria-label="모델 API 형식">
                   <SelectValue placeholder="형식 선택" />
                 </SelectTrigger>
                 <SelectContent>
@@ -709,7 +709,7 @@ function ProfileSheet({
                 onValueChange={setMaxTokensField}
                 disabled={format !== "openai"}
               >
-                <SelectTrigger className="w-56 shrink-0">
+                <SelectTrigger aria-label="출력 토큰 상한 필드" className="w-56 shrink-0">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -732,7 +732,7 @@ function ProfileSheet({
                 </p>
               </div>
               <Select value={thinkingType} onValueChange={setThinkingType}>
-                <SelectTrigger className="w-32 shrink-0">
+                <SelectTrigger aria-label="추론 설정 방식" className="w-32 shrink-0">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -752,7 +752,7 @@ function ProfileSheet({
                 </p>
               </div>
               <Select value={effort} onValueChange={setEffort}>
-                <SelectTrigger className="w-32 shrink-0">
+                <SelectTrigger aria-label="추론 강도" className="w-32 shrink-0">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

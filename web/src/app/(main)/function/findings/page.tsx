@@ -885,7 +885,7 @@ export default function FindingsPage() {
           </ToggleGroup>
 
           <Select value={status} onValueChange={(v) => setStatus(v as "all" | FindingStatus)}>
-            <SelectTrigger size="sm" className="w-32">
+            <SelectTrigger aria-label="취약점 상태 필터" size="sm" className="w-32">
               <SelectValue placeholder="상태" />
             </SelectTrigger>
             <SelectContent>
@@ -899,7 +899,7 @@ export default function FindingsPage() {
           </Select>
 
           <Select value={vulnclass} onValueChange={setVulnclass}>
-            <SelectTrigger size="sm" className="w-40">
+            <SelectTrigger aria-label="취약점 유형 필터" size="sm" className="w-40">
               <SelectValue placeholder="취약점 유형" />
             </SelectTrigger>
             <SelectContent>
@@ -913,7 +913,7 @@ export default function FindingsPage() {
           </Select>
 
           <Select value={task} onValueChange={setTask}>
-            <SelectTrigger size="sm" className="w-48">
+            <SelectTrigger aria-label="작업 필터" size="sm" className="w-48">
               <SelectValue placeholder="작업" />
             </SelectTrigger>
             <SelectContent>
@@ -940,7 +940,7 @@ export default function FindingsPage() {
           </Select>
 
           <Select value={sort} onValueChange={(v) => setSort(v as "severity" | "time")}>
-            <SelectTrigger size="sm" className="w-36">
+            <SelectTrigger aria-label="취약점 정렬" size="sm" className="w-36">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

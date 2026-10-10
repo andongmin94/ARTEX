@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { EyeIcon, GitCompareIcon, InfoIcon, PencilIcon, RotateCcwIcon, SaveIcon, Trash2Icon, XIcon } from "lucide-react";
+import { EyeIcon, GitCompareIcon, PencilIcon, RotateCcwIcon, SaveIcon, Trash2Icon, XIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +36,7 @@ const TRAFFIC_TOOL_KEYS = new Set(["traffic_search", "traffic_get"]);
 // drawer (and reused full-page for deep links). Tabs: 配置与提示词 / MCP / Skill /
 // Tools. Config + prompt save as before; visibility + tool bindings toggle live.
 export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?: () => void }) {
+  const controlId = React.useId();
   const [detail, setDetail] = React.useState<AgentDetail | null>(null);
   const [versions, setVersions] = React.useState<PromptVersion[]>([]);
   const [variables, setVariables] = React.useState<PromptVar[]>([]);
@@ -70,10 +71,10 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
   const [settings, setSettings] = React.useState<Settings | null>(null);
 
   React.useEffect(() => {
-    api.mcpServers().then(setMcp).catch(() => {});
-    api.skills().then(setSkills).catch(() => {});
-    api.tools().then(setTools).catch(() => {});
-    api.settings().then(setSettings).catch(() => {});
+    api.mcpServers().then(setMcp).catch((error: Error) => toast.error(`불러오기 실패: ${error.message}`));
+    api.skills().then(setSkills).catch((error: Error) => toast.error(`불러오기 실패: ${error.message}`));
+    api.tools().then(setTools).catch((error: Error) => toast.error(`불러오기 실패: ${error.message}`));
+    api.settings().then(setSettings).catch((error: Error) => toast.error(`불러오기 실패: ${error.message}`));
   }, []);
   // global gates: traffic tools need 流量捕获, web search needs the master switch.
   const captureOn = !!settings?.traffic_capture;
@@ -216,7 +217,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
   function toggleMcp(id: number) {
     const on = mcpVisible.includes(id);
     const name = mcp.find((m) => m.id === id)?.name ?? String(id);
-    applyVis(
+    void applyVis(
       on ? mcpVisible.filter((x) => x !== id) : [...mcpVisible, id],
       skillVisible,
       `${on ? "해제됨" : "켜짐"} MCP「${name}」 접근 권한`,
@@ -224,7 +225,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
   }
   function toggleSkill(name: string) {
     const on = skillVisible.includes(name);
-    applyVis(
+    void applyVis(
       mcpVisible,
       on ? skillVisible.filter((x) => x !== name) : [...skillVisible, name],
       `${on ? "해제됨" : "켜짐"} Skill「${name}」 접근 권한`,
@@ -247,7 +248,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
     } catch (e) {
       toast.error("도구 연결 저장 실패:" + (e as Error).message);
       reload();
-      api.tools().then(setTools).catch(() => {});
+      api.tools().then(setTools).catch((error: Error) => toast.error(`불러오기 실패: ${error.message}`));
     }
   }
 
@@ -593,8 +594,8 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
         <p className="text-muted-foreground mb-3 text-xs">이 에이전트가 접근할 MCP 서버를 선택하세요.</p>
         <div className="grid gap-2">
           {mcp.map((m) => (
-            <label key={m.id} className="flex items-center gap-2 rounded-md border p-2 text-sm">
-              <Checkbox checked={mcpVisible.includes(m.id)} onCheckedChange={() => toggleMcp(m.id)} />
+            <label htmlFor={`${controlId}-1-${m.id}`} key={m.id} className="flex items-center gap-2 rounded-md border p-2 text-sm">
+              <Checkbox id={`${controlId}-1-${m.id}`} checked={mcpVisible.includes(m.id)} onCheckedChange={() => toggleMcp(m.id)} />
               {m.name}
               <span className="text-muted-foreground ml-auto text-xs">{m.transport}</span>
             </label>
@@ -608,8 +609,8 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
         <p className="text-muted-foreground mb-3 text-xs">이 에이전트가 사용할 스킬을 선택하세요.</p>
         <div className="grid gap-2">
           {skills.map((s) => (
-            <label key={s.name} className="flex items-center gap-2 rounded-md border p-2 text-sm">
-              <Checkbox checked={skillVisible.includes(s.name)} onCheckedChange={() => toggleSkill(s.name)} />
+            <label htmlFor={`${controlId}-2-${s.name}`} key={s.name} className="flex items-center gap-2 rounded-md border p-2 text-sm">
+              <Checkbox id={`${controlId}-2-${s.name}`} checked={skillVisible.includes(s.name)} onCheckedChange={() => toggleSkill(s.name)} />
               <span className="font-sans text-xs">{s.name}</span>
               {s.description && <span className="text-muted-foreground ml-auto truncate text-xs">{s.description}</span>}
             </label>
@@ -626,14 +627,14 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
             const isTraffic = TRAFFIC_TOOL_KEYS.has(t.key);
             const gated = isTraffic && !captureOn; // traffic tools need 流量捕获 on
             return (
-              <label
+              <label htmlFor={`${controlId}-3-${t.key}`}
                 key={t.key}
                 className={cn(
                   "flex items-center gap-2 rounded-md border p-2 text-sm",
                   gated && "opacity-60",
                 )}
               >
-                <Checkbox
+                <Checkbox id={`${controlId}-3-${t.key}`}
                   checked={t.agents.includes(agentKey)}
                   disabled={gated}
                   onCheckedChange={() => toggleTool(t)}
@@ -729,6 +730,7 @@ function DiffView({ oldText, newText }: { oldText: string; newText: string }) {
 // Each trigger fires (定时/发现finding/目标达成/任务超时/工具调用，可多选) → a new conversation runs
 // in parallel with the base user message + auto context appended by the backend.
 function AgentTriggersTab({ agentKey, agent }: { agentKey: string; agent?: Agent }) {
+  const controlId = React.useId();
   const [triggers, setTriggers] = React.useState<AgentTrigger[]>([]);
   const [tools, setTools] = React.useState<Tool[]>([]);
   // 触发后处理策略(每 agent);初值来自 agent detail,改动即保存。
@@ -927,10 +929,10 @@ function AgentTriggersTab({ agentKey, agent }: { agentKey: string; agent?: Agent
               onValueChange={(v) => {
                 const rm = v as "serial" | "parallel";
                 setRunMode(rm);
-                saveBehavior({ trigger_run_mode: rm });
+                void saveBehavior({ trigger_run_mode: rm });
               }}
             >
-              <SelectTrigger size="sm" className="h-8 w-40">
+              <SelectTrigger aria-label="에이전트 트리거 실행 방식" size="sm" className="h-8 w-40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent position="popper">
@@ -948,10 +950,10 @@ function AgentTriggersTab({ agentKey, agent }: { agentKey: string; agent?: Agent
               onValueChange={(v) => {
                 const mm = v as "by_task" | "all" | "none";
                 setMergeMode(mm);
-                saveBehavior({ trigger_merge_mode: mm });
+                void saveBehavior({ trigger_merge_mode: mm });
               }}
             >
-              <SelectTrigger size="sm" className="h-8 w-44">
+              <SelectTrigger aria-label="에이전트 트리거 병합 방식" size="sm" className="h-8 w-44">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent position="popper">
@@ -975,7 +977,7 @@ function AgentTriggersTab({ agentKey, agent }: { agentKey: string; agent?: Agent
                 onBlur={() => {
                   const n = Math.max(0, Math.floor(Number(maxParallel) || 0));
                   setMaxParallel(String(n));
-                  saveBehavior({ trigger_max_parallel: n });
+                  void saveBehavior({ trigger_max_parallel: n });
                 }}
               />
             </div>
@@ -1002,8 +1004,8 @@ function AgentTriggersTab({ agentKey, agent }: { agentKey: string; agent?: Agent
 
         {/* 定时 */}
         <div className="grid gap-1.5">
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox checked={onInterval} onCheckedChange={(v) => setOnInterval(!!v)} /> 주기적 실행
+          <label htmlFor={`${controlId}-4`} className="flex items-center gap-2 text-sm">
+            <Checkbox id={`${controlId}-4`} checked={onInterval} onCheckedChange={(v) => setOnInterval(!!v)} /> 주기적 실행
           </label>
           {onInterval && (
             <div className="grid gap-1.5">
@@ -1021,8 +1023,8 @@ function AgentTriggersTab({ agentKey, agent }: { agentKey: string; agent?: Agent
 
         {/* finding */}
         <div className="grid gap-1.5">
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox checked={onFinding} onCheckedChange={(v) => setOnFinding(!!v)} /> 취약점 발견 시 실행
+          <label htmlFor={`${controlId}-5`} className="flex items-center gap-2 text-sm">
+            <Checkbox id={`${controlId}-5`} checked={onFinding} onCheckedChange={(v) => setOnFinding(!!v)} /> 취약점 발견 시 실행
           </label>
           {onFinding && (
             <Textarea className="text-xs" rows={2} value={findingMsg}
@@ -1032,8 +1034,8 @@ function AgentTriggersTab({ agentKey, agent }: { agentKey: string; agent?: Agent
 
         {/* 目标达成 */}
         <div className="grid gap-1.5">
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox checked={onGoalMet} onCheckedChange={(v) => setOnGoalMet(!!v)} /> 목표 달성 시 실행
+          <label htmlFor={`${controlId}-6`} className="flex items-center gap-2 text-sm">
+            <Checkbox id={`${controlId}-6`} checked={onGoalMet} onCheckedChange={(v) => setOnGoalMet(!!v)} /> 목표 달성 시 실행
           </label>
           {onGoalMet && (
             <Textarea className="text-xs" rows={2} value={goalMsg}
@@ -1043,8 +1045,8 @@ function AgentTriggersTab({ agentKey, agent }: { agentKey: string; agent?: Agent
 
         {/* 任务超时 */}
         <div className="grid gap-1.5">
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox checked={onTaskTimeout} onCheckedChange={(v) => setOnTaskTimeout(!!v)} /> 작업 시간 초과 시 실행
+          <label htmlFor={`${controlId}-7`} className="flex items-center gap-2 text-sm">
+            <Checkbox id={`${controlId}-7`} checked={onTaskTimeout} onCheckedChange={(v) => setOnTaskTimeout(!!v)} /> 작업 시간 초과 시 실행
           </label>
           {onTaskTimeout && (
             <Textarea className="text-xs" rows={2} value={taskTimeoutMsg}
@@ -1054,8 +1056,8 @@ function AgentTriggersTab({ agentKey, agent }: { agentKey: string; agent?: Agent
 
         {/* 工具调用 */}
         <div className="grid gap-1.5">
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox checked={onToolCall} onCheckedChange={(v) => setOnToolCall(!!v)} /> 도구 호출 시 실행
+          <label htmlFor={`${controlId}-8`} className="flex items-center gap-2 text-sm">
+            <Checkbox id={`${controlId}-8`} checked={onToolCall} onCheckedChange={(v) => setOnToolCall(!!v)} /> 도구 호출 시 실행
           </label>
           {onToolCall && (
             <div className="grid gap-1.5">
@@ -1066,8 +1068,8 @@ function AgentTriggersTab({ agentKey, agent }: { agentKey: string; agent?: Agent
                 {tools.length === 0 && <span className="text-muted-foreground text-xs">(도구 목록이 비어 있습니다)</span>}
                 <div className="grid gap-1">
                   {tools.map((tool) => (
-                    <label key={tool.key} className="flex items-start gap-2 text-xs">
-                      <Checkbox className="mt-0.5" checked={toolNames.includes(tool.key)}
+                    <label htmlFor={`${controlId}-9-${tool.key}`} key={tool.key} className="flex items-start gap-2 text-xs">
+                      <Checkbox id={`${controlId}-9-${tool.key}`} className="mt-0.5" checked={toolNames.includes(tool.key)}
                         onCheckedChange={() => toggleTool(tool.key)} />
                       <span className="min-w-0">
                         <span className="font-medium">{tool.key}</span>
@@ -1085,8 +1087,8 @@ function AgentTriggersTab({ agentKey, agent }: { agentKey: string; agent?: Agent
 
         {/* 任务创建 */}
         <div className="grid gap-1.5">
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox checked={onTaskCreate} onCheckedChange={(v) => setOnTaskCreate(!!v)} /> 작업 생성 시 실행
+          <label htmlFor={`${controlId}-10`} className="flex items-center gap-2 text-sm">
+            <Checkbox id={`${controlId}-10`} checked={onTaskCreate} onCheckedChange={(v) => setOnTaskCreate(!!v)} /> 작업 생성 시 실행
           </label>
           {onTaskCreate && (
             <Textarea className="text-xs" rows={2} value={taskCreateMsg}

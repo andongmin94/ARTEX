@@ -689,7 +689,7 @@ export function BroadcastTab({ taskId }: { taskId: string }) {
             setPage(1);
           }}
         >
-          <SelectTrigger size="sm" className="h-7 w-24">
+          <SelectTrigger aria-label="페이지당 항목 수" size="sm" className="h-7 w-24">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

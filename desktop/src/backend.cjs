@@ -6,11 +6,13 @@ const { createHash } = require("node:crypto");
 const { ports: restrictedPorts } = require("../../internal/browserports/restricted-ports.json");
 
 class Backend {
-  constructor({ executable, home, sessionToken, toolRoot, onFailure }) {
+  constructor({ executable, home, sessionToken, toolRoot, browserControl, browserExecutable, onFailure }) {
     this.executable = executable;
     this.home = home;
     this.sessionToken = sessionToken;
     this.toolRoot = toolRoot;
+    this.browserControl = browserControl;
+    this.browserExecutable = browserExecutable;
     this.onFailure = onFailure;
     this.child = null;
     this.stopping = false;
@@ -19,7 +21,11 @@ class Backend {
   async start() {
     if (this.child) throw new Error("백엔드가 이미 실행 중입니다");
     const env = { ...process.env, ARTEX_HOME: this.home, ARTEX_DESKTOP_SESSION: this.sessionToken };
-    for (const key of ["ARTEX_CONFIG", "ARTEX_SKILL_DIR", "ARTEX_PG_DSN", "ARTEX_TOOL_ROOT", "ARTEX_TOOL_MANIFEST_SHA256"]) delete env[key];
+    for (const key of ["ARTEX_CONFIG", "ARTEX_SKILL_DIR", "ARTEX_PG_DSN", "ARTEX_TOOL_ROOT", "ARTEX_TOOL_MANIFEST_SHA256", "ARTEX_BROWSER_CONTROL_URL", "ARTEX_BROWSER_EXECUTABLE"]) delete env[key];
+    if (this.browserControl) {
+      env.ARTEX_BROWSER_CONTROL_URL = this.browserControl;
+      env.ARTEX_BROWSER_EXECUTABLE = this.browserExecutable;
+    }
     if (this.toolRoot) {
       const manifest = path.join(this.toolRoot, "manifest.json");
       if (!path.isAbsolute(this.toolRoot) || !fs.lstatSync(manifest).isFile()) throw new Error("앱 전용 도구 매니페스트가 없습니다");

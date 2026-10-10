@@ -19,7 +19,7 @@ import (
 
 const ManifestName = "manifest.json"
 
-var ComponentKeys = []string{"shell", "pty", "python", "node", "browser", "cli"}
+var ComponentKeys = []string{"shell", "pty", "python", "node", "cli"}
 
 type File struct {
 	Path   string `json:"path"`

@@ -61,7 +61,7 @@ export function DeliveryList({ channels }: { channels: NotificationChannel[] }) 
             setChannelID(v === "all" ? undefined : Number(v));
           }}
         >
-          <SelectTrigger size="sm" className="w-44">
+          <SelectTrigger aria-label="알림 채널 필터" size="sm" className="w-44">
             <SelectValue placeholder="전체 채널" />
           </SelectTrigger>
           <SelectContent>
@@ -80,7 +80,7 @@ export function DeliveryList({ channels }: { channels: NotificationChannel[] }) 
             setState(v === "all" ? undefined : v);
           }}
         >
-          <SelectTrigger size="sm" className="w-32">
+          <SelectTrigger aria-label="알림 전송 상태 필터" size="sm" className="w-32">
             <SelectValue placeholder="전체 상태" />
           </SelectTrigger>
           <SelectContent>

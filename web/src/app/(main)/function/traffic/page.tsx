@@ -489,7 +489,7 @@ export default function TrafficPage() {
           />
         </div>
         <Select value={method} onValueChange={setMethod}>
-          <SelectTrigger size="sm" className="w-32">
+          <SelectTrigger aria-label="HTTP 메서드 필터" size="sm" className="w-32">
             <SelectValue placeholder="메서드" />
           </SelectTrigger>
           <SelectContent>
@@ -502,7 +502,7 @@ export default function TrafficPage() {
           </SelectContent>
         </Select>
         <Select value={String(size)} onValueChange={(v) => setSize(Number(v))}>
-          <SelectTrigger size="sm" className="w-28">
+          <SelectTrigger aria-label="페이지당 항목 수" size="sm" className="w-28">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -518,7 +518,7 @@ export default function TrafficPage() {
           <span className="tabular-nums">
             {rangeStart}–{rangeEnd} / {total}
           </span>
-          <Button
+          <Button aria-label="이전 페이지"
             variant="outline"
             size="icon"
             className="size-8"
@@ -530,7 +530,7 @@ export default function TrafficPage() {
           <span className="tabular-nums">
             {page + 1} / {pageCount}
           </span>
-          <Button
+          <Button aria-label="다음 페이지"
             variant="outline"
             size="icon"
             className="size-8"
@@ -562,7 +562,7 @@ export default function TrafficPage() {
           />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger size="sm" className="w-28">
+          <SelectTrigger aria-label="상태 필터" size="sm" className="w-28">
             <SelectValue placeholder="상태 코드" />
           </SelectTrigger>
           <SelectContent>

@@ -46,7 +46,7 @@ func connectManagedMCP(ctx context.Context, m *db.MCPServer) (mcpClient, error) 
 		return nil, errors.New(unmanagedDesktopToolsMessage)
 	}
 	if m.Name == browserMCPName {
-		return nil, errors.New("브라우저 MCP의 승인 대상 네트워크 중계가 아직 준비되지 않았습니다")
+		return nil, errors.New("브라우저 MCP는 작업 승인 문맥의 Electron 메인 중계에서만 실행합니다")
 	}
 	b, err := toolruntime.FromEnvironment()
 	if err != nil {
@@ -66,7 +66,7 @@ func connectManagedMCP(ctx context.Context, m *db.MCPServer) (mcpClient, error) 
 	if key == "" {
 		return nil, errors.New("stdio MCP 명령은 앱 매니페스트의 도구 key 또는 검증된 실행 파일 절대 경로여야 합니다")
 	}
-	if key == "pty" || key == "browser" {
+	if key == "pty" {
 		return nil, errors.New("이 MCP 실행 경로의 격리 연결이 아직 준비되지 않았습니다")
 	}
 	work, err := newManagedToolWorkspace("mcp-" + strconv.FormatInt(m.ID, 10) + "-")

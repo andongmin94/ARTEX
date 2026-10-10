@@ -808,7 +808,7 @@ export default function TasksPage() {
                 )}
               </div>
               <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as TaskStatus | "all")}>
-                <SelectTrigger className="w-36">
+                <SelectTrigger aria-label="상태 필터" className="w-36">
                   <SelectValue placeholder="상태" />
                 </SelectTrigger>
                 <SelectContent>
@@ -823,7 +823,7 @@ export default function TasksPage() {
                 </SelectContent>
               </Select>
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="w-40">
+                <SelectTrigger aria-label="작업 분류 필터" className="w-40">
                   <SelectValue placeholder="작업 분류" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1812,7 +1812,7 @@ function TaskArchivesPanel({ onChanged }: { onChanged: () => void }) {
               setPage(1);
             }}
           >
-            <SelectTrigger className="w-36">
+            <SelectTrigger aria-label="보관 상태 필터" className="w-36">
               <SelectValue placeholder="처리 상태" />
             </SelectTrigger>
             <SelectContent>
@@ -1846,7 +1846,7 @@ function TaskArchivesPanel({ onChanged }: { onChanged: () => void }) {
                   archives={deletable}
                   onConfirm={() => deleteMany(deletable)}
                   trigger={
-                    <Button size="sm" variant="destructive">
+                    <Button aria-label="삭제" size="sm" variant="destructive">
                       <Trash2Icon data-icon="inline-start" />
                       영구 삭제 {deletable.length}
                     </Button>
@@ -2326,7 +2326,7 @@ function BulkDeleteTasksDialog({
   return (
     <AlertDialog open={open} onOpenChange={handleOpenChange}>
       <AlertDialogTrigger asChild>
-        <Button size="sm" variant="outline">
+        <Button aria-label="삭제" size="sm" variant="outline">
           <Trash2Icon className="text-destructive" /> 선택 항목 {ids.length}개 삭제
         </Button>
       </AlertDialogTrigger>
@@ -3012,7 +3012,7 @@ function CategoryManagementSheet({
           </DndContext>
           <SheetFooter className="border-t px-6 py-4 sm:flex-row sm:items-center">
             {selectedCategory && (
-              <Button
+              <Button aria-label="삭제"
                 type="button"
                 variant="destructive"
                 className="sm:mr-auto"

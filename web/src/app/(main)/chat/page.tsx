@@ -420,7 +420,7 @@ function DraftChat({
 
   const agentPicker = (
     <Select value={agentKey} onValueChange={setAgentKey}>
-      <SelectTrigger className="w-full sm:w-40">
+      <SelectTrigger aria-label="대화 에이전트" className="w-full sm:w-40">
         <SelectValue placeholder="에이전트 선택…" />
       </SelectTrigger>
       <SelectContent>
@@ -1392,7 +1392,7 @@ export default function ChatPage() {
                     {selectedConversationCount > 0 ? `선택: ${selectedConversationCount} 개` : conversationCountLabel}
                   </span>
                   {selectedConversationCount > 0 && (
-                    <Button
+                    <Button aria-label="삭제"
                       size="sm"
                       variant="destructive"
                       disabled={bulkDeleting}

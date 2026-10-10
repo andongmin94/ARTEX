@@ -472,7 +472,7 @@ export default function SystemSettingsPage() {
                     saveWebSearch({ web_search_backend: v });
                   }}
                 >
-                  <SelectTrigger className="w-48 shrink-0">
+                  <SelectTrigger aria-label="웹 검색 제공자" className="w-48 shrink-0">
                     <SelectValue placeholder="검색 서비스 선택" />
                   </SelectTrigger>
                   <SelectContent>

@@ -108,7 +108,7 @@ export default function AssetInterceptPage() {
   }, []);
 
   React.useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   function set(patch: Partial<RuleForm>) {
@@ -144,7 +144,7 @@ export default function AssetInterceptPage() {
         toast.success("규칙을 생성했습니다");
       }
       setOpen(false);
-      load();
+      void load();
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -157,7 +157,7 @@ export default function AssetInterceptPage() {
     try {
       await api.deleteAssetInterceptRule(rule.id);
       toast.success("규칙을 삭제했습니다");
-      load();
+      void load();
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -166,7 +166,7 @@ export default function AssetInterceptPage() {
   async function handleToggle(rule: AssetInterceptRule) {
     try {
       await api.toggleAssetInterceptRule(rule.id, !rule.enabled);
-      load();
+      void load();
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -243,14 +243,14 @@ export default function AssetInterceptPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-center">
-                      <Switch checked={rule.enabled} onCheckedChange={() => handleToggle(rule)} />
+                      <Switch aria-label={`규칙 ${rule.pattern} 활성화`} checked={rule.enabled} onCheckedChange={() => handleToggle(rule)} />
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-end gap-0.5">
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(rule)}>
+                        <Button aria-label="규칙 편집" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(rule)}>
                           <PencilIcon className="h-3.5 w-3.5" />
                         </Button>
-                        <Button
+                        <Button aria-label="삭제"
                           size="icon"
                           variant="ghost"
                           className="h-7 w-7 text-destructive hover:text-destructive"
@@ -279,7 +279,7 @@ export default function AssetInterceptPage() {
           <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 space-y-5">
             <Field label="일치 유형">
               <Select value={form.kind} onValueChange={(v) => set({ kind: v as AssetInterceptKind })}>
-                <SelectTrigger>
+                <SelectTrigger aria-label="자산 차단 규칙 유형">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

@@ -323,7 +323,7 @@ export default function AssetsPage() {
             총 <span className="tabular-nums">{totalAssets}</span> 개 자산
           </span>
           {selected.size > 0 && (
-            <Button variant="destructive" size="sm" onClick={() => openDelete(Array.from(selected) as number[])}>
+            <Button aria-label="삭제" variant="destructive" size="sm" onClick={() => openDelete(Array.from(selected) as number[])}>
               <Trash2Icon className="size-3.5" /> 선택 항목 삭제 ({selected.size})
             </Button>
           )}
@@ -880,7 +880,7 @@ function AssetCard({
       {total > 0 && (
         <div className="flex shrink-0 items-center gap-2 border-t px-3 py-1.5 text-xs text-muted-foreground">
           <Select value={String(size)} onValueChange={(v) => onSize(Number(v))}>
-            <SelectTrigger size="sm" className="h-7 w-24">
+            <SelectTrigger aria-label="페이지당 항목 수" size="sm" className="h-7 w-24">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -898,7 +898,7 @@ function AssetCard({
           </span>
           {pageCount > 1 && (
             <div className="flex items-center gap-2">
-              <Button
+              <Button aria-label="이전 페이지"
                 variant="outline"
                 size="icon"
                 className="size-7"
@@ -910,7 +910,7 @@ function AssetCard({
               <span className="tabular-nums">
                 {page + 1} / {pageCount}
               </span>
-              <Button
+              <Button aria-label="다음 페이지"
                 variant="outline"
                 size="icon"
                 className="size-7"

@@ -220,7 +220,7 @@ function AssetCard({
               onPage(0);
             }}
           >
-            <SelectTrigger size="sm" className="w-24">
+            <SelectTrigger aria-label="페이지당 항목 수" size="sm" className="w-24">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

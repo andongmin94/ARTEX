@@ -228,7 +228,9 @@ WHEN OLD.id = %d BEGIN SELECT RAISE(ABORT,'forced task delete failure'); END`, t
 	if got, err := m.pg.GetTask(taskID); err != nil || got == nil {
 		t.Fatalf("task row was lost after failed delete: task=%+v err=%v", got, err)
 	}
-	assertPathExists(t, filepath.Join(workspaceDirectory(dataDir), "tasks", task.ID))
+	if _, statErr := os.Stat(filepath.Join(workspaceDirectory(dataDir), "tasks", task.ID)); statErr != nil {
+		t.Fatalf("workspace rollback failed: %v; delete error: %v", statErr, err)
+	}
 	assertPathExists(t, transcriptPath)
 	if got, err := os.ReadFile(trafficMarker); err != nil || string(got) != "original traffic" {
 		t.Fatalf("traffic tree was not restored: content=%q err=%v", got, err)

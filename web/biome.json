@@ -103,6 +103,7 @@
       "react": "recommended"
     }
   },
+  "overrides": [{ "includes": ["public/icons/chatgpt-logo-black.svg", "public/icons/chatgpt-logo-white.svg"], "linter": { "rules": { "a11y": { "noSvgWithoutTitle": "off" } } } }],
   "css": {
     "parser": {
       "tailwindDirectives": true

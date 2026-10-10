@@ -277,7 +277,12 @@ func TestEvidenceGCGraceAndActiveRestore(t *testing.T) {
 	}
 	snap := f.Traffic.Bindings[0].Snapshot
 	archive := t.TempDir()
-	if err = s.CopySnapshots(ctx, []db.TrafficEvidenceSnapshot{snap}, archive); err != nil {
+	archiveRoot, err := os.OpenRoot(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archiveRoot.Close()
+	if err = s.CopySnapshots(ctx, []db.TrafficEvidenceSnapshot{snap}, archiveRoot); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.DB.DeleteFinding(f.FindingID); err != nil {
@@ -305,7 +310,7 @@ func TestEvidenceGCGraceAndActiveRestore(t *testing.T) {
 	}
 	entered, release, finished := make(chan struct{}), make(chan struct{}), make(chan error, 1)
 	go func() {
-		finished <- s.WithInstalledSnapshots(ctx, []db.TrafficEvidenceSnapshot{snap}, archive, func(*sql.Tx) error { close(entered); <-release; return nil })
+		finished <- s.WithInstalledSnapshots(ctx, []db.TrafficEvidenceSnapshot{snap}, archiveRoot, func(*sql.Tx) error { close(entered); <-release; return nil })
 	}()
 	<-entered
 	short, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
@@ -324,7 +329,7 @@ func TestEvidenceGCGraceAndActiveRestore(t *testing.T) {
 	// A portable package cannot substitute metadata while retaining its old ID.
 	bad := snap
 	bad.URL = "http://tampered.local/"
-	if err = s.InstallSnapshots(ctx, []db.TrafficEvidenceSnapshot{bad}, archive); err == nil {
+	if err = s.InstallSnapshots(ctx, []db.TrafficEvidenceSnapshot{bad}, archiveRoot); err == nil {
 		t.Fatal("accepted tampered snapshot")
 	}
 }

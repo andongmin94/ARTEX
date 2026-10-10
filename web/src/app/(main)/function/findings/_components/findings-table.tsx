@@ -239,7 +239,7 @@ export function FindingsTable({
                 <TableCell onClick={(e) => e.stopPropagation()}>
                   {f.finding_id ? (
                     <Select value={f.status} onValueChange={(v) => onStatusChange(f, v as FindingStatus)}>
-                      <SelectTrigger size="sm" className="h-7 w-full border-none px-1 shadow-none focus-visible:ring-0">
+                      <SelectTrigger aria-label="취약점 상태" size="sm" className="h-7 w-full border-none px-1 shadow-none focus-visible:ring-0">
                         <StatusBadge domain="finding" value={f.status} dot />
                       </SelectTrigger>
                       <SelectContent position="popper" align="end">
@@ -356,7 +356,7 @@ export function FindingsTable({
                               value={edit.severity}
                               onValueChange={(v) => onEditChange((s) => (s ? { ...s, severity: v as Severity } : s))}
                             >
-                              <SelectTrigger size="sm" className="w-28">
+                              <SelectTrigger aria-label="취약점 심각도" size="sm" className="w-28">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
