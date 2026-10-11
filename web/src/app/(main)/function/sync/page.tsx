@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { DataLoadStatus } from "@/components/data-load-status";
 
 import { AlertCircleIcon, CheckCircle2Icon, DownloadIcon, PlugZapIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -48,13 +49,15 @@ export default function AssetSyncPage() {
 function ScopeSentryPanel() {
   const [status, setStatus] = React.useState<SSStatus | null>(null);
   const [loadingStatus, setLoadingStatus] = React.useState(true);
+  const [statusError, setStatusError] = React.useState("");
 
   const loadStatus = React.useCallback(() => {
     setLoadingStatus(true);
+    setStatusError("");
     api
       .ssStatus()
       .then(setStatus)
-      .catch((e) => toast.error(`데이터 소스 상태 읽기 실패: ${e.message}`))
+      .catch((e: Error) => { setStatus(null); setStatusError(e.message); })
       .finally(() => setLoadingStatus(false));
   }, []);
 
@@ -66,6 +69,7 @@ function ScopeSentryPanel() {
 
   return (
     <div className="space-y-6">
+      <DataLoadStatus error={statusError} label="데이터 소스 상태 불러오기" onRetry={loadStatus} />
       <DataSourceCard status={status} loading={loadingStatus} onChanged={loadStatus} />
       {ready ? (
         <SyncWorkbench />
@@ -145,11 +149,6 @@ function DataSourceCard({
         {loading && (
           <p role="status" className="text-muted-foreground text-sm">
             연결 상태를 확인하고 있습니다.
-          </p>
-        )}
-        {!loading && !status && (
-          <p role="alert" className="text-destructive text-sm">
-            연결 상태를 불러오지 못했습니다. 새로고침해 다시 확인하세요.
           </p>
         )}
         {!loading &&
@@ -247,7 +246,9 @@ function SyncWorkbench() {
 
   const [projects, setProjects] = React.useState<SSProject[]>([]);
   const [tasks, setTasks] = React.useState<SSTask[]>([]);
-  const [loading, setLoading] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState("");
+  const listRequest = React.useRef(0);
   const [search, setSearch] = React.useState("");
   const [page, setPage] = React.useState(1);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
@@ -256,17 +257,20 @@ function SyncWorkbench() {
   const [result, setResult] = React.useState<Awaited<ReturnType<typeof api.ssSync>> | null>(null);
 
   const load = React.useCallback(() => {
+    const request = ++listRequest.current;
     setLoading(true);
+    setLoadError("");
     setSelected(new Set());
-    const fn =
-      dimension === "project"
-        ? api.ssProjects(page, 50, search).then((r) => setProjects(r.projects))
-        : api.ssTasks(page, 50, search).then(setTasks);
-    fn.catch((e) => toast.error(`목록 불러오기 실패: ${e.message}`)).finally(() => setLoading(false));
+    const fn = dimension === "project"
+      ? api.ssProjects(page, 50, search).then((r) => { if (request === listRequest.current) setProjects(r.projects); })
+      : api.ssTasks(page, 50, search).then((r) => { if (request === listRequest.current) setTasks(r); });
+    fn.catch((error: Error) => { if (request === listRequest.current) setLoadError(error.message); })
+      .finally(() => { if (request === listRequest.current) setLoading(false); });
   }, [dimension, page, search]);
 
   React.useEffect(() => {
     load();
+    return () => { listRequest.current++; };
   }, [load]);
 
   const rows = dimension === "project" ? projects : tasks;
@@ -287,6 +291,7 @@ function SyncWorkbench() {
   const chosenTypes = ASSET_TYPES.filter((t) => assetTypes[t.key]).map((t) => t.key);
 
   const runSync = async () => {
+    if (loading || loadError || syncing) return;
     if (selected.size === 0) return toast.error(`최소 하나의 ${dimension === "project" ? "프로젝트" : "작업"}`);
     if (chosenTypes.length === 0) return toast.error("자산 유형을 하나 이상 선택하세요");
     setSyncing(true);
@@ -318,6 +323,7 @@ function SyncWorkbench() {
         </TableRow>
       );
     }
+    if (loadError) return null;
     if (rows.length === 0) {
       return (
         <TableRow>
@@ -331,7 +337,7 @@ function SyncWorkbench() {
       return projects.map((p) => (
         <TableRow key={p.id} className="cursor-pointer" onClick={() => toggle(p.id)}>
           <TableCell onClick={(e) => e.stopPropagation()}>
-            <Checkbox checked={selected.has(p.id)} onCheckedChange={() => toggle(p.id)} />
+            <Checkbox aria-label={`${p.name} 프로젝트 선택`} checked={selected.has(p.id)} onCheckedChange={() => toggle(p.id)} />
           </TableCell>
           <TableCell className="font-medium">{p.name}</TableCell>
           <TableCell>{p.tag ? <Badge variant="secondary">{p.tag}</Badge> : "—"}</TableCell>
@@ -342,7 +348,7 @@ function SyncWorkbench() {
     return tasks.map((t) => (
       <TableRow key={t.id} className="cursor-pointer" onClick={() => toggle(t.name)}>
         <TableCell onClick={(e) => e.stopPropagation()}>
-          <Checkbox checked={selected.has(t.name)} onCheckedChange={() => toggle(t.name)} />
+          <Checkbox aria-label={`${t.name} 작업 선택`} checked={selected.has(t.name)} onCheckedChange={() => toggle(t.name)} />
         </TableCell>
         <TableCell className="font-medium">{t.name}</TableCell>
         <TableCell>
@@ -419,17 +425,18 @@ function SyncWorkbench() {
           </Button>
           <div className="flex-1" />
           <span className="text-muted-foreground text-xs">{selected.size}개 선택됨</span>
-          <Button onClick={runSync} disabled={syncing || selected.size === 0}>
+          <Button onClick={runSync} disabled={loading || !!loadError || syncing || selected.size === 0}>
             <DownloadIcon className={syncing ? "size-4 animate-pulse" : "size-4"} /> 선택 항목 동기화
           </Button>
         </div>
 
         {/* 대상 목록 */}
+        <DataLoadStatus loading={loading} error={loadError} label="동기화 대상 불러오기" onRetry={load} />
         <Table className="bg-card">
           <TableHeader>
             <TableRow>
               <TableHead className="w-10">
-                <Checkbox checked={rows.length > 0 && selected.size === rows.length} onCheckedChange={toggleAll} />
+                <Checkbox aria-label="현재 동기화 대상 전체 선택" disabled={loading || !!loadError} checked={rows.length > 0 && selected.size === rows.length} onCheckedChange={toggleAll} />
               </TableHead>
               <TableHead>{dimension === "project" ? "프로젝트 이름" : "작업 이름"}</TableHead>
               {dimension === "project" ? (

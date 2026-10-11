@@ -9,6 +9,8 @@ import { ArrowLeftIcon, ArrowUpRightIcon, ShieldAlertIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { CopyButton } from "@/components/copy-button";
+import { DataLoadStatus } from "@/components/data-load-status";
+import { ApiError } from "@/lib/api-error";
 import { FindingRetestPanel } from "@/components/finding-retest-panel";
 import { FindingTrafficPanel } from "@/components/finding-traffic-panel";
 import { Markdown } from "@/components/markdown";
@@ -60,64 +62,95 @@ function FindingDetailInner() {
   const contextTaskId = searchParams.get("context_task") ?? "";
   const [finding, setFinding] = React.useState<Finding | null>(null);
   const [loaded, setLoaded] = React.useState(false);
+  const [loadError, setLoadError] = React.useState("");
+  const source = JSON.stringify([id, contextTaskId]);
+  const currentSource = React.useRef(source);
+  currentSource.current = source;
+  const requestNumber = React.useRef(0);
+  const [loadedSource, setLoadedSource] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
   const [tab, setTab] = React.useState("overview");
 
   const load = React.useCallback(() => {
+    const request = ++requestNumber.current;
+    setLoaded(false);
+    setLoadError("");
+    setFinding(null);
+    setSaving(false);
     if (!id) {
       setLoaded(true);
+      setLoadedSource(source);
       return;
     }
     api
       .getFinding(id, contextTaskId || undefined)
-      .then((f) => setFinding(f))
-      .catch(() => setFinding(null))
-      .finally(() => setLoaded(true));
-  }, [contextTaskId, id]);
+      .then((f) => { if (request === requestNumber.current && currentSource.current === source) setFinding(f); })
+      .catch((error: Error) => {
+        if (request !== requestNumber.current || currentSource.current !== source) return;
+        setFinding(null);
+        if (!(error instanceof ApiError && error.status === 404)) setLoadError(error.message);
+      })
+      .finally(() => { if (request === requestNumber.current && currentSource.current === source) { setLoaded(true); setLoadedSource(source); } });
+  }, [contextTaskId, id, source]);
   React.useEffect(() => {
     load();
+    return () => { requestNumber.current++; };
   }, [load]);
 
   const changeSeverity = React.useCallback(
     async (next: Severity) => {
-      if (!finding || finding.inherited || next === finding.severity) return;
+      if (!finding || saving || loadedSource !== source || finding.inherited || next === finding.severity) return;
+      const request = requestNumber.current;
       const prev = finding.severity;
+      setSaving(true);
       setFinding({ ...finding, severity: next });
       try {
         const updated = await api.setFindingSeverity(id, next);
+        if (request !== requestNumber.current || currentSource.current !== source) return;
         setFinding(updated);
         toast.success(`심각도를 변경했습니다: 「${statusMeta("severity", next).label}」`);
       } catch (e) {
+        if (request !== requestNumber.current || currentSource.current !== source) return;
         setFinding((cur) => (cur ? { ...cur, severity: prev } : cur));
         toast.error("업데이트 실패: " + (e as Error).message);
+      } finally {
+        if (request === requestNumber.current && currentSource.current === source) setSaving(false);
       }
     },
-    [finding, id],
+    [finding, id, loadedSource, saving, source],
   );
 
   const changeStatus = React.useCallback(
     async (next: FindingStatus) => {
-      if (!finding || finding.inherited || next === finding.status) return;
+      if (!finding || saving || loadedSource !== source || finding.inherited || next === finding.status) return;
+      const request = requestNumber.current;
       const prev = finding.status;
+      setSaving(true);
       setFinding({ ...finding, status: next });
       try {
         const updated = await api.setFindingStatus(id, next);
+        if (request !== requestNumber.current || currentSource.current !== source) return;
         setFinding(updated);
         toast.success(`처리 상태를 변경했습니다: 「${statusMeta("finding", next).label}」`);
       } catch (e) {
+        if (request !== requestNumber.current || currentSource.current !== source) return;
         setFinding((cur) => (cur ? { ...cur, status: prev } : cur));
         toast.error("업데이트 실패: " + (e as Error).message);
+      } finally {
+        if (request === requestNumber.current && currentSource.current === source) setSaving(false);
       }
     },
-    [finding, id],
+    [finding, id, loadedSource, saving, source],
   );
 
-  if (!finding) {
+  if (!finding || loadedSource !== source) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center">
-        <p className="text-muted-foreground">{loaded ? `취약점 ${id}을(를) 찾을 수 없습니다` : "불러오는 중…"}</p>
+        <DataLoadStatus loading={!loaded || loadedSource !== source} error={loadError} label="취약점 상세 불러오기" onRetry={load} />
+        {loaded && loadedSource === source && !loadError && <p className="text-muted-foreground">취약점 {id}을(를) 찾을 수 없습니다</p>}
         {loaded && (
           <Button asChild variant="outline">
-            <Link href="/function/findings">
+            <Link href="/function/findings" aria-label="취약점 목록으로">
               <ArrowLeftIcon /> 취약점 목록으로
             </Link>
           </Button>
@@ -135,7 +168,7 @@ function FindingDetailInner() {
         <div className="flex flex-wrap items-center gap-2">
           <SidebarTrigger className="-ml-1" />
           <Button asChild variant="ghost" size="icon" className="size-7">
-            <Link href="/function/findings">
+            <Link href="/function/findings" aria-label="취약점 목록으로">
               <ArrowLeftIcon />
             </Link>
           </Button>
@@ -233,7 +266,7 @@ function FindingDetailInner() {
                   {finding.inherited ? (
                     <StatusBadge domain="severity" value={finding.severity} dot />
                   ) : (
-                    <Select value={finding.severity} onValueChange={(v) => changeSeverity(v as Severity)}>
+                    <Select value={finding.severity} disabled={saving} onValueChange={(v) => changeSeverity(v as Severity)}>
                       <SelectTrigger aria-label="취약점 심각도" size="sm" className="h-7 w-auto border-none px-1 shadow-none focus-visible:ring-0">
                         <StatusBadge domain="severity" value={finding.severity} dot />
                       </SelectTrigger>
@@ -255,7 +288,7 @@ function FindingDetailInner() {
                   {finding.inherited ? (
                     <StatusBadge domain="finding" value={finding.status} dot />
                   ) : (
-                    <Select value={finding.status} onValueChange={(v) => changeStatus(v as FindingStatus)}>
+                    <Select value={finding.status} disabled={saving} onValueChange={(v) => changeStatus(v as FindingStatus)}>
                       <SelectTrigger aria-label="취약점 상태" size="sm" className="h-7 w-auto border-none px-1 shadow-none focus-visible:ring-0">
                         <StatusBadge domain="finding" value={finding.status} dot />
                       </SelectTrigger>

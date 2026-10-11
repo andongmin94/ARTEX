@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { AgentEditor } from "@/components/agent-editor";
+import { DataLoadStatus } from "@/components/data-load-status";
 import { api } from "@/lib/api";
 import type { Agent } from "@/lib/types";
 
@@ -208,10 +209,15 @@ function CreateAgentDialog({ onCreated }: { onCreated: (key: string) => void }) 
 
 export default function AgentsPage() {
   const [agents, setAgents] = React.useState<Agent[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState("");
   const [editKey, setEditKey] = React.useState<string | null>(null);
 
   const reload = React.useCallback(() => {
-    api.agents().then(setAgents).catch(() => setAgents([]));
+    setLoading(true);
+    setLoadError("");
+    api.agents().then(setAgents).catch((error: Error) => setLoadError(error.message))
+      .finally(() => setLoading(false));
   }, []);
   React.useEffect(() => {
     reload();
@@ -242,7 +248,8 @@ export default function AgentsPage() {
           <CardDescription>총 {agents.length}개</CardDescription>
         </CardHeader>
         <CardContent>
-          {agents.length === 0 ? (
+          <DataLoadStatus loading={loading} error={loadError} label="에이전트 목록 불러오기" onRetry={reload} />
+          {agents.length === 0 && (loading || loadError) ? null : agents.length === 0 ? (
             <p className="text-muted-foreground py-6 text-center text-sm">(Agent 없음)</p>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

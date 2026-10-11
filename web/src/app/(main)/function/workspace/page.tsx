@@ -16,6 +16,7 @@ import {
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { DataLoadStatus } from "@/components/data-load-status";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -52,25 +53,36 @@ export default function WorkspacePage() {
   const [path, setPath] = React.useState("");
   const [entries, setEntries] = React.useState<WorkspaceEntry[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState("");
+  const [failedPath, setFailedPath] = React.useState("");
   const [edit, setEdit] = React.useState<EditState | null>(null);
   const [mkdirOpen, setMkdirOpen] = React.useState(false);
   const [mkdirName, setMkdirName] = React.useState("");
   const uploadRef = React.useRef<HTMLInputElement>(null);
+  const listRequest = React.useRef(0);
+  const fileRequest = React.useRef(0);
+  const currentPath = React.useRef("");
 
   const load = React.useCallback((p: string) => {
+    const request = ++listRequest.current;
     setLoading(true);
+    setLoadError("");
+    setFailedPath(p);
     api
       .workspaceList(p)
       .then((r) => {
+        if (request !== listRequest.current) return;
+        currentPath.current = r.path;
         setEntries(r.entries);
         setPath(r.path);
       })
-      .catch((e) => toast.error(`디렉터리 읽기 실패: ${(e as Error).message}`))
-      .finally(() => setLoading(false));
+      .catch((e: Error) => { if (request === listRequest.current) setLoadError(e.message); })
+      .finally(() => { if (request === listRequest.current) setLoading(false); });
   }, []);
 
   React.useEffect(() => {
     load("");
+    return () => { listRequest.current++; fileRequest.current++; };
   }, [load]);
 
   const crumbs = React.useMemo(() => {
@@ -85,25 +97,27 @@ export default function WorkspacePage() {
   }, [path]);
 
   const openFile = (e: WorkspaceEntry) => {
+    const request = ++fileRequest.current;
     api
       .workspaceRead(e.path)
-      .then((f) => setEdit({ file: f, content: f.content ?? "", dirty: false, saving: false }))
-      .catch((err) => toast.error(`파일 열기 실패: ${(err as Error).message}`));
+      .then((f) => { if (request === fileRequest.current) setEdit({ file: f, content: f.content ?? "", dirty: false, saving: false }); })
+      .catch((err) => { if (request === fileRequest.current) toast.error(`파일 열기 실패: ${(err as Error).message}`); });
   };
 
   const saveFile = () => {
-    if (!edit) return;
+    if (!edit || edit.saving) return;
+    const submitted = edit;
     setEdit({ ...edit, saving: true });
     api
       .workspaceWrite(edit.file.path, edit.content)
       .then(() => {
         toast.success("저장되었습니다");
-        setEdit((cur) => (cur ? { ...cur, dirty: false, saving: false } : cur));
-        load(path);
+        setEdit((cur) => (cur?.file === submitted.file ? { ...cur, dirty: cur.content !== submitted.content, saving: false } : cur));
+        load(currentPath.current);
       })
       .catch((err) => {
         toast.error(`저장 실패: ${(err as Error).message}`);
-        setEdit((cur) => (cur ? { ...cur, saving: false } : cur));
+        setEdit((cur) => (cur?.file === submitted.file ? { ...cur, saving: false } : cur));
       });
   };
 
@@ -118,7 +132,7 @@ export default function WorkspacePage() {
       .workspaceDelete(e.path)
       .then(() => {
         toast.success("삭제되었습니다");
-        load(path);
+        load(currentPath.current);
       })
       .catch((err) => toast.error(`삭제 실패: ${(err as Error).message}`));
   };
@@ -129,7 +143,7 @@ export default function WorkspacePage() {
       .workspaceUpload(path, Array.from(files))
       .then((r) => {
         toast.success(`파일 ${r.uploaded}개를 업로드했습니다`);
-        load(path);
+        load(currentPath.current);
       })
       .catch((err) => toast.error(`업로드 실패: ${(err as Error).message}`))
       .finally(() => {
@@ -147,7 +161,7 @@ export default function WorkspacePage() {
         toast.success("디렉터리를 생성했습니다");
         setMkdirOpen(false);
         setMkdirName("");
-        load(path);
+        load(currentPath.current);
       })
       .catch((err) => toast.error(`생성 실패: ${(err as Error).message}`));
   };
@@ -180,7 +194,8 @@ export default function WorkspacePage() {
         </div>
       </div>
 
-      <div className="space-y-3">
+      <DataLoadStatus loading={loading} error={loadError} label="작업 파일 불러오기" onRetry={() => load(failedPath)} />
+      {!loadError && <div className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <nav aria-label="현재 폴더" className="flex min-w-0 items-center gap-1 text-sm">
             <HardDriveIcon aria-hidden="true" className="text-muted-foreground mr-1 size-4 shrink-0" />
@@ -279,10 +294,15 @@ export default function WorkspacePage() {
             </TableBody>
           </Table>
         </div>
-      </div>
+      </div>}
 
       {/* 文件查看 / 编辑 */}
-      <Sheet open={edit !== null} onOpenChange={(o) => !o && setEdit(null)}>
+      <Sheet open={edit !== null} onOpenChange={(open) => {
+        if (open || edit?.saving) return;
+        if (edit?.dirty && !window.confirm("저장되지 않은 파일 변경을 버리고 닫을까요?")) return;
+        fileRequest.current++;
+        setEdit(null);
+      }}>
         <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-2xl">
           {edit && (
             <>
@@ -313,6 +333,7 @@ export default function WorkspacePage() {
                     <Textarea
                       aria-label="파일 내용"
                       value={edit.content}
+                      readOnly={edit.saving}
                       onChange={(ev) => setEdit({ ...edit, content: ev.target.value, dirty: true })}
                       spellCheck={false}
                       className="h-full min-h-[50vh] resize-none font-sans text-xs leading-relaxed"

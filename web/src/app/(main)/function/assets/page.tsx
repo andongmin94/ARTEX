@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { DataLoadStatus } from "@/components/data-load-status";
 
 import {
   BuildingIcon,
@@ -111,7 +112,10 @@ export default function AssetsPage() {
   const [rows, setRows] = React.useState<Asset[]>([]);
   const [total, setTotal] = React.useState(0);
   const [companies, setCompanies] = React.useState<Company[]>([]);
+  const [metaLoading, setMetaLoading] = React.useState(true);
+  const [metaError, setMetaError] = React.useState("");
   const [counts, setCounts] = React.useState<Record<string, number>>({});
+  const [countsError, setCountsError] = React.useState("");
   const [tab, setTab] = React.useState("company");
   const [query, setQuery] = React.useState("");
   const [loaded, setLoaded] = React.useState(false);
@@ -136,18 +140,18 @@ export default function AssetsPage() {
 
   // Companies + per-type counts (tab badges) — loaded on demand, no background polling.
   const loadMeta = React.useCallback(() => {
+    setMetaLoading(true);
+    setMetaError("");
+    setCountsError("");
     api
       .companies()
       .then(setCompanies)
-      .catch(() => {
-        /* Keep the last successful company snapshot on a transient failure. */
-      });
+      .catch((error: Error) => setMetaError(error.message))
+      .finally(() => setMetaLoading(false));
     api
       .assetCounts()
       .then(setCounts)
-      .catch(() => {
-        /* Keep the last successful counters on a transient failure. */
-      });
+      .catch((error: Error) => setCountsError(error.message));
   }, []);
 
   // Manual refresh: reload counts/companies and re-fetch the current page.
@@ -314,6 +318,8 @@ export default function AssetsPage() {
 
   return (
     <div className="flex h-[calc(100vh-6rem)] min-h-0 flex-col gap-4">
+      <DataLoadStatus loading={metaLoading} error={metaError} label="기업 목록 불러오기" onRetry={refresh} />
+      <DataLoadStatus error={countsError} label="자산 개수 불러오기" onRetry={loadMeta} />
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">자산</h1>
@@ -403,7 +409,7 @@ export default function AssetsPage() {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {companies.length === 0 && (
+                  {!metaLoading && !metaError && companies.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={4} className="py-10 text-center text-sm text-muted-foreground">
                         등록된 기업이 없습니다. 오른쪽 위의 「기업 추가」에서 자산 범위를 입력하면 일치하는 자산이 자동으로 연결됩니다.

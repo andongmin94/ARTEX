@@ -361,7 +361,7 @@ func TestDesktopBusinessSoakPreservesDataAfterRestart(t *testing.T) {
 	group.Add(1)
 	go func() {
 		defer group.Done()
-		if err := engineFixture.run(t.Context(), s, call); err != nil {
+		if err := engineFixture.run(t.Context(), s, deadline, call); err != nil {
 			failure <- fmt.Errorf("actual engine fixture: %w", err)
 		}
 	}()
@@ -500,5 +500,5 @@ func TestDesktopBusinessSoakPreservesDataAfterRestart(t *testing.T) {
 	for index := range counts {
 		completed[index] = counts[index].Load()
 	}
-	t.Logf("mixed business soak=%s actual elapsed=%s; task/chat/model/approval/evidence/archive/reader1/reader2 cycles=%v; local webhook sends=%d; real task worker resumed and streamed/cancelled/drained twice; restart counts/workspace/engine/integrity/FK passed", duration, time.Since(start).Round(time.Millisecond), completed, delivered.Load())
+	t.Logf("mixed business soak=%s actual elapsed=%s; task/chat/model/approval/evidence/archive/reader1/reader2 cycles=%v; local webhook sends=%d; continuous real task worker cycles=%d model requests=%d tool results=%d cancelled/drained=%d durable heartbeats=%d first=%s last=%s maximum activity gap=%s; restart counts/workspace/engine/integrity/FK passed", duration, time.Since(start).Round(time.Millisecond), completed, delivered.Load(), engineFixture.cycles, engineFixture.requested.Load(), engineFixture.cycles, engineFixture.cancelled.Load(), engineFixture.heartbeats, engineFixture.firstActivity.Sub(start).Round(time.Millisecond), engineFixture.lastActivity.Sub(start).Round(time.Millisecond), engineFixture.maxActivityGap.Round(time.Millisecond))
 }

@@ -14,6 +14,7 @@ import {
   ZapIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { DataLoadStatus } from "@/components/data-load-status";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -789,6 +790,9 @@ function ProfileSheet({
 
 export default function LLMPage() {
   const [profiles, setProfiles] = React.useState<LLMProfile[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState("");
+  const [poolError, setPoolError] = React.useState("");
   const [chatGPTStatus, setChatGPTStatus] = React.useState<ChatGPTStatus | null>(null);
   const [pool, setPool] = React.useState<LLMPoolStatus | null>(null);
   const [poolOpen, setPoolOpen] = React.useState(false);
@@ -808,18 +812,23 @@ export default function LLMPage() {
   }, []);
 
   const loadPool = React.useCallback(async () => {
+    setPoolError("");
     try {
       setPool(await api.llmPool());
-    } catch {
-      /* ignore */
+    } catch (error) {
+      setPoolError((error as Error).message);
     }
   }, []);
 
   const load = React.useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
     try {
       setProfiles(await api.llmProfiles());
-    } catch {
-      /* ignore */
+    } catch (error) {
+      setLoadError((error as Error).message);
+    } finally {
+      setLoading(false);
     }
     await loadPool();
   }, [loadPool]);
@@ -890,6 +899,8 @@ export default function LLMPage() {
         </div>
       </div>
 
+      <DataLoadStatus loading={loading} error={loadError} label="모델 설정 불러오기" onRetry={() => void load()} />
+      <DataLoadStatus error={poolError} label="모델 폴백 설정 불러오기" onRetry={() => void loadPool()} />
       <Tabs defaultValue="profiles" className="flex-1">
         <TabsList variant="line" aria-label="모델 설정 항목" className="w-full justify-start">
           <TabsTrigger value="profiles">모델 설정</TabsTrigger>
@@ -990,7 +1001,7 @@ export default function LLMPage() {
                 </Card>
               );
             })}
-            {profiles.length === 0 && (
+            {profiles.length === 0 && !loading && !loadError && (
               <div className="col-span-full rounded-lg border border-dashed p-10 text-center text-muted-foreground text-sm">
                 모델 설정이 없습니다. ChatGPT 구독을 연결하거나 「생성」으로 API 설정을 만드세요.
               </div>

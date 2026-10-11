@@ -17,6 +17,7 @@ import {
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { StatusBadge } from "@/components/status-badge";
+import { DataLoadStatus } from "@/components/data-load-status";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, } from "@/components/ui/card";
 import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
@@ -147,9 +148,13 @@ export default function DashboardPage() {
   const [skills, setSkills] = React.useState<SkillItem[]>([]);
   const [tools, setTools] = React.useState<Tool[]>([]);
   const [llmProfiles, setLLMProfiles] = React.useState<LLMProfile[]>([]);
+  const [loadedSources, setLoadedSources] = React.useState({ tasks: false, fast: false, slow: false });
+  const [sourceErrors, setSourceErrors] = React.useState({ tasks: "", fast: "", slow: "" });
+  const [reloadVersion, setReloadVersion] = React.useState(0);
 
   // The task list is the most expensive dashboard source. Poll it independently
   // so a large history cannot hold back every other dashboard panel.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadVersion explicitly retries every dashboard source.
   React.useEffect(() => {
     let alive = true;
     let loading = false;
@@ -165,8 +170,10 @@ export default function DashboardPage() {
           signature = nextSignature;
           setTasks(tr.tasks);
         }
-      } catch {
-        /* transient errors — next poll retries */
+        setLoadedSources((current) => ({ ...current, tasks: true }));
+        setSourceErrors((current) => ({ ...current, tasks: "" }));
+      } catch (error) {
+        if (alive) setSourceErrors((current) => ({ ...current, tasks: (error as Error).message }));
       } finally {
         loading = false;
       }
@@ -177,9 +184,10 @@ export default function DashboardPage() {
       alive = false;
       clearInterval(t);
     };
-  }, []);
+  }, [reloadVersion]);
 
   // The remaining fast sources stay batched so one poll causes a single render.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadVersion explicitly retries every dashboard source.
   React.useEffect(() => {
     let alive = true;
     let loading = false;
@@ -204,8 +212,10 @@ export default function DashboardPage() {
         setActivity(activity.items);
         setTokens(tokens.total ?? null);
         setConvTokens(conversationTokens);
-      } catch {
-        // Preserve stale data and retry on the next interval.
+        setLoadedSources((current) => ({ ...current, fast: true }));
+        setSourceErrors((current) => ({ ...current, fast: "" }));
+      } catch (error) {
+        if (alive) setSourceErrors((current) => ({ ...current, fast: (error as Error).message }));
       } finally {
         loading = false;
       }
@@ -216,9 +226,10 @@ export default function DashboardPage() {
       alive = false;
       clearInterval(timer);
     };
-  }, []);
+  }, [reloadVersion]);
 
   // slow poll: traffic, assets, system-static (every 15s)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadVersion explicitly retries every dashboard source.
   React.useEffect(() => {
     let alive = true;
     const load = async () => {
@@ -242,8 +253,10 @@ export default function DashboardPage() {
         setTools(toolList);
         setLLMProfiles(profileList);
         setUsageStats(usage);
-      } catch {
-        /* transient errors */
+        setLoadedSources((current) => ({ ...current, slow: true }));
+        setSourceErrors((current) => ({ ...current, slow: "" }));
+      } catch (error) {
+        if (alive) setSourceErrors((current) => ({ ...current, slow: (error as Error).message }));
       }
     };
     void load();
@@ -252,7 +265,7 @@ export default function DashboardPage() {
       alive = false;
       clearInterval(t);
     };
-  }, []);
+  }, [reloadVersion]);
 
   // ── derived ───────────────────────────────────────────────────────────────
 
@@ -491,8 +504,22 @@ export default function DashboardPage() {
 
   // ── render ────────────────────────────────────────────────────────────────
 
+  const dataLoaded = Object.values(loadedSources).every(Boolean);
+  const loadError = Object.values(sourceErrors).filter(Boolean).join(" · ");
+  const retry = () => {
+    setSourceErrors({ tasks: "", fast: "", slow: "" });
+    setReloadVersion((current) => current + 1);
+  };
+  if (!dataLoaded) return (
+    <div className="space-y-4">
+      <h1 className="text-lg font-semibold tracking-tight">대시보드</h1>
+      <DataLoadStatus loading={!loadError} error={loadError} label="대시보드 데이터 불러오기" onRetry={retry} />
+    </div>
+  );
+
   return (
     <div className="flex flex-1 flex-col gap-4 pb-6">
+      <DataLoadStatus error={loadError} label="대시보드 데이터 불러오기" onRetry={retry} />
       {/* ── Header ── */}
       <div>
         <div>

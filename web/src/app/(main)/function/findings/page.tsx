@@ -1,4 +1,5 @@
 "use client";
+import { DataLoadStatus } from "@/components/data-load-status";
 
 import * as React from "react";
 
@@ -101,6 +102,7 @@ interface GroupFindingsState {
   pageSize: number;
   loaded: boolean;
   loading: boolean;
+  error: string;
 }
 
 // 平铺视图的页码单独放 state(而非塞进快照),筛选一变就能连带重置并触发重新加载。
@@ -139,6 +141,10 @@ export default function FindingsPage() {
   const [query, setQuery] = React.useState("");
   const [expanded, setExpanded] = React.useState<string | null>(null);
   const [flat, setFlat] = React.useState<FlatFindingsState>(EMPTY_FLAT_STATE);
+  const [flatError, setFlatError] = React.useState("");
+  const [assetError, setAssetError] = React.useState("");
+  const [groupsError, setGroupsError] = React.useState("");
+  const [groupsLoading, setGroupsLoading] = React.useState(true);
   const [flatPage, setFlatPage] = React.useState(1);
   const [flatPageSize, setFlatPageSize] = React.useState(20);
   const [assetTree, setAssetTree] = React.useState<AssetTreeState>(EMPTY_ASSET_TREE);
@@ -320,6 +326,7 @@ export default function FindingsPage() {
     if (activeFilterFingerprint.current !== requestFilter) return;
     const request = ++flatRequest.current;
     setFlat((current) => ({ ...current, loading: true }));
+    setFlatError("");
     try {
       const result = await api.findingsPage({
         page: flatPage,
@@ -334,9 +341,9 @@ export default function FindingsPage() {
       });
       if (request !== flatRequest.current || activeFilterFingerprint.current !== requestFilter) return;
       setFlat({ items: result.items, total: result.total, loaded: true, loading: false });
-    } catch {
+    } catch (error) {
       if (request !== flatRequest.current || activeFilterFingerprint.current !== requestFilter) return;
-      // Polling keeps the last successful snapshot visible.
+      setFlatError((error as Error).message);
       setFlat((current) => ({ ...current, loading: false }));
     }
   }, [activeAssetScope, filterFingerprint, flatPage, flatPageSize, severity, status, vulnclass, task, query, sort]);
@@ -348,6 +355,7 @@ export default function FindingsPage() {
     if (activeFilterFingerprint.current !== requestFilter) return;
     const request = ++assetTreeRequest.current;
     setAssetTree((current) => ({ ...current, loading: true }));
+    setAssetError("");
     try {
       const result = await api.findingAssetTree({ severity, status, vulnclass, task, query, sort });
       if (request !== assetTreeRequest.current || activeFilterFingerprint.current !== requestFilter) return;
@@ -362,7 +370,7 @@ export default function FindingsPage() {
     } catch (e) {
       if (request !== assetTreeRequest.current || activeFilterFingerprint.current !== requestFilter) return;
       setAssetTree((current) => ({ ...current, loading: false }));
-      toast.error(`자산 트리 불러오기 실패: ${(e as Error).message}`);
+      setAssetError((e as Error).message);
     }
   }, [filterFingerprint, severity, status, vulnclass, task, query, sort]);
 
@@ -370,6 +378,8 @@ export default function FindingsPage() {
     const requestFilter = filterFingerprint;
     if (activeFilterFingerprint.current !== requestFilter) return;
     const request = ++groupsRequest.current;
+    setGroupsLoading(true);
+    setGroupsError("");
     try {
       const result = await api.findingGroups({
         page,
@@ -385,8 +395,11 @@ export default function FindingsPage() {
       setGroups(result.items);
       setGroupTotal(result.total);
       setTotal(result.finding_total);
-    } catch {
-      // Polling keeps the last successful snapshot visible.
+    } catch (error) {
+      if (request !== groupsRequest.current || activeFilterFingerprint.current !== requestFilter) return;
+      setGroupsError((error as Error).message);
+    } finally {
+      if (request === groupsRequest.current && activeFilterFingerprint.current === requestFilter) setGroupsLoading(false);
     }
   }, [filterFingerprint, page, pageSize, severity, status, vulnclass, task, query, sort]);
 
@@ -405,6 +418,7 @@ export default function FindingsPage() {
           pageSize: groupPageSize,
           loaded: current[key]?.loaded ?? false,
           loading: true,
+          error: "",
         },
       }));
       try {
@@ -428,9 +442,10 @@ export default function FindingsPage() {
             pageSize: result.page_size,
             loaded: true,
             loading: false,
+            error: "",
           },
         }));
-      } catch {
+      } catch (error) {
         if (groupRequests.current[key] !== request || activeFilterFingerprint.current !== requestFilter) return;
         setGroupFindings((current) => ({
           ...current,
@@ -443,6 +458,7 @@ export default function FindingsPage() {
               loaded: false,
             }),
             loading: false,
+            error: (error as Error).message,
           },
         }));
       }
@@ -787,7 +803,7 @@ export default function FindingsPage() {
   };
 
   // 平铺视图与资产视图右侧是同一张表 + 同一份分页,只是筛选条件不同。
-  const flatListCard = (
+  const flatListCard = flatError && !flat.loaded ? null : (
     <Card className="gap-0 py-0">
       <CardContent className="px-0">
         {flat.loading && !flat.loaded ? (
@@ -816,6 +832,8 @@ export default function FindingsPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-4 md:gap-6">
+      <DataLoadStatus loading={view === "grouped" ? groupsLoading && groups.length === 0 : flat.loading && !flat.loaded} error={view === "grouped" ? groupsError : flatError} label="취약점 목록 불러오기" onRetry={() => void (view === "grouped" ? refreshGroups() : loadFlat())} />
+      {view === "asset" && <DataLoadStatus loading={assetTree.loading && !assetTree.loaded} error={assetError} label="취약점 자산 트리 불러오기" onRetry={() => void loadAssetTree()} />}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">취약점 발견</h1>
@@ -1027,6 +1045,7 @@ export default function FindingsPage() {
                 pageSize: 10,
                 loaded: false,
                 loading: false,
+                error: "",
               };
               return (
                 <Card key={key} className="gap-0 py-0">
@@ -1087,11 +1106,12 @@ export default function FindingsPage() {
                   </CardHeader>
                   {groupOpen && (
                     <CardContent className="px-0">
+                      <DataLoadStatus error={state.error} label="그룹 취약점 불러오기" onRetry={() => void loadGroup(key, state.page, state.pageSize)} />
                       {state.loading && !state.loaded ? (
                         <div className="flex min-h-36 items-center justify-center">
                           <Spinner />
                         </div>
-                      ) : (
+                      ) : state.error && !state.loaded ? null : (
                         <>
                           <FindingsTable items={state.items} selectAllLabel="현재 그룹 페이지 전체 선택" {...rowProps} />
                           <TablePagination
@@ -1108,7 +1128,7 @@ export default function FindingsPage() {
                 </Card>
               );
             })}
-            {groups.length === 0 && (
+            {!groupsLoading && !groupsError && groups.length === 0 && (
               <Card>
                 <CardContent className="py-12 text-center text-sm text-muted-foreground">일치하는 취약점이 없습니다.</CardContent>
               </Card>

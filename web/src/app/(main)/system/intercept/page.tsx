@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { DataLoadStatus } from "@/components/data-load-status";
 import { toast } from "sonner";
 import {
   BotIcon,
@@ -209,26 +210,30 @@ function JudgeCard() {
   const [cfg, setCfg] = React.useState<JudgeConfig>(defaultJudge());
   const [profiles, setProfiles] = React.useState<LLMProfile[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState("");
+  const [usageError, setUsageError] = React.useState("");
   const [saving, setSaving] = React.useState(false);
   const [usage, setUsage] = React.useState<JudgeUsage | null>(null);
 
   // 审批用量统计:失败不打断配置页,仅在开启时拉取。
   const loadUsage = React.useCallback(async () => {
+    setUsageError("");
     try {
       setUsage(await api.interceptJudgeUsage(30));
-    } catch {
-      // 忽略:统计不可用不应影响配置编辑
+    } catch (error) {
+      setUsageError((error as Error).message);
     }
   }, []);
 
   const load = React.useCallback(async () => {
     setLoading(true);
+    setLoadError("");
     try {
       const [j, ps] = await Promise.all([api.interceptGetJudgeConfig(), api.llmProfiles()]);
       setCfg(j);
       setProfiles(ps);
     } catch (e) {
-      toast.error("모델 폴백 승인 설정 불러오기 실패: " + (e as Error).message);
+      setLoadError((e as Error).message);
     } finally {
       setLoading(false);
     }
@@ -277,6 +282,8 @@ function JudgeCard() {
 
   return (
     <div className="space-y-4">
+      <DataLoadStatus loading={loading} error={loadError} label="모델 명령 판정 설정 불러오기" onRetry={() => void load()} />
+      <DataLoadStatus error={usageError} label="모델 명령 판정 사용량 불러오기" onRetry={() => void loadUsage()} />
       {/* 활성화开关 —— 独立高亮条 */}
       <div
         className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-3 ${
@@ -294,7 +301,7 @@ function JudgeCard() {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className="text-xs text-muted-foreground">{cfg.enabled ? "활성화됨" : "비활성화"}</span>
-          <Switch aria-label="모델 명령 판정 활성화" checked={cfg.enabled} disabled={loading} onCheckedChange={(v) => patch({ enabled: v })} />
+          <Switch aria-label="모델 명령 판정 활성화" checked={cfg.enabled} disabled={loading || !!loadError} onCheckedChange={(v) => patch({ enabled: v })} />
         </div>
       </div>
 
@@ -342,7 +349,7 @@ function JudgeCard() {
                   <p className="text-sm font-medium">승인 프롬프트</p>
                   <p className="text-xs text-muted-foreground">모델이 이를 바탕으로 ALLOW / ASK / DENY를 판정하며 직접 편집할 수 있습니다</p>
                 </div>
-                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={restorePrompt} disabled={saving}>
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={restorePrompt} disabled={saving || loading || !!loadError}>
                   기본 템플릿 복원
                 </Button>
               </div>
@@ -429,7 +436,7 @@ function JudgeCard() {
       )}
 
       <div className="flex justify-end">
-        <Button size="sm" onClick={save} disabled={saving || loading}>
+        <Button size="sm" onClick={save} disabled={saving || loading || !!loadError}>
           {saving ? "저장 중…" : "설정 저장"}
         </Button>
       </div>
@@ -442,6 +449,8 @@ function JudgeCard() {
 export default function InterceptPage() {
   const [rules, setRules]     = React.useState<InterceptRule[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState("");
+  const [scopeError, setScopeError] = React.useState("");
   const [open, setOpen]       = React.useState(false);
   const [editing, setEditing] = React.useState<InterceptRule | null>(null);
   const [form, setForm]       = React.useState<RuleForm>(defaultForm());
@@ -460,20 +469,23 @@ export default function InterceptPage() {
   // ---- data ----
 
   const loadScope = React.useCallback(async () => {
+    setScopeError("");
     try {
       const cfg = await api.interceptGetToolConfig();
       setScopeTools(cfg.enabled_tools);
-    } catch {
-      // 信息条非关键,失败静默
+    } catch (error) {
+      setScopeError((error as Error).message);
     }
   }, []);
 
   const load = React.useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
     try {
       const r = await api.interceptRules();
       setRules(r);
-    } catch {
-      toast.error("차단 규칙을 불러오지 못했습니다");
+    } catch (error) {
+      setLoadError((error as Error).message);
     } finally {
       setLoading(false);
     }
@@ -604,6 +616,7 @@ export default function InterceptPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-5 p-6">
+      <DataLoadStatus error={scopeError} label="명령 차단 도구 범위 불러오기" onRetry={() => void loadScope()} />
 
       {/* ---- header ---- */}
       <div className="flex items-center gap-2.5">
@@ -671,9 +684,8 @@ export default function InterceptPage() {
 
           <Card>
             <CardContent className="p-0">
-          {loading ? (
-            <p className="p-6 text-sm text-muted-foreground">불러오는 중…</p>
-          ) : rules.length === 0 ? (
+          <DataLoadStatus loading={loading} error={loadError} label="명령 차단 규칙 불러오기" onRetry={() => void load()} />
+          {rules.length === 0 && (loading || loadError) ? null : rules.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
               <ShieldAlertIcon className="h-8 w-8 text-muted-foreground/40" />
               <p className="text-sm text-muted-foreground">규칙 없음</p>
@@ -683,11 +695,11 @@ export default function InterceptPage() {
               </Button>
             </div>
           ) : (
-            <Table>
+            <Table className="table-fixed">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="w-[72px]">우선순위</TableHead>
-                  <TableHead>이름</TableHead>
+                  <TableHead className="w-[22%]">이름</TableHead>
                   <TableHead className="w-[90px]">대상</TableHead>
                   <TableHead className="w-[80px]">유형</TableHead>
                   <TableHead>패턴</TableHead>
@@ -702,7 +714,7 @@ export default function InterceptPage() {
                     <TableCell>
                       <span className="font-sans text-xs tabular-nums">{rule.priority}</span>
                     </TableCell>
-                    <TableCell className="font-medium text-sm">{rule.name}</TableCell>
+                    <TableCell className="font-medium text-sm"><span className="block truncate" title={rule.name}>{rule.name}</span></TableCell>
                     <TableCell>
                       <span className="text-xs text-muted-foreground">
                         {rule.match_target === "tool_name" ? "도구 이름" : "입력 내용"}
@@ -714,7 +726,7 @@ export default function InterceptPage() {
                       </span>
                     </TableCell>
                     <TableCell className="max-w-[220px]">
-                      <code className="block truncate rounded bg-muted px-1.5 py-0.5 text-xs font-sans">
+                      <code title={rule.pattern} className="block truncate rounded bg-muted px-1.5 py-0.5 text-xs font-sans">
                         {rule.pattern}
                       </code>
                     </TableCell>

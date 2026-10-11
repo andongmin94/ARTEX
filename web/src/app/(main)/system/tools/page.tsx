@@ -35,6 +35,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { api } from "@/lib/api";
+import { DataLoadStatus } from "@/components/data-load-status";
 import type { Agent, Tool } from "@/lib/types";
 
 // Traffic tools are host tools gated by the global 流量捕获 switch: bindable, but
@@ -234,8 +235,9 @@ function ToolEditor({
 
         {/* description */}
         <div className="grid gap-1.5">
-          <Label className="text-muted-foreground text-xs">도구 설명(모델에 전송)</Label>
+          <Label htmlFor={`${controlId}-description`} className="text-muted-foreground text-xs">도구 설명(모델에 전송)</Label>
           <Textarea
+            id={`${controlId}-description`}
             className="font-sans text-xs"
             rows={6}
             value={description}
@@ -274,16 +276,18 @@ function ToolEditor({
               </div>
               <div className="grid gap-2">
                 <div className="grid gap-1">
-                  <Label className="text-muted-foreground text-[11px]">설명</Label>
+                  <Label htmlFor={`${controlId}-param-${i}-description`} className="text-muted-foreground text-[11px]">설명</Label>
                   <Input
+                    id={`${controlId}-param-${i}-description`}
                     className="text-xs"
                     value={r.description}
                     onChange={(e) => setRow(i, { description: e.target.value })}
                   />
                 </div>
                 <div className="grid gap-1">
-                  <Label className="text-muted-foreground text-[11px]">기본값</Label>
+                  <Label htmlFor={`${controlId}-param-${i}-default`} className="text-muted-foreground text-[11px]">기본값</Label>
                   <Input
+                    id={`${controlId}-param-${i}-default`}
                     className="text-xs"
                     placeholder={r.scalar ? "(비워두면 기본값 없음)" : "단일 값만 지원"}
                     disabled={!r.scalar}
@@ -366,13 +370,17 @@ function ToolGridCard({ tool, onClick }: { tool: Tool; onClick: () => void }) {
 
 export default function ToolsPage() {
   const [tools, setTools] = React.useState<Tool[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState("");
   const [agents, setAgents] = React.useState<Agent[]>([]);
   const [captureOn, setCaptureOn] = React.useState(false);
   const [selectedKey, setSelectedKey] = React.useState<string | null>(null);
   const [customEdit, setCustomEdit] = React.useState<Tool | "new" | null>(null);
 
   const reload = React.useCallback(() => {
-    api.tools().then(setTools).catch(() => setTools([]));
+    setLoading(true);
+    setLoadError("");
+    api.tools().then(setTools).catch((error: Error) => setLoadError(error.message)).finally(() => setLoading(false));
   }, []);
   React.useEffect(() => {
     reload();
@@ -417,7 +425,8 @@ export default function ToolsPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="system">
+      <DataLoadStatus loading={loading} error={loadError} label="도구 목록 불러오기" onRetry={reload} />
+      {!loading && !loadError && <Tabs defaultValue="system">
         <TabsList>
           <TabsTrigger value="system">시스템 도구</TabsTrigger>
           <TabsTrigger value="custom">사용자 정의 도구</TabsTrigger>
@@ -481,7 +490,7 @@ export default function ToolsPage() {
             </CardContent>
           </Card>
         </TabsContent>
-      </Tabs>
+      </Tabs>}
 
       <Sheet open={!!selected} onOpenChange={(o) => !o && setSelectedKey(null)}>
         <SheetContent
@@ -686,13 +695,13 @@ function CustomToolDialog({
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
           <div className="grid gap-1.5">
-            <Label className="text-xs">Key</Label>
-            <Input className="font-sans" placeholder="예: nmap_scan" value={key} disabled={!isNew}
+            <Label htmlFor={`${controlId}-key`} className="text-xs">Key</Label>
+            <Input id={`${controlId}-key`} className="font-sans" placeholder="예: nmap_scan" value={key} disabled={!isNew}
               onChange={(e) => setKey(e.target.value)} />
           </div>
           <div className="grid gap-1.5">
-            <Label className="text-xs">설명(모델에 전송)</Label>
-            <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+            <Label htmlFor={`${controlId}-description`} className="text-xs">설명(모델에 전송)</Label>
+            <Textarea id={`${controlId}-description`} rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
 
           <div className="grid gap-1.5">
@@ -713,15 +722,15 @@ function CustomToolDialog({
 
           {kind === "command" && (
             <div className="grid gap-1.5">
-              <Label className="text-xs">명령 템플릿(자리표시자 {"{param}"}, 예: nmap -p {"{ports}"} {"{target}"}）</Label>
-              <Textarea className="font-sans text-xs" rows={2} value={ex.command}
+              <Label htmlFor={`${controlId}-command`} className="text-xs">명령 템플릿(자리표시자 {"{param}"}, 예: nmap -p {"{ports}"} {"{target}"}）</Label>
+              <Textarea id={`${controlId}-command`} className="font-sans text-xs" rows={2} value={ex.command}
                 onChange={(e) => setEx({ ...ex, command: e.target.value })} />
             </div>
           )}
           {kind === "script" && (
             <div className="grid gap-1.5">
-              <Label className="text-xs">Python 본문(매개변수: stdin JSON / os.environ["TOOL_X"])</Label>
-              <Textarea className="font-sans text-xs" rows={10} value={ex.code}
+              <Label htmlFor={`${controlId}-code`} className="text-xs">Python 본문(매개변수: stdin JSON / os.environ["TOOL_X"])</Label>
+              <Textarea id={`${controlId}-code`} className="font-sans text-xs" rows={10} value={ex.code}
                 placeholder={'import json,sys\nargs=json.load(sys.stdin)\nprint(...)'}
                 onChange={(e) => setEx({ ...ex, code: e.target.value })} />
             </div>
@@ -730,27 +739,27 @@ function CustomToolDialog({
             <div className="grid gap-2">
               <div className="flex gap-2">
                 <div className="grid gap-1.5">
-                  <Label className="text-xs">Method</Label>
-                  <Input className="w-24" value={ex.method} onChange={(e) => setEx({ ...ex, method: e.target.value })} />
+                  <Label htmlFor={`${controlId}-method`} className="text-xs">Method</Label>
+                  <Input id={`${controlId}-method`} className="w-24" value={ex.method} onChange={(e) => setEx({ ...ex, method: e.target.value })} />
                 </div>
                 <div className="grid flex-1 gap-1.5">
-                  <Label className="text-xs">URL(사용 가능한 자리표시자: {"{param}"}）</Label>
-                  <Input className="font-sans text-xs" value={ex.url} onChange={(e) => setEx({ ...ex, url: e.target.value })} />
+                  <Label htmlFor={`${controlId}-url`} className="text-xs">URL(사용 가능한 자리표시자: {"{param}"}）</Label>
+                  <Input id={`${controlId}-url`} className="font-sans text-xs" value={ex.url} onChange={(e) => setEx({ ...ex, url: e.target.value })} />
                 </div>
               </div>
               <div className="grid gap-1.5">
-                <Label className="text-xs">Headers(JSON, 사용 가능한 자리표시자: {"{param}"}）</Label>
-                <Textarea className="font-sans text-xs" rows={2} value={ex.headers}
+                <Label htmlFor={`${controlId}-headers`} className="text-xs">Headers(JSON, 사용 가능한 자리표시자: {"{param}"}）</Label>
+                <Textarea id={`${controlId}-headers`} className="font-sans text-xs" rows={2} value={ex.headers}
                   placeholder={'{"Authorization": "Bearer {token}"}'} onChange={(e) => setEx({ ...ex, headers: e.target.value })} />
               </div>
               <div className="grid gap-1.5">
-                <Label className="text-xs">Body(사용 가능한 자리표시자: {"{param}"}）</Label>
-                <Textarea className="font-sans text-xs" rows={2} value={ex.body} onChange={(e) => setEx({ ...ex, body: e.target.value })} />
+                <Label htmlFor={`${controlId}-body`} className="text-xs">Body(사용 가능한 자리표시자: {"{param}"}）</Label>
+                <Textarea id={`${controlId}-body`} className="font-sans text-xs" rows={2} value={ex.body} onChange={(e) => setEx({ ...ex, body: e.target.value })} />
               </div>
               <div className="flex items-center gap-4">
                 <div className="grid gap-1.5">
-                  <Label className="text-xs">프록시 URL(비워두면 직접 연결)</Label>
-                  <Input className="font-sans text-xs w-56" value={ex.proxy} onChange={(e) => setEx({ ...ex, proxy: e.target.value })} />
+                  <Label htmlFor={`${controlId}-proxy`} className="text-xs">프록시 URL(비워두면 직접 연결)</Label>
+                  <Input id={`${controlId}-proxy`} className="font-sans text-xs w-56" value={ex.proxy} onChange={(e) => setEx({ ...ex, proxy: e.target.value })} />
                 </div>
                 <label htmlFor={`${controlId}-2`} className="mt-4 flex items-center gap-2 text-sm">
                   <Checkbox id={`${controlId}-2`} checked={ex.use_recording_proxy} onCheckedChange={(v) => setEx({ ...ex, use_recording_proxy: !!v })} />
@@ -763,18 +772,18 @@ function CustomToolDialog({
           {kind !== "shell" && (
             <div className="flex items-center gap-3">
               <div className="grid gap-1.5">
-                <Label className="text-xs">시간 제한(ms, 비워두면 기본값)</Label>
-                <Input type="number" className="w-32" value={ex.timeout_ms} onChange={(e) => setEx({ ...ex, timeout_ms: e.target.value })} />
+                <Label htmlFor={`${controlId}-timeout`} className="text-xs">시간 제한(ms, 비워두면 기본값)</Label>
+                <Input id={`${controlId}-timeout`} type="number" className="w-32" value={ex.timeout_ms} onChange={(e) => setEx({ ...ex, timeout_ms: e.target.value })} />
               </div>
             </div>
           )}
 
           {kind !== "shell" && (
             <div className="grid gap-1.5">
-              <Label className="text-xs">
+              <Label htmlFor={`${controlId}-schema`} className="text-xs">
                 매개변수 JSON Schema{kind === "http" ? "(http 도구 필수, properties 포함)" : "(비워두면 기본 {args} 구조 자동 제공)"}
               </Label>
-              <Textarea className="font-sans text-xs" rows={4} value={schemaText}
+              <Textarea id={`${controlId}-schema`} className="font-sans text-xs" rows={4} value={schemaText}
                 placeholder={'{"type":"object","properties":{"target":{"type":"string"}},"required":["target"]}'}
                 onChange={(e) => setSchemaText(e.target.value)} />
             </div>
@@ -805,8 +814,8 @@ function CustomToolDialog({
 
           {kind !== "shell" && (
             <div className="grid gap-1.5 rounded-md border p-3">
-              <Label className="text-xs font-medium">테스트 실행(현재 입력값 사용, 저장하지 않음)</Label>
-              <Textarea className="font-sans text-xs" rows={2} value={paramsText}
+              <Label htmlFor={`${controlId}-params`} className="text-xs font-medium">테스트 실행(현재 입력값 사용, 저장하지 않음)</Label>
+              <Textarea id={`${controlId}-params`} className="font-sans text-xs" rows={2} value={paramsText}
                 placeholder={"매개변수 JSON 예: {\"target\":\"example.com\"}"}
                 onChange={(e) => setParamsText(e.target.value)} />
               <div>

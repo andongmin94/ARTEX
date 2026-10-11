@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
+import { DataLoadStatus } from "@/components/data-load-status";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { sseUrl } from "@/lib/api";
+import { http, sseUrl } from "@/lib/api";
 import { MOCK } from "@/lib/mock/enabled";
 import type { LogLine } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -42,6 +43,10 @@ export default function LogsPage() {
   const [level, setLevel] = React.useState<"all" | LogLine["level"]>("all");
   const [paused, setPaused] = React.useState(false);
   const [loadingHistory, setLoadingHistory] = React.useState(false);
+  const [streamLoading, setStreamLoading] = React.useState(true);
+  const [streamError, setStreamError] = React.useState("");
+  const [historyError, setHistoryError] = React.useState("");
+  const [streamVersion, setStreamVersion] = React.useState(0);
   const [hasMore, setHasMore] = React.useState(false);
   const bottom = React.useRef<HTMLDivElement>(null);
   const stick = React.useRef(true);
@@ -59,12 +64,18 @@ export default function LogsPage() {
 
   // Live tail via SSE. on connect, replays whatever is in the ring (includes
   // DB-restored history from the last 100 rows written before restart).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: streamVersion explicitly recreates the failed EventSource.
   React.useEffect(() => {
+    setStreamLoading(true);
+    setStreamError("");
     if (MOCK) {
       setLines(MOCK_LOGS);
+      setStreamLoading(false);
       return;
     }
     const es = new EventSource(sseUrl("/api/logs/stream?since=0"));
+    es.onopen = () => { setStreamLoading(false); setStreamError(""); };
+    es.onerror = () => { setStreamLoading(false); setStreamError("로그 스트림에 연결하지 못했습니다"); };
     es.onmessage = (e) => {
       if (pausedRef.current) return;
       try {
@@ -75,7 +86,7 @@ export default function LogsPage() {
       }
     };
     return () => es.close();
-  }, []);
+  }, [streamVersion]);
 
   // Mark "has more" once we have any db_id in view.
   React.useEffect(() => {
@@ -85,11 +96,10 @@ export default function LogsPage() {
   async function loadOlderHistory() {
     if (loadingHistory) return;
     setLoadingHistory(true);
+    setHistoryError("");
     try {
       const params = minDbId > 0 ? `?before=${minDbId}&limit=200` : `?limit=200`;
-      const res = await fetch(`/api/logs/history${params}`);
-      if (!res.ok) return;
-      const data = await res.json() as { items: LogLine[]; has_more: boolean };
+      const data = await http<{ items: LogLine[]; has_more: boolean }>(`/logs/history${params}`);
       if (data.items?.length) {
         // Assign synthetic seq numbers below current minimum to keep dedup working.
         setLines((prev) => {
@@ -111,6 +121,8 @@ export default function LogsPage() {
         });
       }
       setHasMore(data.has_more ?? false);
+    } catch (error) {
+      setHistoryError((error as Error).message);
     } finally {
       setLoadingHistory(false);
     }
@@ -147,6 +159,8 @@ export default function LogsPage() {
         <p className="text-muted-foreground text-sm">백엔드 실시간 로그 스트림(planner / worker / 데이터베이스 / 트래픽 …)</p>
       </div>
       <div className="flex flex-1 flex-col gap-3">
+        <DataLoadStatus loading={streamLoading} error={streamError} label="실시간 로그 불러오기" onRetry={() => setStreamVersion((current) => current + 1)} />
+        <DataLoadStatus loading={loadingHistory} error={historyError} label="이전 로그 불러오기" onRetry={() => void loadOlderHistory()} />
         <div className="flex flex-wrap items-center gap-2">
           <Input
             placeholder="필터(텍스트 / tag)…"
@@ -205,7 +219,7 @@ export default function LogsPage() {
               </Button>
             </div>
           )}
-          {filtered.length === 0 ? (
+          {filtered.length === 0 && (streamLoading || streamError || historyError) ? null : filtered.length === 0 ? (
             <p className="py-10 text-center text-muted-foreground">로그가 없습니다.</p>
           ) : (
             filtered.map((l) => {

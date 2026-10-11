@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { DataLoadStatus } from "@/components/data-load-status";
 import { toast } from "sonner";
 import {
   RadioIcon,
@@ -129,7 +130,8 @@ export default function LLMRecordsPage() {
 
   const [records, setRecords] = React.useState<LLMRecordItem[]>([]);
   const [total, setTotal] = React.useState(0);
-  const [loading, setLoading] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState("");
 
   // Recording on/off toggle (settings.llm_record; default off). When off the
   // backend records nothing.
@@ -140,6 +142,8 @@ export default function LLMRecordsPage() {
   const [selected, setSelected] = React.useState<LLMRecordItem | null>(null);
   const [detail, setDetail] = React.useState<LLMRecordDetail | null>(null);
   const [detailLoading, setDetailLoading] = React.useState(false);
+  const [detailError, setDetailError] = React.useState("");
+  const [detailRevision, setDetailRevision] = React.useState(0);
   // 归一化视图 / HTTP 원문视图。원문是排查 provider 侧问题的唯一依据：归一化视图
   // 不含工具 schema，响应里也没有 tool_use 块。
   const [rawView, setRawView] = React.useState(false);
@@ -203,6 +207,7 @@ export default function LLMRecordsPage() {
   React.useEffect(() => {
     let alive = true;
     setLoading(true);
+    setLoadError("");
     api
       .llmRecords({ model: model || undefined, session: sessionQ || undefined, task: pickedTask || undefined, page, size })
       .then((r) => {
@@ -210,7 +215,7 @@ export default function LLMRecordsPage() {
         setRecords(r.records ?? []);
         setTotal(r.total ?? 0);
       })
-      .catch((error: Error) => toast.error(`기록 처리 실패: ${error.message}`))
+      .catch((error: Error) => { if (alive) setLoadError(error.message); })
       .finally(() => alive && setLoading(false));
     api
       .llmTasks()
@@ -237,6 +242,7 @@ export default function LLMRecordsPage() {
   };
 
   // Lazy-load full request/response when a row is selected.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: detailRevision explicitly retries the selected record.
   React.useEffect(() => {
     if (!selected) {
       setDetail(null);
@@ -245,13 +251,14 @@ export default function LLMRecordsPage() {
     let alive = true;
     setDetailLoading(true);
     setDetail(null);
+    setDetailError("");
     api
       .llmRecordDetail(selected.id)
       .then((d) => { if (alive) setDetail(d); })
-      .catch((error: Error) => toast.error(`기록 처리 실패: ${error.message}`))
+      .catch((error: Error) => { if (alive) setDetailError(error.message); })
       .finally(() => { if (alive) setDetailLoading(false); });
     return () => { alive = false; };
-  }, [selected]);
+  }, [selected, detailRevision]);
 
   const totalPages = Math.max(1, Math.ceil(total / size));
   const rangeStart = total === 0 ? 0 : page * size + 1;
@@ -376,6 +383,7 @@ export default function LLMRecordsPage() {
         </div>
       </div>
 
+      <DataLoadStatus loading={loading} error={loadError} label="LLM 기록 불러오기" onRetry={() => setReloadTick((value) => value + 1)} />
       {/* History table + inline detail (Burp-style split) */}
       <div className="flex h-[calc(100vh-13rem)] min-h-0 flex-col gap-3">
         <Card className="flex min-h-0 flex-1 flex-col overflow-hidden py-0">
@@ -400,7 +408,7 @@ export default function LLMRecordsPage() {
                       <Loader2Icon className="mx-auto h-5 w-5 animate-spin text-muted-foreground" />
                     </TableCell>
                   </TableRow>
-                ) : records.length === 0 ? (
+                ) : loadError ? null : records.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="py-12 text-center text-sm text-muted-foreground">
                       LLM 호출 기록 없음
@@ -504,13 +512,14 @@ export default function LLMRecordsPage() {
                 variant="ghost"
                 size="icon"
                 className="size-7 shrink-0"
+                aria-label="LLM 기록 상세 닫기"
                 onClick={() => setSelected(null)}
               >
                 <XIcon />
               </Button>
             </div>
             {/* Request / Response split */}
-            <div className="grid min-h-0 flex-1 grid-cols-2 divide-x">
+            {detailError ? <div className="p-3"><DataLoadStatus error={detailError} label="LLM 기록 상세 불러오기" onRetry={() => setDetailRevision((value) => value + 1)} /></div> : <div className="grid min-h-0 flex-1 grid-cols-2 divide-x">
               <div className="flex min-h-0 min-w-0 flex-col">
                 <div className="flex items-center gap-2 border-b py-0.5 pr-1.5 pl-3 text-[11px] font-medium text-muted-foreground">
                   <span>Request{showRaw && " · 원문"}</span>
@@ -550,7 +559,7 @@ export default function LLMRecordsPage() {
                   )}
                 </div>
               </div>
-            </div>
+            </div>}
           </Card>
         )}
       </div>

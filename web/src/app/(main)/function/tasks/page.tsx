@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { DataLoadStatus } from "@/components/data-load-status";
 
 import Link from "next/link";
 
@@ -306,6 +307,8 @@ function compareTasks(left: Task, right: Task, field: TaskSortField, direction: 
 export default function TasksPage() {
   const [activeTab, setActiveTab] = React.useState("current");
   const [tasks, setTasks] = React.useState<Task[]>([]);
+  const [loadingTasks, setLoadingTasks] = React.useState(true);
+  const [tasksError, setTasksError] = React.useState("");
   const [categories, setCategories] = React.useState<TaskCategory[]>([]);
   const [categoriesLoaded, setCategoriesLoaded] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -458,15 +461,15 @@ export default function TasksPage() {
     api
       .tasks()
       .then((r) => {
+        setTasksError("");
         const next = r.tasks.map((t) => (t.id === r.active ? { ...t, active: true } : t));
         const sig = JSON.stringify(next);
         if (sig === lastRef.current) return;
         lastRef.current = sig;
         setTasks(next);
       })
-      .catch(() => {
-        // Polling is best-effort; the next interval retries automatically.
-      });
+      .catch((error: Error) => setTasksError(error.message))
+      .finally(() => setLoadingTasks(false));
   }, []);
 
   const loadCategories = React.useCallback(() => {
@@ -913,7 +916,8 @@ export default function TasksPage() {
               />
             </div>
 
-            {tasks.length === 0 ? (
+            <div className="px-4 lg:px-6"><DataLoadStatus loading={loadingTasks} error={tasksError} label="작업 목록 불러오기" onRetry={() => { setLoadingTasks(true); load(); }} /></div>
+            {loadingTasks || tasksError ? null : tasks.length === 0 ? (
               <div className="text-muted-foreground mx-4 flex items-center justify-center rounded-lg border border-dashed py-20 text-sm lg:mx-6">
                 작업이 없습니다. 오른쪽 위의 「새 작업」을 눌러 시작하세요.
               </div>

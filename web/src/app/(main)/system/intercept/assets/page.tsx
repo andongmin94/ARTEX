@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { DataLoadStatus } from "@/components/data-load-status";
 
 import { BanIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
@@ -92,16 +93,19 @@ function frontValidate(form: RuleForm): string | null {
 export default function AssetInterceptPage() {
   const [rules, setRules] = React.useState<AssetInterceptRule[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState("");
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<AssetInterceptRule | null>(null);
   const [form, setForm] = React.useState<RuleForm>(defaultForm());
   const [saving, setSaving] = React.useState(false);
 
   const load = React.useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
     try {
       setRules(await api.assetInterceptRules());
-    } catch {
-      toast.error("자산 차단 규칙을 불러오지 못했습니다");
+    } catch (error) {
+      setLoadError((error as Error).message);
     } finally {
       setLoading(false);
     }
@@ -199,9 +203,8 @@ export default function AssetInterceptPage() {
 
       <Card>
         <CardContent className="p-0">
-          {loading ? (
-            <p className="p-6 text-sm text-muted-foreground">불러오는 중…</p>
-          ) : rules.length === 0 ? (
+          <DataLoadStatus loading={loading} error={loadError} label="자산 차단 규칙 불러오기" onRetry={() => void load()} />
+          {rules.length === 0 && (loading || loadError) ? null : rules.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
               <BanIcon className="h-8 w-8 text-muted-foreground/40" />
               <p className="text-sm text-muted-foreground">자산 차단 규칙 없음</p>

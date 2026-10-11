@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { DataLoadStatus } from "@/components/data-load-status";
 
 import { BarChart3Icon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon, SearchIcon, TerminalIcon } from "lucide-react";
 
@@ -58,12 +59,15 @@ export default function CommandsPage() {
 
   const [commands, setCommands] = React.useState<CommandRecord[]>([]);
   const [total, setTotal] = React.useState(0);
-  const [loading, setLoading] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState("");
+  const [revision, setRevision] = React.useState(0);
 
   // 各도구调用次数。弹窗打开时才拉取（多一次聚合查询，不必每次翻页都付）。
   const [statsOpen, setStatsOpen] = React.useState(false);
   const [stats, setStats] = React.useState<ToolStat[]>([]);
   const [statsLoading, setStatsLoading] = React.useState(false);
+  const [statsError, setStatsError] = React.useState("");
 
   // Selected execution is rendered in a right-side detail sheet.
   const [selected, setSelected] = React.useState<CommandRecord | null>(null);
@@ -81,9 +85,11 @@ export default function CommandsPage() {
   }, [queryQ, taskFilter, size]);
 
   // Load data.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: revision explicitly retries the current filters.
   React.useEffect(() => {
     let alive = true;
     setLoading(true);
+    setLoadError("");
     api
       .commands({ task: taskFilter || undefined, q: queryQ || undefined, page, size })
       .then((r) => {
@@ -91,31 +97,32 @@ export default function CommandsPage() {
         setCommands(r.commands ?? []);
         setTotal(r.total ?? 0);
       })
-      .catch(() => {
+      .catch((error: Error) => {
         if (!alive) return;
-        setCommands([]);
-        setTotal(0);
+        setLoadError(error.message);
       })
       .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
     };
-  }, [page, size, queryQ, taskFilter]);
+  }, [page, size, queryQ, taskFilter, revision]);
 
   // 통계跟随筛选条件走，和表格描述的是同一批记录（但不分页）。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: revision explicitly retries unchanged statistics filters.
   React.useEffect(() => {
     if (!statsOpen) return;
     let alive = true;
     setStatsLoading(true);
+    setStatsError("");
     api
       .commandStats({ task: taskFilter || undefined, q: queryQ || undefined })
       .then((r) => alive && setStats(r.stats ?? []))
-      .catch(() => alive && setStats([]))
+      .catch((error: Error) => { if (alive) setStatsError(error.message); })
       .finally(() => alive && setStatsLoading(false));
     return () => {
       alive = false;
     };
-  }, [statsOpen, queryQ, taskFilter]);
+  }, [statsOpen, queryQ, taskFilter, revision]);
 
   const statsTotal = stats.reduce((n, s) => n + s.total, 0);
   const statsErrors = stats.reduce((n, s) => n + s.errors, 0);
@@ -199,6 +206,7 @@ export default function CommandsPage() {
       </div>
 
       {/* History table */}
+      <DataLoadStatus loading={loading} error={loadError} label="도구 실행 기록 불러오기" onRetry={() => setRevision((value) => value + 1)} />
       <div className="flex h-[calc(100vh-13rem)] min-h-0 flex-col">
         <Card className="flex min-h-0 flex-1 flex-col overflow-hidden py-0">
           <div className="min-h-0 flex-1 overflow-auto">
@@ -220,7 +228,7 @@ export default function CommandsPage() {
                       <Loader2Icon className="mx-auto h-5 w-5 animate-spin text-muted-foreground" />
                     </TableCell>
                   </TableRow>
-                ) : commands.length === 0 ? (
+                ) : loadError ? null : commands.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="py-12 text-center text-sm text-muted-foreground">
                       도구 실행 기록이 없습니다
@@ -295,7 +303,8 @@ export default function CommandsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          {statsLoading && stats.length === 0 ? (
+          <DataLoadStatus error={statsError} label="도구 호출 통계 불러오기" onRetry={() => setRevision((value) => value + 1)} />
+          {statsError ? null : statsLoading && stats.length === 0 ? (
             <div className="py-10 text-center">
               <Loader2Icon className="mx-auto h-5 w-5 animate-spin text-muted-foreground" />
             </div>

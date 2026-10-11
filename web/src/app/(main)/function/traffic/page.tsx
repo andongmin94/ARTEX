@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { DataLoadStatus } from "@/components/data-load-status";
 
 import {
   ArrowDownWideNarrowIcon,
@@ -137,9 +138,14 @@ export default function TrafficPage() {
   const [sort, setSort] = useStoredSortPreference<SortField>(SORT_STORAGE_KEY, SORT_FIELDS, "ts", "desc");
 
   const [traffic, setTraffic] = React.useState<TrafficResp | null>(null);
+  const [loadError, setLoadError] = React.useState("");
+  const [hostsError, setHostsError] = React.useState("");
+  const [loading, setLoading] = React.useState(true);
   const [selected, setSelected] = React.useState<TrafficExchange | null>(null);
   const [detail, setDetail] = React.useState<TrafficDetail | null>(null);
   const [detailLoading, setDetailLoading] = React.useState(false);
+  const [detailError, setDetailError] = React.useState("");
+  const [detailRevision, setDetailRevision] = React.useState(0);
 
   const [hosts, setHosts] = React.useState<TrafficHost[]>([]); // target picker
   const [selectedHosts, setSelectedHosts] = React.useState<string[]>([]); // checked in picker
@@ -212,19 +218,16 @@ export default function TrafficPage() {
           order: sort.direction,
         })
         .then((r) => {
-          if (alive) setTraffic(r);
+          if (alive) { setTraffic(r); setLoadError(""); }
         })
-        .catch(() => {
-          // Keep the last successful snapshot during transient refresh failures.
-        });
+        .catch((error: Error) => { if (alive) setLoadError(error.message); })
+        .finally(() => { if (alive) setLoading(false); });
       api
         .trafficHosts()
         .then((r) => {
-          if (alive) setHosts(r.hosts ?? []);
+          if (alive) { setHosts(r.hosts ?? []); setHostsError(""); }
         })
-        .catch(() => {
-          // Keep the last successful host list during transient refresh failures.
-        });
+        .catch((error: Error) => { if (alive) setHostsError(error.message); });
     };
     load();
     const t = setInterval(() => {
@@ -298,6 +301,7 @@ export default function TrafficPage() {
   };
 
   // Lazy-load the raw request/response for the selected exchange.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: detailRevision explicitly retries the selected exchange.
   React.useEffect(() => {
     if (!selected) {
       setDetail(null);
@@ -306,13 +310,14 @@ export default function TrafficPage() {
     let alive = true;
     setDetailLoading(true);
     setDetail(null);
+    setDetailError("");
     api
       .trafficExchange(selected.id)
       .then((d) => {
         if (alive) setDetail(d);
       })
-      .catch(() => {
-        if (alive) setDetail({ req: "(패킷을 불러올 수 없음)", resp: "" });
+      .catch((error: Error) => {
+        if (alive) setDetailError(error.message);
       })
       .finally(() => {
         if (alive) setDetailLoading(false);
@@ -320,7 +325,7 @@ export default function TrafficPage() {
     return () => {
       alive = false;
     };
-  }, [selected]);
+  }, [selected, detailRevision]);
 
   // Toggle direction when re-clicking the active column, else sort the new column
   // newest/largest-first.
@@ -363,6 +368,8 @@ export default function TrafficPage() {
         </div>
       </div>
 
+      <DataLoadStatus loading={loading} error={loadError} label="트래픽 불러오기" onRetry={() => { setLoading(true); setReloadTick((value) => value + 1); }} />
+      <DataLoadStatus error={hostsError} label="트래픽 대상 목록 불러오기" onRetry={() => setReloadTick((value) => value + 1)} />
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
@@ -709,7 +716,7 @@ export default function TrafficPage() {
                 {exchanges.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={8} className="py-12 text-center text-sm text-muted-foreground">
-                      {traffic === null ? "불러오는 중…" : "일치하는 트래픽이 없습니다."}
+                  {loadError ? "트래픽을 불러오지 못했습니다." : traffic === null ? "불러오는 중…" : "일치하는 트래픽이 없습니다."}
                     </TableCell>
                   </TableRow>
                 )}
@@ -741,7 +748,7 @@ export default function TrafficPage() {
                 <SheetTitle className="break-all font-sans">{selected.host}</SheetTitle>
                 <SheetDescription className="break-all font-sans">{selected.url}</SheetDescription>
               </SheetHeader>
-              <Tabs defaultValue="request" className="min-h-0 flex-1 gap-0">
+              {detailError ? <div className="p-5"><DataLoadStatus error={detailError} label="트래픽 상세 불러오기" onRetry={() => setDetailRevision((value) => value + 1)} /></div> : <Tabs defaultValue="request" className="min-h-0 flex-1 gap-0">
                 <TabsList className="mx-5 mt-4 grid w-auto grid-cols-2">
                   <TabsTrigger value="request">요청 Request</TabsTrigger>
                   <TabsTrigger value="response">응답 Response</TabsTrigger>
@@ -766,7 +773,7 @@ export default function TrafficPage() {
                     <HttpCodeBlock raw={detail?.resp ?? ""} />
                   )}
                 </TabsContent>
-              </Tabs>
+              </Tabs>}
             </>
           )}
         </SheetContent>

@@ -790,6 +790,7 @@ export function ApprovalRecords({ taskId }: { taskId?: string }) {
         </Button>
       </div>
       <p className="text-muted-foreground text-sm">기록을 펼쳐 도구 요청, 승인 판정, 당시 컨텍스트와 실행 결과를 확인하세요.</p>
+      {loading ? <p role="status" className="text-muted-foreground text-sm">승인 기록을 불러오는 중…</p> : null}
       <FieldGroup className="flex-row flex-wrap items-end gap-3" aria-label="승인 기록 필터">
         <Field className="w-full sm:w-40">
           <FieldLabel htmlFor={`${filterID}-status`}>승인 상태</FieldLabel>

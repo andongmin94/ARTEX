@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { DataLoadStatus } from "@/components/data-load-status";
 
 import { CpuIcon, FlaskConicalIcon, KeyboardIcon, RadioTowerIcon, SearchIcon, ShieldAlertIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -35,6 +36,8 @@ export default function SystemSettingsPage() {
   const [savingGlobalProxy, setSavingGlobalProxy] = React.useState(false);
   const [testing, setTesting] = React.useState(false);
   const [loaded, setLoaded] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState("");
   const [saving, setSaving] = React.useState(false);
   const [savingKey, setSavingKey] = React.useState(false);
   const [pyInterp, setPyInterp] = React.useState("");
@@ -102,14 +105,20 @@ export default function SystemSettingsPage() {
       .finally(() => setSaving(false));
   };
 
-  React.useEffect(() => {
-    setDesktop(!!window.artexDesktop);
+  const load = React.useCallback(() => {
+    setLoading(true);
+    setLoaded(false);
+    setLoadError("");
     api
       .settings()
-      .then(apply)
-      .catch(() => undefined)
-      .finally(() => setLoaded(true));
+      .then((settings) => { apply(settings); setLoaded(true); })
+      .catch((error: Error) => setLoadError(error.message))
+      .finally(() => setLoading(false));
   }, [apply]);
+  React.useEffect(() => {
+    setDesktop(!!window.artexDesktop);
+    load();
+  }, [load]);
 
   const toggleTraffic = (v: boolean) => {
     setTrafficCapture(v); // optimistic
@@ -264,6 +273,7 @@ export default function SystemSettingsPage() {
         <h1 className="text-xl font-semibold tracking-tight">시스템 설정</h1>
         <p className="text-muted-foreground text-sm">전역 실행 설정</p>
       </div>
+      <DataLoadStatus loading={loading} error={loadError} label="시스템 설정 불러오기" onRetry={load} />
 
       {/* 多列而非 grid：网络搜索卡片比其余高数倍，且高度随所选后端变化（brave/tavily
           的 key 输入是条件渲染）。grid 会按最高的一张撑满整行、在旁边留下大片空白，

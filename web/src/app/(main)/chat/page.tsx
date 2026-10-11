@@ -1,4 +1,5 @@
 "use client";
+import { DataLoadStatus } from "@/components/data-load-status";
 
 import * as React from "react";
 
@@ -1052,6 +1053,8 @@ export default function ChatPage() {
   const [selectedId, setSelectedId] = React.useState<number | null>(null);
   const [sourceRequested, setSourceRequested] = React.useState(false);
   const [convsLoaded, setConvsLoaded] = React.useState(false);
+  const [convsLoading, setConvsLoading] = React.useState(true);
+  const [convsError, setConvsError] = React.useState("");
   const selectConversation = React.useCallback((id: number | null) => {
     if (id !== selectedId) {
       const url = new URL(window.location.href);
@@ -1087,9 +1090,11 @@ export default function ChatPage() {
     const seq = ++conversationListSeq.current;
     try {
       const items = await api.conversations();
-      if (seq === conversationListSeq.current) { setConvs(items); setConvsLoaded(true); }
-    } catch {
-      // Preserve the selected transcript and list on a transient poll failure.
+      if (seq === conversationListSeq.current) { setConvs(items); setConvsLoaded(true); setConvsError(""); }
+    } catch (error) {
+      if (seq === conversationListSeq.current) setConvsError((error as Error).message);
+    } finally {
+      if (seq === conversationListSeq.current) setConvsLoading(false);
     }
   }, []);
   React.useEffect(() => {
@@ -1430,7 +1435,8 @@ export default function ChatPage() {
             className="min-h-0 min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:block!"
           >
             <div className="flex min-w-0 flex-col gap-0.5 p-2">
-              {filteredConversations.length === 0 && (
+              <DataLoadStatus loading={convsLoading} error={convsError} label="대화 목록 불러오기" onRetry={() => { setConvsLoading(true); void reloadConvs(); }} />
+              {!convsLoading && !convsError && filteredConversations.length === 0 && (
                 <p className="text-muted-foreground px-2 py-6 text-center text-xs">
                   {agentFilter === null ? "대화 없음" : "이 에이전트의 대화 없음"}
                 </p>
@@ -1519,7 +1525,7 @@ export default function ChatPage() {
             />
           ) : sourceRequested ? (
             <div role="status" className="p-6 text-sm text-muted-foreground">
-              {convsLoaded ? "삭제된 대화입니다" : "해당 대화를 불러오는 중…"}
+              {convsError ? "대화 목록을 불러오지 못했습니다. 목록에서 다시 시도해 주세요." : convsLoaded ? "삭제된 대화입니다" : "해당 대화를 불러오는 중…"}
             </div>
           ) : (
             <DraftChat

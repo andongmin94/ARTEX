@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"golang.org/x/sys/windows"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 // This changes only the current test's new SQLite file. Denied NTFS access is
@@ -22,6 +24,43 @@ func TestSQLiteWindowsACLFailurePreservesCommittedDataAndRecovers(t *testing.T) 
 	if err := d.Close(); err != nil {
 		t.Fatal(err)
 	}
+	restore := denySQLiteFixtureWrites(t, path)
+	if file, err := os.OpenFile(path, os.O_RDWR, 0); err == nil {
+		file.Close()
+		t.Fatal("NTFS ACL did not deny write access")
+	} else if !os.IsPermission(err) {
+		t.Fatalf("ACL probe error: %v", err)
+	}
+	blocked, err := Open(path)
+	if blocked != nil {
+		blocked.Close()
+	}
+	if !errors.Is(err, os.ErrPermission) {
+		t.Fatalf("wanted actual filesystem access denial, got %v", err)
+	}
+	t.Log("actual Windows ACL rejected the business DB writable-file preflight before modernc initialization")
+	restore()
+	d = openBusinessFixture(t, path)
+	values, err := d.SettingsSnapshot(t.Context())
+	if err != nil || values["a"] != "committed" || values["z"] != "committed" {
+		t.Fatalf("ACL failure changed settings: values=%v err=%v", values, err)
+	}
+	if err := d.SetSettingsContext(t.Context(), map[string]string{"a": "recovered", "z": "recovered"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Close(); err != nil {
+		t.Fatal(err)
+	}
+	d = openBusinessFixture(t, path)
+	values, err = d.SettingsSnapshot(t.Context())
+	if err != nil || values["a"] != "recovered" || values["z"] != "recovered" {
+		t.Fatalf("ACL recovery did not persist: values=%v err=%v", values, err)
+	}
+	assertSQLiteIntegrity(t, d)
+}
+
+func denySQLiteFixtureWrites(t *testing.T, path string) func() {
+	t.Helper()
 	original, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
 	if err != nil {
 		t.Fatal(err)
@@ -71,25 +110,37 @@ func TestSQLiteWindowsACLFailurePreservesCommittedDataAndRecovers(t *testing.T) 
 	if err := windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, deniedACL, nil); err != nil {
 		t.Fatal(err)
 	}
-	if file, err := os.OpenFile(path, os.O_RDWR, 0); err == nil {
-		file.Close()
-		t.Fatal("NTFS ACL did not deny write access")
-	} else if !os.IsPermission(err) {
-		t.Fatalf("ACL probe error: %v", err)
+	return restore
+}
+
+// An ACL update cannot revoke rights already granted to an open Windows file.
+// Retiring the idle connection exercises a subsequent real driver write on
+// the same live business DB, without re-entering DB.Open's preflight.
+func TestSQLiteRunningPoolWindowsACLWriteFailureAndRecovery(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "실행 중 권한.sqlite")
+	d := openBusinessFixture(t, path)
+	if err := d.SetSettingsContext(t.Context(), map[string]string{"a": "old", "z": "old"}); err != nil {
+		t.Fatal(err)
 	}
-	blocked, err := Open(path)
-	if blocked != nil {
-		blocked.Close()
+	d.SetMaxIdleConns(0)
+	restore := denySQLiteFixtureWrites(t, path)
+	if file, err := os.OpenFile(path, os.O_RDWR, 0); file != nil || !errors.Is(err, os.ErrPermission) {
+		if file != nil {
+			file.Close()
+		}
+		t.Fatalf("real ACL probe=%v", err)
 	}
-	if !errors.Is(err, os.ErrPermission) {
-		t.Fatalf("wanted actual filesystem access denial, got %v", err)
+	err := d.SetSettingsContext(t.Context(), map[string]string{"a": "failed", "z": "failed"})
+	var native *sqlite.Error
+	if !errors.As(err, &native) || (native.Code()&255 != sqlite3.SQLITE_READONLY && native.Code()&255 != sqlite3.SQLITE_CANTOPEN && native.Code()&255 != sqlite3.SQLITE_IOERR) {
+		t.Fatalf("wanted actual mid-run driver access failure, got %v", err)
 	}
-	t.Log("actual Windows ACL rejected the business DB writable-file preflight before modernc initialization")
+	t.Logf("actual Windows ACL rejected renewed driver connection during business write: sqlite code=%d err=%v", native.Code(), err)
 	restore()
-	d = openBusinessFixture(t, path)
+	d.SetMaxIdleConns(4)
 	values, err := d.SettingsSnapshot(t.Context())
-	if err != nil || values["a"] != "committed" || values["z"] != "committed" {
-		t.Fatalf("ACL failure changed settings: values=%v err=%v", values, err)
+	if err != nil || values["a"] != "old" || values["z"] != "old" {
+		t.Fatalf("failed write changed old settings: %v %v", values, err)
 	}
 	if err := d.SetSettingsContext(t.Context(), map[string]string{"a": "recovered", "z": "recovered"}); err != nil {
 		t.Fatal(err)
@@ -100,7 +151,7 @@ func TestSQLiteWindowsACLFailurePreservesCommittedDataAndRecovers(t *testing.T) 
 	d = openBusinessFixture(t, path)
 	values, err = d.SettingsSnapshot(t.Context())
 	if err != nil || values["a"] != "recovered" || values["z"] != "recovered" {
-		t.Fatalf("ACL recovery did not persist: values=%v err=%v", values, err)
+		t.Fatalf("recovery not durable: %v %v", values, err)
 	}
 	assertSQLiteIntegrity(t, d)
 }

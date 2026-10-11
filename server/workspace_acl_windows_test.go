@@ -10,6 +10,11 @@ import (
 )
 
 func denyFixtureFileWrites(t *testing.T, path string) func() {
+	const fileDeleteChild = 0x40
+	return denyFixtureAccess(t, path, windows.FILE_WRITE_DATA|windows.FILE_APPEND_DATA|fileDeleteChild|windows.DELETE)
+}
+
+func denyFixtureAccess(t *testing.T, path string, denied uint32) func() {
 	t.Helper()
 	original, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
 	if err != nil {
@@ -33,9 +38,7 @@ func denyFixtureFileWrites(t *testing.T, path string) func() {
 		t.Fatal(err)
 	}
 	sid := user.User.Sid.String()
-	const fileDeleteChild = 0x40
-	deny := windows.FILE_WRITE_DATA | windows.FILE_APPEND_DATA | fileDeleteChild | windows.DELETE
-	restricted, err := windows.SecurityDescriptorFromString(fmt.Sprintf("D:P(D;;0x%x;;;%s)(A;;FA;;;%s)(A;;FA;;;SY)", deny, sid, sid))
+	restricted, err := windows.SecurityDescriptorFromString(fmt.Sprintf("D:P(D;;0x%x;;;%s)(A;;FA;;;%s)(A;;FA;;;SY)", denied, sid, sid))
 	if err != nil {
 		t.Fatal(err)
 	}

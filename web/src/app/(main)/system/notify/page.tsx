@@ -4,6 +4,7 @@ import * as React from "react";
 
 import { BellIcon, PlusIcon, SendIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
+import { DataLoadStatus } from "@/components/data-load-status";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,9 @@ import { formatBacklog, StatTile } from "./_components/stat-tile";
 export default function NotifyPage() {
   const [meta, setMeta] = React.useState<NotificationMeta | null>(null);
   const [channels, setChannels] = React.useState<NotificationChannel[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loaded, setLoaded] = React.useState(false);
+  const [loadError, setLoadError] = React.useState("");
   const [tab, setTab] = React.useState<"channels" | "deliveries">("channels");
 
   const [open, setOpen] = React.useState(false);
@@ -52,20 +56,18 @@ export default function NotifyPage() {
   const [digestMin, setDigestMin] = React.useState("");
 
   const load = React.useCallback(() => {
-    api
-      .notifyMeta()
-      .then((m) => {
+    setLoading(true);
+    setLoadError("");
+    Promise.all([api.notifyMeta(), api.notifyChannels()])
+      .then(([m, nextChannels]) => {
         setMeta(m);
         setBaseURL(m.public_base_url);
         setDigestMin(m.digest_interval_min);
+        setChannels(nextChannels);
+        setLoaded(true);
       })
-      .catch((e) => toast.error("알림 설정 읽기 실패:" + (e as Error).message));
-    // 渠道列表加载失败要报出来：静默失败会显示成「一个渠道都没有」，
-    // 用户会以为配置丢了，比直接报错更让人慌。
-    api
-      .notifyChannels()
-      .then(setChannels)
-      .catch((e) => toast.error("채널 목록 읽기 실패:" + (e as Error).message));
+      .catch((error: Error) => setLoadError(error.message))
+      .finally(() => setLoading(false));
   }, []);
   React.useEffect(() => {
     load();
@@ -263,8 +265,16 @@ export default function NotifyPage() {
   const secretKeys = new Set(meta?.kinds.find((k) => k.kind === form.kind)?.secret_keys ?? []);
   const defaultRate = meta?.kinds.find((k) => k.kind === form.kind)?.default_rate_per_min ?? 0;
 
+  if (!loaded) return (
+    <div className="space-y-4">
+      <h1 className="text-xl font-semibold tracking-tight">알림 전송</h1>
+      <DataLoadStatus loading={loading} error={loadError} label="알림 설정 및 채널 불러오기" onRetry={load} />
+    </div>
+  );
+
   return (
     <div className="flex flex-1 flex-col gap-4 md:gap-6">
+      <DataLoadStatus loading={loading} error={loadError} label="알림 설정 및 채널 불러오기" onRetry={load} />
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">알림 전송</h1>

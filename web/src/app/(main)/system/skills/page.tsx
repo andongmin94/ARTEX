@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { DataLoadStatus } from "@/components/data-load-status";
 import { toast } from "sonner";
 import {
   ChevronRightIcon,
@@ -297,6 +298,9 @@ function SkillsOverview({
 export default function SkillsPage() {
   const controlId = React.useId();
   const [skills, setSkills] = React.useState<SkillItem[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loaded, setLoaded] = React.useState(false);
+  const [loadError, setLoadError] = React.useState("");
   const [agents, setAgents] = React.useState<Agent[]>([]);
   const [selected, setSelected] = React.useState<Selected | null>(null);
   const [visibility, setVisibility] = React.useState<Record<string, string[]>>({});
@@ -305,6 +309,12 @@ export default function SkillsPage() {
   // file editor
   const [fileContent, setFileContent] = React.useState("");
   const [fileLoading, setFileLoading] = React.useState(false);
+  const [fileError, setFileError] = React.useState("");
+  const [fileReloadVersion, setFileReloadVersion] = React.useState(0);
+  const [fileSource, setFileSource] = React.useState<{ skill: string; path: string } | null>(null);
+  const selectedRef = React.useRef(selected);
+  selectedRef.current = selected;
+  const fileReady = !!selected && selected.path !== null && !!fileSource && selected.skill === fileSource.skill && selected.path === fileSource.path;
   const [dirty, setDirty] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
 
@@ -331,6 +341,10 @@ export default function SkillsPage() {
 
   // skill detail — MCP edit state (optimistic, rolls back on error)
   const [detailMcps, setDetailMcps] = React.useState<string[]>([]);
+  const [updatingAccess, setUpdatingAccess] = React.useState(false);
+  const accessUpdate = React.useRef(false);
+  const loadRequest = React.useRef(0);
+  const visibilityRequest = React.useRef<Record<string, number>>({});
 
   // delete confirmation
   const [pendingDelete, setPendingDelete] = React.useState<PendingDelete>(null);
@@ -340,24 +354,36 @@ export default function SkillsPage() {
   // 最近调用明细。missing = 被点名但不存在的 skill（想用但没有）。
   const [usageCalls, setUsageCalls] = React.useState<SkillCall[]>([]);
   const [usageLoading, setUsageLoading] = React.useState(false);
+  const [usageError, setUsageError] = React.useState("");
+  const [usageRevision, setUsageRevision] = React.useState(0);
   const [missing, setMissing] = React.useState<MissingSkill[]>([]);
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const load = React.useCallback(() => {
-    api.agents().then(setAgents).catch((error: Error) => toast.error(`불러오기 실패: ${error.message}`));
-    api.mcpServers().then(setMcpOptions).catch((error: Error) => toast.error(`불러오기 실패: ${error.message}`));
-    api.missingSkills().then(setMissing).catch((error: Error) => toast.error(`불러오기 실패: ${error.message}`));
-    api.skills().then((ss) => {
+    const request = ++loadRequest.current;
+    setLoading(true);
+    setLoadError("");
+    Promise.all([api.skills(), api.agents(), api.mcpServers(), api.missingSkills()]).then(([ss, nextAgents, nextMcps, nextMissing]) => {
+      if (loadRequest.current !== request) return;
       setSkills(ss);
+      setAgents(nextAgents);
+      setMcpOptions(nextMcps);
+      setMissing(nextMissing);
+      setLoaded(true);
       ss.forEach((s) => {
+        const visibilityVersion = visibilityRequest.current[s.name] ?? 0;
         api.skillVisibility(s.name)
-          .then((ids) => setVisibility((v) => ({ ...v, [s.name]: ids })))
-          .catch((error: Error) => toast.error(`접근 권한 불러오기 실패: ${error.message}`));
+          .then((ids) => { if (loadRequest.current === request && (visibilityRequest.current[s.name] ?? 0) === visibilityVersion) setVisibility((v) => ({ ...v, [s.name]: ids })); })
+          .catch((error: Error) => { if (loadRequest.current === request && (visibilityRequest.current[s.name] ?? 0) === visibilityVersion) toast.error(`접근 권한 불러오기 실패: ${error.message}`); });
       });
-    }).catch((error: Error) => toast.error(`불러오기 실패: ${error.message}`));
+    }).catch((error: Error) => { if (loadRequest.current === request) setLoadError(error.message); })
+      .finally(() => { if (loadRequest.current === request) setLoading(false); });
   }, []);
 
-  React.useEffect(() => { load(); }, [load]);
+  React.useEffect(() => {
+    load();
+    return () => { loadRequest.current++; visibilityRequest.current = {}; };
+  }, [load]);
 
   // ── Upload a .zip skill ───────────────────────────────────────────────────
   async function uploadZip(file: File, overwrite = false) {
@@ -404,24 +430,37 @@ export default function SkillsPage() {
   }, [selected, skills]);
 
   // Recent calls for the selected skill (detail panel only).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: usageRevision explicitly retries the selected skill usage.
   React.useEffect(() => {
-    if (!selected || selected.path !== null) { setUsageCalls([]); return; }
+    let alive = true;
+    setUsageCalls([]);
+    setUsageError("");
+    if (!selected || selected.path !== null) { setUsageLoading(false); return; }
     const name = selected.skill;
     setUsageLoading(true);
     api.skillUsage(name, 20)
-      .then((calls) => setUsageCalls(calls))
-      .catch(() => setUsageCalls([]))
-      .finally(() => setUsageLoading(false));
-  }, [selected]);
+      .then((calls) => { if (alive) setUsageCalls(calls); })
+      .catch((error: Error) => { if (alive) setUsageError(error.message); })
+      .finally(() => { if (alive) setUsageLoading(false); });
+    return () => { alive = false; };
+  }, [selected, usageRevision]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fileReloadVersion explicitly retries the selected file read.
   React.useEffect(() => {
-    if (!selected || selected.path === null) { setFileContent(""); setDirty(false); return; }
+    let alive = true;
+    setFileContent("");
+    setDirty(false);
+    setFileError("");
+    setFileSource(null);
+    if (!selected || selected.path === null) { setFileLoading(false); return; }
+    const target = { skill: selected.skill, path: selected.path };
     setFileLoading(true);
-    api.readSkillFile(selected.skill, selected.path)
-      .then((c) => { setFileContent(c); setDirty(false); })
-      .catch(() => toast.error("파일 읽기 실패"))
-      .finally(() => setFileLoading(false));
-  }, [selected]);
+    api.readSkillFile(target.skill, target.path)
+      .then((content) => { if (alive) { setFileContent(content); setFileSource(target); } })
+      .catch((error: Error) => { if (alive) setFileError(error.message); })
+      .finally(() => { if (alive) setFileLoading(false); });
+    return () => { alive = false; };
+  }, [selected, fileReloadVersion]);
 
   // ── Expand helpers ────────────────────────────────────────────────────────
   function toggleExpanded(key: string) {
@@ -497,7 +536,7 @@ export default function SkillsPage() {
     try {
       await api.deleteSkillPath(skill, path);
       toast.success(`삭제됨:${path}`);
-      if (selected?.skill === skill && selected.path === path) setSelected(null);
+      if (selectedRef.current?.skill === skill && selectedRef.current.path === path) setSelected(null);
       load();
     } catch (e) {
       toast.error("삭제 실패:" + (e as Error).message);
@@ -508,7 +547,7 @@ export default function SkillsPage() {
     try {
       await api.deleteSkill(name);
       toast.success(`스킬 삭제 완료:${name}`);
-      if (selected?.skill === name) setSelected(null);
+      if (selectedRef.current?.skill === name) setSelected(null);
       load();
     } catch (e) {
       toast.error("삭제 실패:" + (e as Error).message);
@@ -529,18 +568,25 @@ export default function SkillsPage() {
   }
 
   async function saveFile() {
-    if (!selected || selected.path === null) return;
+    if (!selected || selected.path === null || !fileReady || fileLoading || fileError || !dirty) return;
+    const target = { skill: selected.skill, path: selected.path };
     setSaving(true);
     try {
-      await api.writeSkillFile(selected.skill, selected.path, fileContent);
+      await api.writeSkillFile(target.skill, target.path, fileContent);
       toast.success("저장됨");
-      setDirty(false);
+      if (selectedRef.current?.skill === target.skill && selectedRef.current.path === target.path) {
+        setDirty(false);
+        setFileReloadVersion((current) => current + 1);
+      }
     } catch (e) {
       toast.error("저장 실패:" + (e as Error).message);
     } finally { setSaving(false); }
   }
 
   async function toggleSkillMcp(skillName: string, mcpName: string, mcpOn: boolean) {
+    if (accessUpdate.current || loading) return;
+    accessUpdate.current = true;
+    setUpdatingAccess(true);
     const next = mcpOn
       ? [...detailMcps, mcpName]
       : detailMcps.filter((n) => n !== mcpName);
@@ -551,21 +597,26 @@ export default function SkillsPage() {
       load();
     } catch (e) {
       // roll back on error
-      setDetailMcps(detailMcps);
+      if (selectedRef.current?.skill === skillName && selectedRef.current.path === null) setDetailMcps(detailMcps);
       toast.error("작업 실패:" + (e as Error).message);
-    }
+    } finally { accessUpdate.current = false; setUpdatingAccess(false); }
   }
 
   async function toggleVisibility(skillName: string, agentId: string, agentName: string) {
+    if (accessUpdate.current || loading) return;
+    accessUpdate.current = true;
+    setUpdatingAccess(true);
+    visibilityRequest.current[skillName] = (visibilityRequest.current[skillName] ?? 0) + 1;
     const on = (visibility[skillName] ?? []).includes(agentId);
     try {
       await api.toggleSkillVisibility(agentId, skillName, !on);
       toast.success(`${on ? "취소" : "허용"}「${agentName}」 접근 권한`);
+      const request = ++visibilityRequest.current[skillName];
       const ids = await api.skillVisibility(skillName);
-      setVisibility((v) => ({ ...v, [skillName]: ids }));
+      if (visibilityRequest.current[skillName] === request) setVisibility((v) => ({ ...v, [skillName]: ids }));
     } catch (e) {
       toast.error("작업 실패:" + (e as Error).message);
-    }
+    } finally { accessUpdate.current = false; setUpdatingAccess(false); }
   }
 
   async function createNewSkill() {
@@ -685,8 +736,16 @@ export default function SkillsPage() {
     ? skills.find((s) => s.name === selected.skill) ?? null
     : null;
 
+  if (!loaded) return (
+    <div className="space-y-4">
+      <h1 className="text-xl font-semibold tracking-tight">Skill</h1>
+      <DataLoadStatus loading={loading} error={loadError} label="스킬 라이브러리 불러오기" onRetry={load} />
+    </div>
+  );
+
   return (
     <div data-content-padding="false" className="flex flex-1 flex-col overflow-hidden">
+      <DataLoadStatus loading={loading} error={loadError} label="스킬 라이브러리 불러오기" onRetry={load} />
       <div className="flex items-center gap-3 border-b px-4 py-2.5 lg:px-6">
         <div className="flex flex-col gap-0.5">
           <h1 className="text-sm font-semibold leading-tight">Skill</h1>
@@ -867,9 +926,8 @@ export default function SkillsPage() {
                       ))}
                     </div>
                   )}
-                  {usageLoading ? (
-                    <p className="text-xs text-muted-foreground">호출 상세 불러오는 중…</p>
-                  ) : usageCalls.length > 0 ? (
+                  <DataLoadStatus loading={usageLoading} error={usageError} label="스킬 호출 상세 불러오기" onRetry={() => setUsageRevision((current) => current + 1)} />
+                  {usageLoading || usageError ? null : usageCalls.length > 0 ? (
                     <div className="rounded-md border">
                       <div className="border-b px-2 py-1 text-xs text-muted-foreground">최근 {usageCalls.length} 회 호출</div>
                       <div className="max-h-56 overflow-y-auto">
@@ -903,6 +961,7 @@ export default function SkillsPage() {
                         {mcpOptions.map((m) => (
                           <label htmlFor={`${controlId}-1-${m.id}`} key={m.id} className="flex cursor-pointer items-center gap-2 text-sm">
                             <Checkbox id={`${controlId}-1-${m.id}`}
+                              disabled={loading || updatingAccess}
                               checked={detailMcps.includes(m.name)}
                               onCheckedChange={(on) => toggleSkillMcp(selectedSkill.name, m.name, !!on)}
                             />
@@ -919,6 +978,7 @@ export default function SkillsPage() {
                       {agents.map((a) => (
                         <label htmlFor={`${controlId}-2-${a.key}`} key={a.key} className="flex cursor-pointer items-center gap-2 text-sm">
                           <Checkbox id={`${controlId}-2-${a.key}`}
+                            disabled={loading || updatingAccess}
                             checked={(visibility[selectedSkill.name] ?? []).includes(a.id)}
                             onCheckedChange={() => toggleVisibility(selectedSkill.name, a.id, a.name)}
                           />
@@ -941,14 +1001,15 @@ export default function SkillsPage() {
                 <span className="font-medium text-foreground">{selected.skill}</span>
                 <span>/</span>
                 <span className="font-sans">{selected.path}</span>
-                <Button size="sm" className="ml-auto" onClick={saveFile} disabled={!dirty || saving}>
+                <Button size="sm" className="ml-auto" onClick={saveFile} disabled={!dirty || saving || fileLoading || !!fileError || !fileReady}>
                   {saving ? "저장 중…" : "저장"}
                 </Button>
               </div>
-              {fileLoading ? (
-                <p className="text-xs text-muted-foreground">불러오는 중…</p>
-              ) : (
+              <DataLoadStatus loading={fileLoading} error={fileError} label="스킬 파일 불러오기" onRetry={() => setFileReloadVersion((current) => current + 1)} />
+              {fileReady && !fileLoading && !fileError && (
                 <Textarea
+                  aria-label={`${selected.skill} ${selected.path} 내용`}
+                  disabled={saving}
                   className="flex-1 resize-none font-sans text-xs"
                   value={fileContent}
                   onChange={(e) => { setFileContent(e.target.value); setDirty(true); }}
