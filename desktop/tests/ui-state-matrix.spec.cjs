@@ -6,6 +6,7 @@ const { assertAccessibleControls } = require("./ui-accessibility.cjs");
 const { verifyApprovalStates } = require("./ui-state-approvals.cjs");
 const { verifyFileStates } = require("./ui-state-files.cjs");
 const { verifyDataStates } = require("./ui-state-data.cjs");
+const { verifyTaskStates } = require("./ui-state-task.cjs");
 
 // The primary-screen matrix uses real Electron/Go, delays or fails its selected
 // API, then retries against real Go. The populated-state helpers below instead
@@ -125,6 +126,16 @@ test("Mono 두 모드의 채워진 기록·상세 복구·승인·입력 폼", a
       await verifyFileStates(page, origin, testInfo, mode);
       await verifyDataStates(page, origin, testInfo, mode);
       await verifyForms(page, origin, testInfo, mode);
+    }
+  });
+});
+
+test("Mono 두 모드의 작업 생성·재검증·보고서 상태", async ({}, testInfo) => {
+  test.setTimeout(240_000);
+  await withApp(testInfo, async (page, origin) => {
+    for (const mode of ["light", "dark"]) {
+      await page.evaluate((value) => { document.cookie = `theme_mode=${value}; path=/`; }, mode);
+      await verifyTaskStates(page, origin, testInfo, mode);
     }
   });
 });

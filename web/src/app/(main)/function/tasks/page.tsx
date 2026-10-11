@@ -50,6 +50,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { TablePagination } from "@/components/table-pagination";
 import { TaskLLMProfileChain } from "@/components/task-llm-profile-chain";
 import { TaskTemplateControls } from "@/components/task-template-controls";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -2395,7 +2396,7 @@ function SourceTaskPicker({
   return (
     <Combobox
       items={taskIDs}
-      itemToStringValue={(taskID) => {
+      itemToStringLabel={(taskID) => {
         const task = tasksByID.get(taskID);
         return task ? `${task.id} ${task.description} ${task.goal}` : taskID;
       }}
@@ -2507,7 +2508,7 @@ function CategoryPicker({
   return (
     <Combobox
       items={categoryIDs}
-      itemToStringValue={(id) => byID.get(id)?.name ?? id}
+      itemToStringLabel={(id) => byID.get(id)?.name ?? id}
       multiple
       value={selectedIDs}
       onValueChange={(next: string[]) => {
@@ -2605,7 +2606,7 @@ function CompanyPicker({
   return (
     <Combobox
       items={companyIDs}
-      itemToStringValue={(companyID) => {
+      itemToStringLabel={(companyID) => {
         const company = companiesByID.get(companyID);
         return company ? `${company.name} ${companyScopeSummary(company)}` : companyID;
       }}
@@ -3094,6 +3095,8 @@ function CreateTaskSheet({
   const [companyIDs, setCompanyIDs] = React.useState<number[]>([]);
   const [llmProfileIDs, setLLMProfileIDs] = React.useState<string[]>([]);
   const [creating, setCreating] = React.useState(false);
+  const [createError, setCreateError] = React.useState("");
+  const createLock = React.useRef(false);
   const [timeoutMin, setTimeoutMin] = React.useState(""); // 任务级超时(分钟);空/0 = 不限时
   const [heartbeatMin, setHeartbeatMin] = React.useState("10"); // planner 心跳(分钟);默认10,下限10(与后端一致)
   const [seedFirstIntent, setSeedFirstIntent] = React.useState(false); // 创建时下发种子意图,worker 免等首轮 planner 直接开跑;기본값: 꺼짐,走标准先规划再执行
@@ -3141,14 +3144,17 @@ function CreateTaskSheet({
   }
 
   async function createTask() {
+    if (createLock.current) return;
+    setCreateError("");
     if (!description.trim() || !goal.trim()) {
-      toast.error("설명과 목표를 입력하세요");
+      setCreateError("설명과 목표를 입력하세요");
       return;
     }
     if (sourceTaskIDs.length > MAX_SOURCE_TASKS) {
-      toast.error(`소스 작업은 최대 ${MAX_SOURCE_TASKS}개까지 연결할 수 있습니다`);
+      setCreateError(`소스 작업은 최대 ${MAX_SOURCE_TASKS}개까지 연결할 수 있습니다`);
       return;
     }
+    createLock.current = true;
     setCreating(true);
     try {
       const timeoutSec = Math.max(0, Math.floor(Number(timeoutMin) || 0)) * 60;
@@ -3188,14 +3194,19 @@ function CreateTaskSheet({
       setOpen(false);
       onCreated();
     } catch (e) {
-      toast.error("생성 실패: " + (e as Error).message);
+      setCreateError("생성 실패: " + (e as Error).message);
     } finally {
+      createLock.current = false;
       setCreating(false);
     }
   }
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet open={open} onOpenChange={(next) => {
+      if (createLock.current) return;
+      setOpen(next);
+      setCreateError("");
+    }}>
       <SheetTrigger asChild>
         <Button size="sm">
           <PlusIcon /> 새 작업
@@ -3206,6 +3217,7 @@ function CreateTaskSheet({
       <SheetContent
         ref={sheetContentRef}
         side="right"
+        showCloseButton={!creating}
         className="w-full! max-w-none! gap-0 p-0 sm:w-[45vw]! sm:max-w-[45vw]!"
       >
         <SheetHeader className="border-b p-6">
@@ -3413,14 +3425,21 @@ function CreateTaskSheet({
           </div>
         </div>
 
-        <SheetFooter className="flex-row justify-end gap-2 border-t p-4">
-          <SheetClose asChild>
-            <Button variant="outline">취소</Button>
-          </SheetClose>
-          <Button onClick={createTask} disabled={creating || uploading}>
-            {creating && <Spinner data-icon="inline-start" />}
-            {creating ? "생성 중" : "생성"}
-          </Button>
+        <SheetFooter className="gap-3 border-t p-4">
+          {createError && (
+            <Alert variant="destructive" className="max-h-32 overflow-y-auto">
+              <AlertDescription>{createError}</AlertDescription>
+            </Alert>
+          )}
+          <div className="flex justify-end gap-2">
+            <SheetClose asChild>
+              <Button variant="outline" disabled={creating}>취소</Button>
+            </SheetClose>
+            <Button onClick={createTask} disabled={creating || uploading}>
+              {creating && <Spinner data-icon="inline-start" />}
+              {creating ? "생성 중" : "생성"}
+            </Button>
+          </div>
         </SheetFooter>
       </SheetContent>
     </Sheet>

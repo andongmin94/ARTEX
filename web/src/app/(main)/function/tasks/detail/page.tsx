@@ -354,7 +354,7 @@ function TaskDetailInner() {
         <div className="flex items-center gap-2">
           <SidebarTrigger className="-ml-1" />
           <Button asChild variant="ghost" size="icon" className="size-7">
-            <Link href="/function/tasks">
+            <Link href="/function/tasks" aria-label="작업 목록으로">
               <ArrowLeftIcon />
             </Link>
           </Button>
