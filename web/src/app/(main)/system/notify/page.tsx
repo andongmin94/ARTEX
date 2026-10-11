@@ -4,8 +4,8 @@ import * as React from "react";
 
 import { BellIcon, PlusIcon, SendIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
-import { DataLoadStatus } from "@/components/data-load-status";
 
+import { DataLoadStatus } from "@/components/data-load-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -265,12 +265,13 @@ export default function NotifyPage() {
   const secretKeys = new Set(meta?.kinds.find((k) => k.kind === form.kind)?.secret_keys ?? []);
   const defaultRate = meta?.kinds.find((k) => k.kind === form.kind)?.default_rate_per_min ?? 0;
 
-  if (!loaded) return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold tracking-tight">알림 전송</h1>
-      <DataLoadStatus loading={loading} error={loadError} label="알림 설정 및 채널 불러오기" onRetry={load} />
-    </div>
-  );
+  if (!loaded)
+    return (
+      <div className="space-y-4">
+        <h1 className="text-xl font-semibold tracking-tight">알림 전송</h1>
+        <DataLoadStatus loading={loading} error={loadError} label="알림 설정 및 채널 불러오기" onRetry={load} />
+      </div>
+    );
 
   return (
     <div className="flex flex-1 flex-col gap-4 md:gap-6">
@@ -279,7 +280,8 @@ export default function NotifyPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">알림 전송</h1>
           <p className="text-muted-foreground text-sm">
-            취약점 발견 시 DingTalk / Feishu / WeCom 등의 채널로 전송합니다. 채널마다 전송 시점과 필터를 설정할 수 있습니다
+            취약점 발견 시 DingTalk / Feishu / WeCom 등의 채널로 전송합니다. 채널마다 전송 시점과 필터를 설정할 수
+            있습니다
           </p>
         </div>
         {meta && (
@@ -326,7 +328,9 @@ export default function NotifyPage() {
               value={baseURL}
               onChange={(e) => setBaseURL(e.target.value)}
             />
-            <p className="text-muted-foreground text-xs">메시지의 「상세 보기」 버튼이 연결할 주소입니다. 비워두면 버튼을 표시하지 않습니다.</p>
+            <p className="text-muted-foreground text-xs">
+              메시지의 「상세 보기」 버튼이 연결할 주소입니다. 비워두면 버튼을 표시하지 않습니다.
+            </p>
           </div>
           <div className="grid gap-2">
             <Label htmlFor="n-digest">요약 주기(분)</Label>
@@ -499,7 +503,8 @@ export default function NotifyPage() {
                   </SelectContent>
                 </Select>
                 <p className="text-muted-foreground text-xs">
-                  높음 등급은 실시간으로 받고 나머지는 요약하려면 두 채널을 만드세요. 하나는 실시간 + 높음 이상, 다른 하나는 요약 + 등급 제한 없음으로 설정합니다.
+                  높음 등급은 실시간으로 받고 나머지는 요약하려면 두 채널을 만드세요. 하나는 실시간 + 높음 이상, 다른
+                  하나는 요약 + 등급 제한 없음으로 설정합니다.
                 </p>
               </div>
 
@@ -514,7 +519,8 @@ export default function NotifyPage() {
                   onChange={(e) => setF({ ratePerMin: e.target.value })}
                 />
                 <p className="text-muted-foreground text-xs">
-                  비워두면 채널 기본값을 사용합니다. 0은 제한 없음입니다. 상한을 넘은 메시지도 삭제하지 않고 전송만 지연합니다.
+                  비워두면 채널 기본값을 사용합니다. 0은 제한 없음입니다. 상한을 넘은 메시지도 삭제하지 않고 전송만
+                  지연합니다.
                 </p>
               </div>
 
@@ -548,7 +554,8 @@ export default function NotifyPage() {
                       onChange={(e) => setF({ includeText: e.target.value })}
                     />
                     <p className="text-muted-foreground text-xs">
-                      한 줄에 키워드 하나씩 입력하세요. 대소문자를 구분하지 않고 부분 일치로 검사합니다. 비워두면 모든 유형을 포함합니다.
+                      한 줄에 키워드 하나씩 입력하세요. 대소문자를 구분하지 않고 부분 일치로 검사합니다. 비워두면 모든
+                      유형을 포함합니다.
                     </p>
                   </div>
                   <div className="grid gap-2">
@@ -559,7 +566,9 @@ export default function NotifyPage() {
                       value={form.excludeText}
                       onChange={(e) => setF({ excludeText: e.target.value })}
                     />
-                    <p className="text-muted-foreground text-xs">제외 조건이 우선합니다. 포함과 제외에 모두 일치하면 제외합니다.</p>
+                    <p className="text-muted-foreground text-xs">
+                      제외 조건이 우선합니다. 포함과 제외에 모두 일치하면 제외합니다.
+                    </p>
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="n-tasks">작업 ID 제한</Label>
@@ -578,7 +587,9 @@ export default function NotifyPage() {
                       value={form.assetIDsText}
                       onChange={(e) => setF({ assetIDsText: e.target.value })}
                     />
-                    <p className="text-muted-foreground text-xs">작업과 자산을 비워두면 제한하지 않습니다. 입력하면 취약점과 연결된 항목이 있어야 합니다.</p>
+                    <p className="text-muted-foreground text-xs">
+                      작업과 자산을 비워두면 제한하지 않습니다. 입력하면 취약점과 연결된 항목이 있어야 합니다.
+                    </p>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
                     <Switch
@@ -592,8 +603,8 @@ export default function NotifyPage() {
               </div>
 
               <div className="flex items-center gap-2 text-sm">
-                <Switch checked={form.enabled} onCheckedChange={(v) => setF({ enabled: v })} aria-label="활성화" />
-                이 채널 활성화
+                <Switch checked={form.enabled} onCheckedChange={(v) => setF({ enabled: v })} aria-label="활성화" />이
+                채널 활성화
               </div>
             </div>
 

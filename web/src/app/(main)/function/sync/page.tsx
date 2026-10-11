@@ -1,11 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { DataLoadStatus } from "@/components/data-load-status";
 
 import { AlertCircleIcon, CheckCircle2Icon, DownloadIcon, PlugZapIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import { DataLoadStatus } from "@/components/data-load-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -57,7 +57,10 @@ function ScopeSentryPanel() {
     api
       .ssStatus()
       .then(setStatus)
-      .catch((e: Error) => { setStatus(null); setStatusError(e.message); })
+      .catch((e: Error) => {
+        setStatus(null);
+        setStatusError(e.message);
+      })
       .finally(() => setLoadingStatus(false));
   }, []);
 
@@ -261,16 +264,26 @@ function SyncWorkbench() {
     setLoading(true);
     setLoadError("");
     setSelected(new Set());
-    const fn = dimension === "project"
-      ? api.ssProjects(page, 50, search).then((r) => { if (request === listRequest.current) setProjects(r.projects); })
-      : api.ssTasks(page, 50, search).then((r) => { if (request === listRequest.current) setTasks(r); });
-    fn.catch((error: Error) => { if (request === listRequest.current) setLoadError(error.message); })
-      .finally(() => { if (request === listRequest.current) setLoading(false); });
+    const fn =
+      dimension === "project"
+        ? api.ssProjects(page, 50, search).then((r) => {
+            if (request === listRequest.current) setProjects(r.projects);
+          })
+        : api.ssTasks(page, 50, search).then((r) => {
+            if (request === listRequest.current) setTasks(r);
+          });
+    fn.catch((error: Error) => {
+      if (request === listRequest.current) setLoadError(error.message);
+    }).finally(() => {
+      if (request === listRequest.current) setLoading(false);
+    });
   }, [dimension, page, search]);
 
   React.useEffect(() => {
     load();
-    return () => { listRequest.current++; };
+    return () => {
+      listRequest.current++;
+    };
   }, [load]);
 
   const rows = dimension === "project" ? projects : tasks;
@@ -337,7 +350,11 @@ function SyncWorkbench() {
       return projects.map((p) => (
         <TableRow key={p.id} className="cursor-pointer" onClick={() => toggle(p.id)}>
           <TableCell onClick={(e) => e.stopPropagation()}>
-            <Checkbox aria-label={`${p.name} 프로젝트 선택`} checked={selected.has(p.id)} onCheckedChange={() => toggle(p.id)} />
+            <Checkbox
+              aria-label={`${p.name} 프로젝트 선택`}
+              checked={selected.has(p.id)}
+              onCheckedChange={() => toggle(p.id)}
+            />
           </TableCell>
           <TableCell className="font-medium">{p.name}</TableCell>
           <TableCell>{p.tag ? <Badge variant="secondary">{p.tag}</Badge> : "—"}</TableCell>
@@ -348,7 +365,11 @@ function SyncWorkbench() {
     return tasks.map((t) => (
       <TableRow key={t.id} className="cursor-pointer" onClick={() => toggle(t.name)}>
         <TableCell onClick={(e) => e.stopPropagation()}>
-          <Checkbox aria-label={`${t.name} 작업 선택`} checked={selected.has(t.name)} onCheckedChange={() => toggle(t.name)} />
+          <Checkbox
+            aria-label={`${t.name} 작업 선택`}
+            checked={selected.has(t.name)}
+            onCheckedChange={() => toggle(t.name)}
+          />
         </TableCell>
         <TableCell className="font-medium">{t.name}</TableCell>
         <TableCell>
@@ -436,7 +457,12 @@ function SyncWorkbench() {
           <TableHeader>
             <TableRow>
               <TableHead className="w-10">
-                <Checkbox aria-label="현재 동기화 대상 전체 선택" disabled={loading || !!loadError} checked={rows.length > 0 && selected.size === rows.length} onCheckedChange={toggleAll} />
+                <Checkbox
+                  aria-label="현재 동기화 대상 전체 선택"
+                  disabled={loading || !!loadError}
+                  checked={rows.length > 0 && selected.size === rows.length}
+                  onCheckedChange={toggleAll}
+                />
               </TableHead>
               <TableHead>{dimension === "project" ? "프로젝트 이름" : "작업 이름"}</TableHead>
               {dimension === "project" ? (

@@ -15,8 +15,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
 import { DataLoadStatus } from "@/components/data-load-status";
+import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -76,13 +76,20 @@ export default function WorkspacePage() {
         setEntries(r.entries);
         setPath(r.path);
       })
-      .catch((e: Error) => { if (request === listRequest.current) setLoadError(e.message); })
-      .finally(() => { if (request === listRequest.current) setLoading(false); });
+      .catch((e: Error) => {
+        if (request === listRequest.current) setLoadError(e.message);
+      })
+      .finally(() => {
+        if (request === listRequest.current) setLoading(false);
+      });
   }, []);
 
   React.useEffect(() => {
     load("");
-    return () => { listRequest.current++; fileRequest.current++; };
+    return () => {
+      listRequest.current++;
+      fileRequest.current++;
+    };
   }, [load]);
 
   const crumbs = React.useMemo(() => {
@@ -100,8 +107,13 @@ export default function WorkspacePage() {
     const request = ++fileRequest.current;
     api
       .workspaceRead(e.path)
-      .then((f) => { if (request === fileRequest.current) setEdit({ file: f, content: f.content ?? "", dirty: false, saving: false }); })
-      .catch((err) => { if (request === fileRequest.current) toast.error(`파일 열기 실패: ${(err as Error).message}`); });
+      .then((f) => {
+        if (request === fileRequest.current)
+          setEdit({ file: f, content: f.content ?? "", dirty: false, saving: false });
+      })
+      .catch((err) => {
+        if (request === fileRequest.current) toast.error(`파일 열기 실패: ${(err as Error).message}`);
+      });
   };
 
   const saveFile = () => {
@@ -112,7 +124,9 @@ export default function WorkspacePage() {
       .workspaceWrite(edit.file.path, edit.content)
       .then(() => {
         toast.success("저장되었습니다");
-        setEdit((cur) => (cur?.file === submitted.file ? { ...cur, dirty: cur.content !== submitted.content, saving: false } : cur));
+        setEdit((cur) =>
+          cur?.file === submitted.file ? { ...cur, dirty: cur.content !== submitted.content, saving: false } : cur,
+        );
         load(currentPath.current);
       })
       .catch((err) => {
@@ -195,114 +209,121 @@ export default function WorkspacePage() {
       </div>
 
       <DataLoadStatus loading={loading} error={loadError} label="작업 파일 불러오기" onRetry={() => load(failedPath)} />
-      {!loadError && <div className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <nav aria-label="현재 폴더" className="flex min-w-0 items-center gap-1 text-sm">
-            <HardDriveIcon aria-hidden="true" className="text-muted-foreground mr-1 size-4 shrink-0" />
-            {crumbs.map((c, i) => (
-              <React.Fragment key={c.path}>
-                {i > 0 && <span className="text-muted-foreground">/</span>}
-                <button
-                  type="button"
-                  onClick={() => load(c.path)}
-                  aria-current={i === crumbs.length - 1 ? "page" : undefined}
-                  className={cn(
-                    "max-w-[160px] truncate rounded px-1.5 py-0.5 hover:bg-accent",
-                    i === crumbs.length - 1 ? "text-foreground font-medium" : "text-muted-foreground",
-                  )}
-                >
-                  {c.name}
-                </button>
-              </React.Fragment>
-            ))}
-          </nav>
-          <span className="shrink-0 text-muted-foreground text-xs tabular-nums" aria-live="polite">
-            {loading ? "불러오는 중…" : `${entries.length}개 항목`}
-          </span>
-        </div>
-        <div className="rounded-[var(--radius)] bg-card text-card-foreground shadow-raised">
-          <Table aria-label="작업 파일" aria-busy={loading} className="table-fixed">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="px-4">이름</TableHead>
-                <TableHead className="w-28 px-4 text-right">크기</TableHead>
-                <TableHead className="w-44 px-4">수정 시각</TableHead>
-                <TableHead className="w-24 px-4 text-right">작업</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {entries.length === 0 && (
+      {!loadError && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <nav aria-label="현재 폴더" className="flex min-w-0 items-center gap-1 text-sm">
+              <HardDriveIcon aria-hidden="true" className="text-muted-foreground mr-1 size-4 shrink-0" />
+              {crumbs.map((c, i) => (
+                <React.Fragment key={c.path}>
+                  {i > 0 && <span className="text-muted-foreground">/</span>}
+                  <button
+                    type="button"
+                    onClick={() => load(c.path)}
+                    aria-current={i === crumbs.length - 1 ? "page" : undefined}
+                    className={cn(
+                      "max-w-[160px] truncate rounded px-1.5 py-0.5 hover:bg-accent",
+                      i === crumbs.length - 1 ? "text-foreground font-medium" : "text-muted-foreground",
+                    )}
+                  >
+                    {c.name}
+                  </button>
+                </React.Fragment>
+              ))}
+            </nav>
+            <span className="shrink-0 text-muted-foreground text-xs tabular-nums" aria-live="polite">
+              {loading ? "불러오는 중…" : `${entries.length}개 항목`}
+            </span>
+          </div>
+          <div className="rounded-[var(--radius)] bg-card text-card-foreground shadow-raised">
+            <Table aria-label="작업 파일" aria-busy={loading} className="table-fixed">
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={4} className="text-muted-foreground py-10 text-center text-sm">
-                    {loading ? "불러오는 중…" : "빈 디렉터리"}
-                  </TableCell>
+                  <TableHead className="px-4">이름</TableHead>
+                  <TableHead className="w-28 px-4 text-right">크기</TableHead>
+                  <TableHead className="w-44 px-4">수정 시각</TableHead>
+                  <TableHead className="w-24 px-4 text-right">작업</TableHead>
                 </TableRow>
-              )}
-              {entries.map((e) => (
-                <TableRow key={e.path}>
-                  <TableCell className="px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => (e.dir ? load(e.path) : openFile(e))}
-                      title={e.name}
-                      className="flex w-full min-w-0 items-center gap-2 rounded-xs text-left outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      {e.dir ? (
-                        <FolderIcon aria-hidden="true" className="size-4 shrink-0 text-primary-text" />
-                      ) : (
-                        <FileIcon aria-hidden="true" className="text-muted-foreground size-4 shrink-0" />
-                      )}
-                      <span className="min-w-0 truncate text-sm">{e.name}</span>
-                    </button>
-                  </TableCell>
-                  <TableCell className="px-4 text-muted-foreground text-right text-xs tabular-nums">
-                    {e.dir ? "—" : fmtSize(e.size)}
-                  </TableCell>
-                  <TableCell className="px-4 text-muted-foreground text-xs tabular-nums">{fmtTime(e.mtime)}</TableCell>
-                  <TableCell className="px-4">
-                    <div className="flex items-center justify-end gap-1">
-                      {!e.dir && (
+              </TableHeader>
+              <TableBody>
+                {entries.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-muted-foreground py-10 text-center text-sm">
+                      {loading ? "불러오는 중…" : "빈 디렉터리"}
+                    </TableCell>
+                  </TableRow>
+                )}
+                {entries.map((e) => (
+                  <TableRow key={e.path}>
+                    <TableCell className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => (e.dir ? load(e.path) : openFile(e))}
+                        title={e.name}
+                        className="flex w-full min-w-0 items-center gap-2 rounded-xs text-left outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {e.dir ? (
+                          <FolderIcon aria-hidden="true" className="size-4 shrink-0 text-primary-text" />
+                        ) : (
+                          <FileIcon aria-hidden="true" className="text-muted-foreground size-4 shrink-0" />
+                        )}
+                        <span className="min-w-0 truncate text-sm">{e.name}</span>
+                      </button>
+                    </TableCell>
+                    <TableCell className="px-4 text-muted-foreground text-right text-xs tabular-nums">
+                      {e.dir ? "—" : fmtSize(e.size)}
+                    </TableCell>
+                    <TableCell className="px-4 text-muted-foreground text-xs tabular-nums">
+                      {fmtTime(e.mtime)}
+                    </TableCell>
+                    <TableCell className="px-4">
+                      <div className="flex items-center justify-end gap-1">
+                        {!e.dir && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7"
+                            title="다운로드"
+                            aria-label={`${e.name} 다운로드`}
+                            onClick={() =>
+                              api
+                                .workspaceDownload(e.path)
+                                .catch((err) => toast.error(`다운로드 실패:${(err as Error).message}`))
+                            }
+                          >
+                            <DownloadIcon className="size-3.5" />
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="size-7"
-                          title="다운로드"
-                          aria-label={`${e.name} 다운로드`}
-                          onClick={() =>
-                            api
-                              .workspaceDownload(e.path)
-                              .catch((err) => toast.error(`다운로드 실패:${(err as Error).message}`))
-                          }
+                          className="text-destructive size-7"
+                          title="삭제"
+                          aria-label={`${e.name} 삭제`}
+                          onClick={() => del(e)}
                         >
-                          <DownloadIcon className="size-3.5" />
+                          <Trash2Icon className="size-3.5" />
                         </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-destructive size-7"
-                        title="삭제"
-                        aria-label={`${e.name} 삭제`}
-                        onClick={() => del(e)}
-                      >
-                        <Trash2Icon className="size-3.5" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </div>
-      </div>}
+      )}
 
       {/* 文件查看 / 编辑 */}
-      <Sheet open={edit !== null} onOpenChange={(open) => {
-        if (open || edit?.saving) return;
-        if (edit?.dirty && !window.confirm("저장되지 않은 파일 변경을 버리고 닫을까요?")) return;
-        fileRequest.current++;
-        setEdit(null);
-      }}>
+      <Sheet
+        open={edit !== null}
+        onOpenChange={(open) => {
+          if (open || edit?.saving) return;
+          if (edit?.dirty && !window.confirm("저장되지 않은 파일 변경을 버리고 닫을까요?")) return;
+          fileRequest.current++;
+          setEdit(null);
+        }}
+      >
         <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-2xl">
           {edit && (
             <>

@@ -172,7 +172,8 @@ function TaskLLMControl({ task, profiles, onUpdated }: { task: Task; profiles: L
             <CircleAlertIcon />
             <AlertTitle>설정 체인 할당량 소진</AlertTitle>
             <AlertDescription>
-              {task.llm_failover_reason ?? "선택한 모든 설정의 할당량이 부족합니다. 설정 체인을 저장하면 오류 상태를 재설정할 수 있습니다."}
+              {task.llm_failover_reason ??
+                "선택한 모든 설정의 할당량이 부족합니다. 설정 체인을 저장하면 오류 상태를 재설정할 수 있습니다."}
             </AlertDescription>
           </Alert>
         )}
@@ -303,7 +304,9 @@ function TaskDetailInner() {
   if (!task) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center">
-        <p className="text-muted-foreground">{loaded ? `작업 ${id}이(가) 삭제되었거나 보관되었거나 존재하지 않습니다` : "불러오는 중…"}</p>
+        <p className="text-muted-foreground">
+          {loaded ? `작업 ${id}이(가) 삭제되었거나 보관되었거나 존재하지 않습니다` : "불러오는 중…"}
+        </p>
         {loaded && (
           <Button asChild variant="outline">
             <Link href="/function/tasks">
@@ -319,7 +322,9 @@ function TaskDetailInner() {
   const terminal = ["done", "failed", "timeout"].includes(task.status);
   const archiveLifecycleEligible = terminal || paused || task.status === "paused";
   const canArchive = archiveLifecycleEligible && !task.archive_blocked_by_task_id;
-  let archiveDisabledReason = task.queued ? "대기열 작업은 먼저 일시 중지해야 합니다" : "실행 중 작업은 먼저 일시 중지해야 합니다";
+  let archiveDisabledReason = task.queued
+    ? "대기열 작업은 먼저 일시 중지해야 합니다"
+    : "실행 중 작업은 먼저 일시 중지해야 합니다";
   if (archiveLifecycleEligible && task.archive_blocked_by_task_id) {
     archiveDisabledReason = `작업이 보관되지 않은 작업 #${task.archive_blocked_by_task_id}을(를) 직접 상속합니다. 먼저 의존 작업을 보관하세요`;
   }
@@ -374,8 +379,8 @@ function TaskDetailInner() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>작업 보관 #{task.id}？</AlertDialogTitle>
                   <AlertDialogDescription>
-                    작업 그래프, 연결 기록, 전용 자산과 트래픽, 작업 파일 및 LLM
-                    기록이 콜드 스토리지로 압축됩니다. 보관 후 작업 목록의 「보관됨」 페이지에서 복원할 수 있습니다.
+                    작업 그래프, 연결 기록, 전용 자산과 트래픽, 작업 파일 및 LLM 기록이 콜드 스토리지로 압축됩니다. 보관
+                    후 작업 목록의 「보관됨」 페이지에서 복원할 수 있습니다.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

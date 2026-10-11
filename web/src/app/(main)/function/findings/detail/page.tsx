@@ -10,7 +10,6 @@ import { toast } from "sonner";
 
 import { CopyButton } from "@/components/copy-button";
 import { DataLoadStatus } from "@/components/data-load-status";
-import { ApiError } from "@/lib/api-error";
 import { FindingRetestPanel } from "@/components/finding-retest-panel";
 import { FindingTrafficPanel } from "@/components/finding-traffic-panel";
 import { Markdown } from "@/components/markdown";
@@ -24,6 +23,7 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
+import { ApiError } from "@/lib/api-error";
 import { statusMeta } from "@/lib/status";
 import type { Finding, FindingStatus, Severity } from "@/lib/types";
 
@@ -84,17 +84,26 @@ function FindingDetailInner() {
     }
     api
       .getFinding(id, contextTaskId || undefined)
-      .then((f) => { if (request === requestNumber.current && currentSource.current === source) setFinding(f); })
+      .then((f) => {
+        if (request === requestNumber.current && currentSource.current === source) setFinding(f);
+      })
       .catch((error: Error) => {
         if (request !== requestNumber.current || currentSource.current !== source) return;
         setFinding(null);
         if (!(error instanceof ApiError && error.status === 404)) setLoadError(error.message);
       })
-      .finally(() => { if (request === requestNumber.current && currentSource.current === source) { setLoaded(true); setLoadedSource(source); } });
+      .finally(() => {
+        if (request === requestNumber.current && currentSource.current === source) {
+          setLoaded(true);
+          setLoadedSource(source);
+        }
+      });
   }, [contextTaskId, id, source]);
   React.useEffect(() => {
     load();
-    return () => { requestNumber.current++; };
+    return () => {
+      requestNumber.current++;
+    };
   }, [load]);
 
   const changeSeverity = React.useCallback(
@@ -146,8 +155,15 @@ function FindingDetailInner() {
   if (!finding || loadedSource !== source) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center">
-        <DataLoadStatus loading={!loaded || loadedSource !== source} error={loadError} label="취약점 상세 불러오기" onRetry={load} />
-        {loaded && loadedSource === source && !loadError && <p className="text-muted-foreground">취약점 {id}을(를) 찾을 수 없습니다</p>}
+        <DataLoadStatus
+          loading={!loaded || loadedSource !== source}
+          error={loadError}
+          label="취약점 상세 불러오기"
+          onRetry={load}
+        />
+        {loaded && loadedSource === source && !loadError && (
+          <p className="text-muted-foreground">취약점 {id}을(를) 찾을 수 없습니다</p>
+        )}
         {loaded && (
           <Button asChild variant="outline">
             <Link href="/function/findings" aria-label="취약점 목록으로">
@@ -266,8 +282,16 @@ function FindingDetailInner() {
                   {finding.inherited ? (
                     <StatusBadge domain="severity" value={finding.severity} dot />
                   ) : (
-                    <Select value={finding.severity} disabled={saving} onValueChange={(v) => changeSeverity(v as Severity)}>
-                      <SelectTrigger aria-label="취약점 심각도" size="sm" className="h-7 w-auto border-none px-1 shadow-none focus-visible:ring-0">
+                    <Select
+                      value={finding.severity}
+                      disabled={saving}
+                      onValueChange={(v) => changeSeverity(v as Severity)}
+                    >
+                      <SelectTrigger
+                        aria-label="취약점 심각도"
+                        size="sm"
+                        className="h-7 w-auto border-none px-1 shadow-none focus-visible:ring-0"
+                      >
                         <StatusBadge domain="severity" value={finding.severity} dot />
                       </SelectTrigger>
                       <SelectContent position="popper" align="end">
@@ -288,8 +312,16 @@ function FindingDetailInner() {
                   {finding.inherited ? (
                     <StatusBadge domain="finding" value={finding.status} dot />
                   ) : (
-                    <Select value={finding.status} disabled={saving} onValueChange={(v) => changeStatus(v as FindingStatus)}>
-                      <SelectTrigger aria-label="취약점 상태" size="sm" className="h-7 w-auto border-none px-1 shadow-none focus-visible:ring-0">
+                    <Select
+                      value={finding.status}
+                      disabled={saving}
+                      onValueChange={(v) => changeStatus(v as FindingStatus)}
+                    >
+                      <SelectTrigger
+                        aria-label="취약점 상태"
+                        size="sm"
+                        className="h-7 w-auto border-none px-1 shadow-none focus-visible:ring-0"
+                      >
                         <StatusBadge domain="finding" value={finding.status} dot />
                       </SelectTrigger>
                       <SelectContent position="popper" align="end">

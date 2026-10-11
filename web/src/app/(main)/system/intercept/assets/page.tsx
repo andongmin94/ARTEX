@@ -1,11 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { DataLoadStatus } from "@/components/data-load-status";
 
 import { BanIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 
+import { DataLoadStatus } from "@/components/data-load-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -193,24 +193,28 @@ export default function AssetInterceptPage() {
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
-          도메인 / IP / URL의 완전·부분 일치와 CIDR 대역을 지원합니다. 기본 규칙은 정부(.gov / .gov.cn) 및 교육(.edu / .edu.cn) 도메인을 부분 일치로 차단합니다.
+          도메인 / IP / URL의 완전·부분 일치와 CIDR 대역을 지원합니다. 기본 규칙은 정부(.gov / .gov.cn) 및 교육(.edu /
+          .edu.cn) 도메인을 부분 일치로 차단합니다.
         </p>
         <Button onClick={openNew} size="sm" className="shrink-0">
-          <PlusIcon className="h-4 w-4" />
-          새 규칙
+          <PlusIcon className="h-4 w-4" />새 규칙
         </Button>
       </div>
 
       <Card>
         <CardContent className="p-0">
-          <DataLoadStatus loading={loading} error={loadError} label="자산 차단 규칙 불러오기" onRetry={() => void load()} />
+          <DataLoadStatus
+            loading={loading}
+            error={loadError}
+            label="자산 차단 규칙 불러오기"
+            onRetry={() => void load()}
+          />
           {rules.length === 0 && (loading || loadError) ? null : rules.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
               <BanIcon className="h-8 w-8 text-muted-foreground/40" />
               <p className="text-sm text-muted-foreground">자산 차단 규칙 없음</p>
               <Button size="sm" variant="outline" onClick={openNew}>
-                <PlusIcon className="h-4 w-4" />
-                첫 규칙 만들기
+                <PlusIcon className="h-4 w-4" />첫 규칙 만들기
               </Button>
             </div>
           ) : (
@@ -246,14 +250,25 @@ export default function AssetInterceptPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-center">
-                      <Switch aria-label={`규칙 ${rule.pattern} 활성화`} checked={rule.enabled} onCheckedChange={() => handleToggle(rule)} />
+                      <Switch
+                        aria-label={`규칙 ${rule.pattern} 활성화`}
+                        checked={rule.enabled}
+                        onCheckedChange={() => handleToggle(rule)}
+                      />
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-end gap-0.5">
-                        <Button aria-label="규칙 편집" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(rule)}>
+                        <Button
+                          aria-label="규칙 편집"
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={() => openEdit(rule)}
+                        >
                           <PencilIcon className="h-3.5 w-3.5" />
                         </Button>
-                        <Button aria-label="삭제"
+                        <Button
+                          aria-label="삭제"
                           size="icon"
                           variant="ghost"
                           className="h-7 w-7 text-destructive hover:text-destructive"

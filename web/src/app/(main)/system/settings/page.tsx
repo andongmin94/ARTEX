@@ -1,11 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { DataLoadStatus } from "@/components/data-load-status";
 
 import { CpuIcon, FlaskConicalIcon, KeyboardIcon, RadioTowerIcon, SearchIcon, ShieldAlertIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import { DataLoadStatus } from "@/components/data-load-status";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,8 +17,8 @@ import { CHAT_SEND_MODE_OPTIONS, type ChatSendMode, setChatSendMode, useChatSend
 import type { Settings } from "@/lib/types";
 
 import { BackupCard } from "./_components/backup-card";
-import { UpdateCard } from "./_components/update-card";
 import { RuntimeToolsCard } from "./_components/runtime-tools-card";
+import { UpdateCard } from "./_components/update-card";
 
 export default function SystemSettingsPage() {
   const [trafficCapture, setTrafficCapture] = React.useState(false);

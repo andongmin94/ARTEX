@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
+
 import { DataLoadStatus } from "@/components/data-load-status";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { http, sseUrl } from "@/lib/api";
 import { MOCK } from "@/lib/mock/enabled";
 import type { LogLine } from "@/lib/types";

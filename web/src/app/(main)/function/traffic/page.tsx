@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { DataLoadStatus } from "@/components/data-load-status";
 
 import {
   ArrowDownWideNarrowIcon,
@@ -18,6 +17,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { DataLoadStatus } from "@/components/data-load-status";
 import { HttpCodeBlock } from "@/components/http-code-block";
 import { LinkTrafficDialog } from "@/components/link-traffic-dialog";
 import {

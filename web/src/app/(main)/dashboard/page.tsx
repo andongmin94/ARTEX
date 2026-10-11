@@ -16,10 +16,10 @@ import {
 } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
-import { StatusBadge } from "@/components/status-badge";
 import { DataLoadStatus } from "@/components/data-load-status";
+import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Progress } from "@/components/ui/progress";
 import { api } from "@/lib/api";
@@ -510,12 +510,13 @@ export default function DashboardPage() {
     setSourceErrors({ tasks: "", fast: "", slow: "" });
     setReloadVersion((current) => current + 1);
   };
-  if (!dataLoaded) return (
-    <div className="space-y-4">
-      <h1 className="text-lg font-semibold tracking-tight">대시보드</h1>
-      <DataLoadStatus loading={!loadError} error={loadError} label="대시보드 데이터 불러오기" onRetry={retry} />
-    </div>
-  );
+  if (!dataLoaded)
+    return (
+      <div className="space-y-4">
+        <h1 className="text-lg font-semibold tracking-tight">대시보드</h1>
+        <DataLoadStatus loading={!loadError} error={loadError} label="대시보드 데이터 불러오기" onRetry={retry} />
+      </div>
+    );
 
   return (
     <div className="flex flex-1 flex-col gap-4 pb-6">

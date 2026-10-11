@@ -14,8 +14,8 @@ import {
   ZapIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import { DataLoadStatus } from "@/components/data-load-status";
 
+import { DataLoadStatus } from "@/components/data-load-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -187,7 +187,9 @@ function PoolSheet({
           <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
             <div className="grid gap-0.5">
               <Label className="text-sm">폴백 체인 사용</Label>
-              <p className="text-muted-foreground text-xs">기본값은 꺼짐입니다. 끄면 활성 설정만 사용하며 실패 시 그대로 실패 처리합니다.</p>
+              <p className="text-muted-foreground text-xs">
+                기본값은 꺼짐입니다. 끄면 활성 설정만 사용하며 실패 시 그대로 실패 처리합니다.
+              </p>
             </div>
             <Switch
               checked={enabled}
@@ -203,7 +205,8 @@ function PoolSheet({
                 <div className="grid gap-0.5">
                   <Label className="text-sm">지정 모델 실패 시에도 폴백</Label>
                   <p className="text-muted-foreground text-xs">
-                    기본값은 꺼짐입니다. 에이전트나 작업에서 지정한 설정만 사용하며 실패하더라도 다른 모델로 바꾸지 않습니다. 활성화하면 지정 설정이 실패할 때 아래 폴백 체인을 사용합니다.
+                    기본값은 꺼짐입니다. 에이전트나 작업에서 지정한 설정만 사용하며 실패하더라도 다른 모델로 바꾸지
+                    않습니다. 활성화하면 지정 설정이 실패할 때 아래 폴백 체인을 사용합니다.
                   </p>
                 </div>
                 <Switch
@@ -227,7 +230,8 @@ function PoolSheet({
                 </div>
                 {inChain.length < 2 && (
                   <p className="text-muted-foreground text-xs">
-                    현재 사용 가능한 설정이 {inChain.length}개뿐이라 폴백 체인이 동작하지 않습니다. API Key가 있고 폴백에 참여하는 설정이 최소 2개 필요합니다.
+                    현재 사용 가능한 설정이 {inChain.length}개뿐이라 폴백 체인이 동작하지 않습니다. API Key가 있고
+                    폴백에 참여하는 설정이 최소 2개 필요합니다.
                   </p>
                 )}
                 {chain.map((m) => {
@@ -255,7 +259,9 @@ function PoolSheet({
                         {excluded && <Badge variant="outline">폴백 제외</Badge>}
                         <div className="ml-auto flex items-center gap-2">
                           {m.state === "tripped" && m.cooldown_secs > 0 && (
-                            <span className="text-muted-foreground text-xs">쿨다운 {cooldownText(m.cooldown_secs)}</span>
+                            <span className="text-muted-foreground text-xs">
+                              쿨다운 {cooldownText(m.cooldown_secs)}
+                            </span>
                           )}
                           {m.state === "degraded" && (
                             <span className="text-muted-foreground text-xs">연속 실패 {m.fails}회</span>
@@ -294,7 +300,9 @@ function PoolSheet({
               </div>
 
               <div className="rounded-lg border border-dashed p-3 text-muted-foreground text-xs leading-relaxed">
-                활성 설정은 항상 1순위이며 나머지는 우선순위가 높은 순서로 사용합니다. 실패한 설정은 60초 → 5분 → 30분의 쿨다운 동안 건너뛰며 복구 후 다시 사용합니다. 현재 요청을 수용하지 못하는 컨텍스트 윈도우의 설정도 건너뜁니다. 특정 모델을 지정한 에이전트와 작업은 기본적으로 폴백에 참여하지 않습니다.
+                활성 설정은 항상 1순위이며 나머지는 우선순위가 높은 순서로 사용합니다. 실패한 설정은 60초 → 5분 → 30분의
+                쿨다운 동안 건너뛰며 복구 후 다시 사용합니다. 현재 요청을 수용하지 못하는 컨텍스트 윈도우의 설정도
+                건너뜁니다. 특정 모델을 지정한 에이전트와 작업은 기본적으로 폴백에 참여하지 않습니다.
               </div>
             </>
           )}
@@ -457,7 +465,10 @@ function ProfileSheet({
         retry,
       });
       if (isNew) toast.success(`생성됨:${name.trim()}(카드에서 「활성으로 설정」을 눌러 사용하세요)`);
-      else toast.success(profile?.is_default ? "저장되었습니다. 활성 설정은 재시작 없이 즉시 적용됩니다" : "저장되었습니다");
+      else
+        toast.success(
+          profile?.is_default ? "저장되었습니다. 활성 설정은 재시작 없이 즉시 적용됩니다" : "저장되었습니다",
+        );
       onSaved(String(id));
       onOpenChange(false);
     } catch (e) {
@@ -493,12 +504,7 @@ function ProfileSheet({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="p-name">이름</Label>
-              <Input
-                id="p-name"
-                placeholder="예: OpenAI 운영"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
+              <Input id="p-name" placeholder="예: OpenAI 운영" value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div className="grid gap-2">
               <Label>형식</Label>
@@ -583,8 +589,9 @@ function ProfileSheet({
               onChange={(e) => setProxy(e.target.value)}
             />
             <p className="text-muted-foreground text-xs">
-              LLM 외부 요청만 이 프록시를 사용합니다. http/https/socks5를 지원하며 계정과 비밀번호를 포함할 수 있습니다(예:
-              socks5://user:pass@host:port, 비밀번호에 특수문자가 있으면 URL 인코딩 필요). 비워두면 프록시 없이 직접 연결합니다.
+              LLM 외부 요청만 이 프록시를 사용합니다. http/https/socks5를 지원하며 계정과 비밀번호를 포함할 수
+              있습니다(예: socks5://user:pass@host:port, 비밀번호에 특수문자가 있으면 URL 인코딩 필요). 비워두면 프록시
+              없이 직접 연결합니다.
             </p>
           </div>
 
@@ -598,9 +605,10 @@ function ProfileSheet({
               onChange={(e) => setSessionHeaderKey(e.target.value)}
             />
             <p className="text-muted-foreground text-xs">
-              헤더 이름을 입력하면 모든 요청에 이 HTTP 헤더가 추가되며 값은 자동으로 <b>현재 세션의 session id</b>(chat 세션 예:
-              conv-12, worker 예:exp3-worker-i87). session-id 헤더 기반 프롬프트 캐시 /
-              스티키 라우팅 게이트웨이에 사용합니다. 같은 세션은 여러 라운드 동안 동일하고 서로 다른 세션은 구분됩니다. 비워두면 전송하지 않습니다.
+              헤더 이름을 입력하면 모든 요청에 이 HTTP 헤더가 추가되며 값은 자동으로 <b>현재 세션의 session id</b>(chat
+              세션 예: conv-12, worker 예:exp3-worker-i87). session-id 헤더 기반 프롬프트 캐시 / 스티키 라우팅
+              게이트웨이에 사용합니다. 같은 세션은 여러 라운드 동안 동일하고 서로 다른 세션은 구분됩니다. 비워두면
+              전송하지 않습니다.
             </p>
           </div>
 
@@ -649,7 +657,8 @@ function ProfileSheet({
                   폴백 우선순위
                 </Label>
                 <p className="text-muted-foreground text-xs">
-                  숫자가 클수록 먼저 선택합니다. 활성 설정은 이 값과 관계없이 항상 1순위입니다. 우선순위가 같은 설정은 번갈아 사용하여 할당량을 분산합니다.
+                  숫자가 클수록 먼저 선택합니다. 활성 설정은 이 값과 관계없이 항상 1순위입니다. 우선순위가 같은 설정은
+                  번갈아 사용하여 할당량을 분산합니다.
                 </p>
               </div>
               <Input
@@ -664,7 +673,8 @@ function ProfileSheet({
               <div className="grid gap-0.5">
                 <Label className="text-sm">폴백 제외</Label>
                 <p className="text-muted-foreground text-xs">
-                  활성화하면 장애 조치 대상으로 사용하지 않습니다. 에이전트나 작업에서 명시적으로 지정할 수는 있습니다. 특정 에이전트 전용으로 사용할 고비용 설정에 적합합니다.
+                  활성화하면 장애 조치 대상으로 사용하지 않습니다. 에이전트나 작업에서 명시적으로 지정할 수는 있습니다.
+                  특정 에이전트 전용으로 사용할 고비용 설정에 적합합니다.
                 </p>
               </div>
               <Switch checked={poolExclude} onCheckedChange={setPoolExclude} aria-label="폴백 제외" />
@@ -673,7 +683,9 @@ function ProfileSheet({
               <div className="grid gap-0.5">
                 <Label className="text-sm">스트리밍 출력 · streaming</Label>
                 <p className="text-muted-foreground text-xs">
-                  활성화(기본)하면 SSE 스트리밍으로 실시간 진행과 토큰 수를 표시합니다. 끄면 stream:false로 전체 응답을 한 번에 받습니다. 일부 게이트웨이의 빈 프레임이나 추론 필드 손실을 피할 수 있지만 실행 중 실시간 진행은 볼 수 없습니다.
+                  활성화(기본)하면 SSE 스트리밍으로 실시간 진행과 토큰 수를 표시합니다. 끄면 stream:false로 전체 응답을
+                  한 번에 받습니다. 일부 게이트웨이의 빈 프레임이나 추론 필드 손실을 피할 수 있지만 실행 중 실시간
+                  진행은 볼 수 없습니다.
                 </p>
               </div>
               <Switch checked={streaming} onCheckedChange={setStreaming} aria-label="스트리밍 출력" />
@@ -687,7 +699,9 @@ function ProfileSheet({
                   출력 상한 · max tokens
                 </Label>
                 <p className="text-muted-foreground text-xs">
-                  한 번의 응답에서 생성할 최대 토큰 수입니다. 0(기본)이면 필드를 보내지 않고 서버 기본값을 사용합니다. 「컨텍스트 윈도우」는 모델 전체 용량과 로컬 압축 임계값 계산용으로, 이 값과 다릅니다. 출력 상한이 너무 작으면 추론 단계에서 잘려 답변이 생성되지 않을 수 있습니다.
+                  한 번의 응답에서 생성할 최대 토큰 수입니다. 0(기본)이면 필드를 보내지 않고 서버 기본값을 사용합니다.
+                  「컨텍스트 윈도우」는 모델 전체 용량과 로컬 압축 임계값 계산용으로, 이 값과 다릅니다. 출력 상한이 너무
+                  작으면 추론 단계에서 잘려 답변이 생성되지 않을 수 있습니다.
                 </p>
               </div>
               <Input
@@ -729,7 +743,8 @@ function ProfileSheet({
               <div className="grid gap-0.5">
                 <Label className="text-sm">reasoning 스위치 · thinking.type</Label>
                 <p className="text-muted-foreground text-xs">
-                  thinking 필드 전송 여부를 제어합니다. 전송 안 함은 해당 필드를 생략하고, 끄기는 disabled, 켜기는 enabled를 전송합니다. 아래 강도 설정과 독립적입니다.
+                  thinking 필드 전송 여부를 제어합니다. 전송 안 함은 해당 필드를 생략하고, 끄기는 disabled, 켜기는
+                  enabled를 전송합니다. 아래 강도 설정과 독립적입니다.
                 </p>
               </div>
               <Select value={thinkingType} onValueChange={setThinkingType}>
@@ -749,7 +764,8 @@ function ProfileSheet({
               <div className="grid gap-0.5">
                 <Label className="text-sm">reasoning 강도 · reasoning_effort</Label>
                 <p className="text-muted-foreground text-xs">
-                  독립적인 추론 강도 설정입니다(OpenAI reasoning_effort / Anthropic output_config.effort). 일부 API는 thinking 필드 없이 강도만으로 추론을 활성화하므로 스위치를 보내지 않고 별도로 설정할 수 있습니다.
+                  독립적인 추론 강도 설정입니다(OpenAI reasoning_effort / Anthropic output_config.effort). 일부 API는
+                  thinking 필드 없이 강도만으로 추론을 활성화하므로 스위치를 보내지 않고 별도로 설정할 수 있습니다.
                 </p>
               </div>
               <Select value={effort} onValueChange={setEffort}>
@@ -954,7 +970,9 @@ export default function LLMPage() {
                     </div>
 
                     {subscription ? (
-                      <p className="pl-6 text-muted-foreground text-xs">모델 변경은 ChatGPT 구독 카드에서 진행하세요.</p>
+                      <p className="pl-6 text-muted-foreground text-xs">
+                        모델 변경은 ChatGPT 구독 카드에서 진행하세요.
+                      </p>
                     ) : (
                       <div className="flex flex-wrap gap-x-3 gap-y-0.5 pl-6 text-muted-foreground text-xs">
                         {p.api_key_hint && <span>{p.api_key_hint}</span>}
@@ -977,7 +995,9 @@ export default function LLMPage() {
                         size="sm"
                         variant="outline"
                         className="flex-1"
-                        disabled={p.is_default || (subscription && !(chatGPTStatus?.connected && chatGPTStatus.sharing))}
+                        disabled={
+                          p.is_default || (subscription && !(chatGPTStatus?.connected && chatGPTStatus.sharing))
+                        }
                         onClick={(e) => {
                           e.stopPropagation();
                           void activate(p);

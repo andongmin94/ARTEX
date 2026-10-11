@@ -100,7 +100,12 @@ function ApprovalOrigin({ row, detail = false }: { row: InterceptApprovalRow; de
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const labels: Record<string, string> = { pending: "승인 대기", allowed: "허용됨", denied: "거부됨", timeout: "시간 초과" };
+  const labels: Record<string, string> = {
+    pending: "승인 대기",
+    allowed: "허용됨",
+    denied: "거부됨",
+    timeout: "시간 초과",
+  };
   let variant: "default" | "destructive" | "secondary" | "outline" = "outline";
   if (status === "allowed") variant = "default";
   if (status === "denied") variant = "destructive";
@@ -151,7 +156,9 @@ function CodeBlock({ label, text, truncated = false }: { label: string; text: st
       <pre className="max-h-80 min-w-0 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted/60 p-3 font-sans text-xs leading-6 [overflow-wrap:anywhere]">
         {text || "기록 없음"}
       </pre>
-      {truncated ? <p className="text-muted-foreground text-xs">내용이 잘렸습니다. 위에는 저장된 일부 내용만 표시됩니다.</p> : null}
+      {truncated ? (
+        <p className="text-muted-foreground text-xs">내용이 잘렸습니다. 위에는 저장된 일부 내용만 표시됩니다.</p>
+      ) : null}
     </section>
   );
 }
@@ -180,7 +187,8 @@ function ModelReviewContext({ input }: { input: InterceptReviewInput }) {
       <div className="flex flex-col gap-2">
         <h3 className="font-medium text-sm">모델 검토 컨텍스트</h3>
         <p className="text-muted-foreground text-xs">
-          아래는 이번에 검토 모델로 실제 전송된 입력 스냅샷입니다. 배경 정보는 현재 동작을 이해하기 위한 것이며 판정 기준은 검토 정책입니다.
+          아래는 이번에 검토 모델로 실제 전송된 입력 스냅샷입니다. 배경 정보는 현재 동작을 이해하기 위한 것이며 판정
+          기준은 검토 정책입니다.
           {input.version < 4 ? "이 기록은 이전 형식의 입력을 사용하며 당시 실제 전송 내용을 보존합니다." : null}
         </p>
       </div>
@@ -192,7 +200,11 @@ function ModelReviewContext({ input }: { input: InterceptReviewInput }) {
         input.background ? (
           <div className="flex min-w-0 flex-col gap-2">
             <CodeBlock
-              label={input.background.source === "user_message" ? "배경 · 사용자 메시지" : "배경 · Worker 의도 요약(이전 버전)"}
+              label={
+                input.background.source === "user_message"
+                  ? "배경 · 사용자 메시지"
+                  : "배경 · Worker 의도 요약(이전 버전)"
+              }
               text={input.background.text}
               truncated={input.background.truncated}
             />
@@ -208,7 +220,11 @@ function ModelReviewContext({ input }: { input: InterceptReviewInput }) {
       ) : (
         <>
           {input.turn_input ? (
-            <CodeBlock label="현재 라운드 입력(이전 버전)" text={input.turn_input} truncated={input.background_truncated} />
+            <CodeBlock
+              label="현재 라운드 입력(이전 버전)"
+              text={input.turn_input}
+              truncated={input.background_truncated}
+            />
           ) : null}
           {input.task ? (
             <>
@@ -218,7 +234,11 @@ function ModelReviewContext({ input }: { input: InterceptReviewInput }) {
             </>
           ) : null}
           {input.worker_intent ? (
-            <CodeBlock label="Worker 의도(이전 버전)" text={input.worker_intent} truncated={input.background_truncated} />
+            <CodeBlock
+              label="Worker 의도(이전 버전)"
+              text={input.worker_intent}
+              truncated={input.background_truncated}
+            />
           ) : null}
         </>
       )}
@@ -239,10 +259,14 @@ function ModelReviewContext({ input }: { input: InterceptReviewInput }) {
               </div>
             ))
           ) : (
-            <p className="text-muted-foreground text-xs">이번에는 연결 가능한 과거 도구 실행 기록이 제공되지 않았습니다.</p>
+            <p className="text-muted-foreground text-xs">
+              이번에는 연결 가능한 과거 도구 실행 기록이 제공되지 않았습니다.
+            </p>
           )}
           {input.history_truncated ? (
-            <p className="text-muted-foreground text-xs">과거 기록은 제한된 윈도우만 포함하며 일부 내용이 잘렸습니다.</p>
+            <p className="text-muted-foreground text-xs">
+              과거 기록은 제한된 윈도우만 포함하며 일부 내용이 잘렸습니다.
+            </p>
           ) : null}
         </div>
       )}
@@ -414,7 +438,9 @@ export function ApprovalDetail({
       {!detail && !error ? <Skeleton className="h-8 w-60" /> : null}
       {detail && !audit ? (
         <Alert>
-          <AlertDescription>승인 상세 스냅샷이 없어 당시 컨텍스트, 모델 초기 판정, 실행 출력을 복원할 수 없습니다.</AlertDescription>
+          <AlertDescription>
+            승인 상세 스냅샷이 없어 당시 컨텍스트, 모델 초기 판정, 실행 출력을 복원할 수 없습니다.
+          </AlertDescription>
         </Alert>
       ) : null}
       {audit ? (
@@ -460,10 +486,13 @@ export function ApprovalDetail({
                       <section className="flex min-w-0 flex-col gap-3">
                         <h3 className="font-medium text-muted-foreground text-xs">표시 가능한 세션 컨텍스트</h3>
                         <p className="text-muted-foreground text-xs">
-                          저장 시각: {fmtTime(audit.captured_at)} 에 저장된 세션 기록 일부입니다. 모델이 실제 사용한 내용은 「모델 검토 입력」을 기준으로 합니다.
+                          저장 시각: {fmtTime(audit.captured_at)} 에 저장된 세션 기록 일부입니다. 모델이 실제 사용한
+                          내용은 「모델 검토 입력」을 기준으로 합니다.
                         </p>
                         {audit.context_truncated ? (
-                          <p className="text-muted-foreground text-xs">최근 컨텍스트만 저장되며 일부 내용이 잘렸습니다.</p>
+                          <p className="text-muted-foreground text-xs">
+                            최근 컨텍스트만 저장되며 일부 내용이 잘렸습니다.
+                          </p>
                         ) : null}
                         {audit.context?.length ? (
                           audit.context.map((entry, index) => (
@@ -488,7 +517,9 @@ export function ApprovalDetail({
               />
               <CodeBlock
                 label="실행 출력"
-                text={audit.output ?? (audit.execution_status === "not_executed" ? "도구실행 안 함。" : "실행 출력 없음")}
+                text={
+                  audit.output ?? (audit.execution_status === "not_executed" ? "도구실행 안 함。" : "실행 출력 없음")
+                }
                 truncated={audit.output_truncated}
               />
               {audit.correlation !== "exact" ? (
@@ -681,7 +712,9 @@ export function ApprovalRecords({ taskId }: { taskId?: string }) {
         // filter. Older requests must remain actionable even when newer decisions
         // fill the page or a filter would hide them.
         const [history, pending] = await Promise.allSettled([
-          taskId ? api.interceptTaskPage(taskId, page, pageSize, filter) : api.interceptHistoryPage(page, pageSize, filter),
+          taskId
+            ? api.interceptTaskPage(taskId, page, pageSize, filter)
+            : api.interceptHistoryPage(page, pageSize, filter),
           api.interceptPending(),
         ]);
         if (id !== request.current) return;
@@ -789,8 +822,14 @@ export function ApprovalRecords({ taskId }: { taskId?: string }) {
           새로고침
         </Button>
       </div>
-      <p className="text-muted-foreground text-sm">기록을 펼쳐 도구 요청, 승인 판정, 당시 컨텍스트와 실행 결과를 확인하세요.</p>
-      {loading ? <p role="status" className="text-muted-foreground text-sm">승인 기록을 불러오는 중…</p> : null}
+      <p className="text-muted-foreground text-sm">
+        기록을 펼쳐 도구 요청, 승인 판정, 당시 컨텍스트와 실행 결과를 확인하세요.
+      </p>
+      {loading ? (
+        <p role="status" className="text-muted-foreground text-sm">
+          승인 기록을 불러오는 중…
+        </p>
+      ) : null}
       <FieldGroup className="flex-row flex-wrap items-end gap-3" aria-label="승인 기록 필터">
         <Field className="w-full sm:w-40">
           <FieldLabel htmlFor={`${filterID}-status`}>승인 상태</FieldLabel>
@@ -854,7 +893,9 @@ export function ApprovalRecords({ taskId }: { taskId?: string }) {
       ) : null}
       {pendingError ? (
         <Alert variant="destructive">
-          <AlertDescription>승인 대기 목록 불러오기 실패:{pendingError}. 새로고침하여 다시 시도하세요.</AlertDescription>
+          <AlertDescription>
+            승인 대기 목록 불러오기 실패:{pendingError}. 새로고침하여 다시 시도하세요.
+          </AlertDescription>
         </Alert>
       ) : null}
       {pending.length ? (

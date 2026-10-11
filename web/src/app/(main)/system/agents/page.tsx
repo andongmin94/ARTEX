@@ -1,30 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { toast } from "sonner";
-import { Bot, PlusIcon, Trash2Icon } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { Bot, PlusIcon, Trash2Icon } from "lucide-react";
+import { toast } from "sonner";
+
+import { AgentEditor } from "@/components/agent-editor";
+import { DataLoadStatus } from "@/components/data-load-status";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,23 +18,28 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { AgentEditor } from "@/components/agent-editor";
-import { DataLoadStatus } from "@/components/data-load-status";
+import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import type { Agent } from "@/lib/types";
 
 // AgentGridCard is one clickable tile opening the agent's editor drawer. Custom
 // (non-builtin) agents get a delete button.
-function AgentGridCard({
-  agent,
-  onOpen,
-  onDeleted,
-}: {
-  agent: Agent;
-  onOpen: () => void;
-  onDeleted: () => void;
-}) {
+function AgentGridCard({ agent, onOpen, onDeleted }: { agent: Agent; onOpen: () => void; onDeleted: () => void }) {
   async function del() {
     try {
       await api.deleteAgent(agent.key);
@@ -96,7 +83,8 @@ function AgentGridCard({
       {!agent.builtin && (
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button aria-label={`${agent.name} 삭제`}
+            <Button
+              aria-label={`${agent.name} 삭제`}
               variant="ghost"
               size="icon-sm"
               className="text-muted-foreground hover:text-destructive absolute top-2 right-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
@@ -160,7 +148,8 @@ function CreateAgentDialog({ onCreated }: { onCreated: (key: string) => void }) 
         <DialogHeader>
           <DialogTitle>사용자 정의 에이전트 생성</DialogTitle>
           <DialogDescription>
-            대화형 도우미를 생성합니다. key는 내부 식별자이며 생성 후 변경할 수 없습니다. 이름과 설명은 식별에 사용됩니다.
+            대화형 도우미를 생성합니다. key는 내부 식별자이며 생성 후 변경할 수 없습니다. 이름과 설명은 식별에
+            사용됩니다.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-2">
@@ -216,7 +205,10 @@ export default function AgentsPage() {
   const reload = React.useCallback(() => {
     setLoading(true);
     setLoadError("");
-    api.agents().then(setAgents).catch((error: Error) => setLoadError(error.message))
+    api
+      .agents()
+      .then(setAgents)
+      .catch((error: Error) => setLoadError(error.message))
       .finally(() => setLoading(false));
   }, []);
   React.useEffect(() => {
@@ -278,7 +270,9 @@ export default function AgentsPage() {
                     </Badge>
                   )}
                 </SheetTitle>
-                <SheetDescription>{editing.description || "프롬프트, 설정, 표시 리소스 및 도구 바인딩"}</SheetDescription>
+                <SheetDescription>
+                  {editing.description || "프롬프트, 설정, 표시 리소스 및 도구 바인딩"}
+                </SheetDescription>
               </SheetHeader>
               <AgentEditor agentKey={editing.key} onSaved={reload} />
             </>

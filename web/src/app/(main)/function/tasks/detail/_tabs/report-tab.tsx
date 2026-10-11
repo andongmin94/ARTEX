@@ -5,8 +5,8 @@ import * as React from "react";
 import { CheckIcon, CopyIcon, FileTextIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { Markdown } from "@/components/markdown";
 import { DataLoadStatus } from "@/components/data-load-status";
+import { Markdown } from "@/components/markdown";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
@@ -30,7 +30,10 @@ export function ReportTab({ taskId }: { taskId: string }) {
     api
       .report(taskId)
       .then((text) => {
-        if (active) { setReport(text); setLoadedTask(taskId); }
+        if (active) {
+          setReport(text);
+          setLoadedTask(taskId);
+        }
       })
       .catch((error: Error) => {
         if (active) setError(error.message);
@@ -57,7 +60,9 @@ export function ReportTab({ taskId }: { taskId: string }) {
 
   let content: React.ReactNode;
   if (error) {
-    content = <DataLoadStatus error={error} label="보고서 불러오기" onRetry={() => setRevision((value) => value + 1)} />;
+    content = (
+      <DataLoadStatus error={error} label="보고서 불러오기" onRetry={() => setRevision((value) => value + 1)} />
+    );
   } else if (loading || loadedTask !== taskId) {
     content = (
       <div className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed py-16 text-muted-foreground text-sm">

@@ -1,10 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { DataLoadStatus } from "@/components/data-load-status";
 
 import { BarChart3Icon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon, SearchIcon, TerminalIcon } from "lucide-react";
 
+import { DataLoadStatus } from "@/components/data-load-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -117,7 +117,9 @@ export default function CommandsPage() {
     api
       .commandStats({ task: taskFilter || undefined, q: queryQ || undefined })
       .then((r) => alive && setStats(r.stats ?? []))
-      .catch((error: Error) => { if (alive) setStatsError(error.message); })
+      .catch((error: Error) => {
+        if (alive) setStatsError(error.message);
+      })
       .finally(() => alive && setStatsLoading(false));
     return () => {
       alive = false;
@@ -181,7 +183,8 @@ export default function CommandsPage() {
           <span className="tabular-nums">
             {rangeStart}–{rangeEnd} / {total}
           </span>
-          <Button aria-label="이전 페이지"
+          <Button
+            aria-label="이전 페이지"
             variant="outline"
             size="icon"
             className="size-8"
@@ -193,7 +196,8 @@ export default function CommandsPage() {
           <span className="tabular-nums">
             {page + 1} / {totalPages}
           </span>
-          <Button aria-label="다음 페이지"
+          <Button
+            aria-label="다음 페이지"
             variant="outline"
             size="icon"
             className="size-8"
@@ -206,7 +210,12 @@ export default function CommandsPage() {
       </div>
 
       {/* History table */}
-      <DataLoadStatus loading={loading} error={loadError} label="도구 실행 기록 불러오기" onRetry={() => setRevision((value) => value + 1)} />
+      <DataLoadStatus
+        loading={loading}
+        error={loadError}
+        label="도구 실행 기록 불러오기"
+        onRetry={() => setRevision((value) => value + 1)}
+      />
       <div className="flex h-[calc(100vh-13rem)] min-h-0 flex-col">
         <Card className="flex min-h-0 flex-1 flex-col overflow-hidden py-0">
           <div className="min-h-0 flex-1 overflow-auto">
@@ -303,7 +312,11 @@ export default function CommandsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <DataLoadStatus error={statsError} label="도구 호출 통계 불러오기" onRetry={() => setRevision((value) => value + 1)} />
+          <DataLoadStatus
+            error={statsError}
+            label="도구 호출 통계 불러오기"
+            onRetry={() => setRevision((value) => value + 1)}
+          />
           {statsError ? null : statsLoading && stats.length === 0 ? (
             <div className="py-10 text-center">
               <Loader2Icon className="mx-auto h-5 w-5 animate-spin text-muted-foreground" />

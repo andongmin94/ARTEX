@@ -150,7 +150,9 @@ export function TaskLLMProfileChain({
                 <div className="min-w-0 sm:flex-1">
                   <p className="truncate font-medium text-sm">{profile?.name ?? `설정 #${id}`}</p>
                   <div className="flex min-w-0 items-center gap-2">
-                    <p className="truncate text-muted-foreground text-xs">{profile?.model ?? "더 이상 사용할 수 없는 설정"}</p>
+                    <p className="truncate text-muted-foreground text-xs">
+                      {profile?.model ?? "더 이상 사용할 수 없는 설정"}
+                    </p>
                   </div>
                 </div>
                 <ProfileRoleBadge index={index} currentIndex={currentIndex} />

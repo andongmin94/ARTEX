@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { DataLoadStatus } from "@/components/data-load-status";
 
 import {
   BuildingIcon,
@@ -20,6 +19,7 @@ import {
 import { toast } from "sonner";
 
 import { AssetDslSearch } from "@/components/asset-dsl-search";
+import { DataLoadStatus } from "@/components/data-load-status";
 import { ScopeTextEditor } from "@/components/scope-text-editor";
 import {
   AlertDialog,

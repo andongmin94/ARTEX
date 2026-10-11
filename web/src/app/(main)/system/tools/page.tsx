@@ -1,41 +1,24 @@
 "use client";
 
 import * as React from "react";
-import { toast } from "sonner";
-import { PlayIcon, PlusIcon, RotateCcwIcon, SaveIcon, SearchIcon, Trash2Icon } from "lucide-react";
 
+import { PlayIcon, PlusIcon, RotateCcwIcon, SaveIcon, SearchIcon, Trash2Icon } from "lucide-react";
+import { toast } from "sonner";
+
+import { DataLoadStatus } from "@/components/data-load-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
-import { DataLoadStatus } from "@/components/data-load-status";
 import type { Agent, Tool } from "@/lib/types";
 
 // Traffic tools are host tools gated by the global 流量捕获 switch: bindable, but
@@ -65,7 +48,8 @@ function toRows(schema: Record<string, any>): ParamRow[] {
     const type = String(p?.type ?? "");
     const hasDefault = p != null && "default" in p && (p as Record<string, unknown>).default != null;
     rows.push({
-      name, type,
+      name,
+      type,
       required: required.has(name),
       description: String(p?.description ?? ""),
       defaultStr: hasDefault ? String((p as Record<string, unknown>).default) : "",
@@ -82,7 +66,8 @@ function toRows(schema: Record<string, any>): ParamRow[] {
           const subType = String((subP as Record<string, unknown>)?.type ?? "");
           const subHasDefault = subP != null && "default" in subP && subP.default != null;
           rows.push({
-            name: subName, type: subType,
+            name: subName,
+            type: subType,
             required: itemRequired.has(subName),
             description: String(subP?.description ?? ""),
             defaultStr: subHasDefault ? String(subP.default) : "",
@@ -166,8 +151,7 @@ function ToolEditor({
 
   const setRow = (i: number, patch: Partial<ParamRow>) =>
     setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-  const toggleAgent = (k: string) =>
-    setBound((b) => (b.includes(k) ? b.filter((x) => x !== k) : [...b, k]));
+  const toggleAgent = (k: string) => setBound((b) => (b.includes(k) ? b.filter((x) => x !== k) : [...b, k]));
 
   async function save() {
     setSaving(true);
@@ -203,7 +187,8 @@ function ToolEditor({
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4">
         {trafficGated && (
           <div className="border-amber-500/40 bg-amber-500/10 text-muted-foreground rounded-md border px-3 py-2 text-xs">
-            이 도구의 필수 기능:<b>트래픽 캡처</b>. 먼저 「시스템 설정」에서 트래픽 캡처를 켜야 에이전트에 연결하고 사용할 수 있습니다.
+            이 도구의 필수 기능:<b>트래픽 캡처</b>. 먼저 「시스템 설정」에서 트래픽 캡처를 켜야 에이전트에 연결하고
+            사용할 수 있습니다.
           </div>
         )}
         {/* binding + switch */}
@@ -213,7 +198,8 @@ function ToolEditor({
             <div className="flex flex-wrap gap-3">
               {agents.map((ag) => (
                 <label htmlFor={`${controlId}-1-${ag.key}`} key={ag.key} className="flex items-center gap-2 text-sm">
-                  <Checkbox id={`${controlId}-1-${ag.key}`}
+                  <Checkbox
+                    id={`${controlId}-1-${ag.key}`}
                     checked={bound.includes(ag.key)}
                     disabled={trafficGated}
                     onCheckedChange={() => toggleAgent(ag.key)}
@@ -235,7 +221,9 @@ function ToolEditor({
 
         {/* description */}
         <div className="grid gap-1.5">
-          <Label htmlFor={`${controlId}-description`} className="text-muted-foreground text-xs">도구 설명(모델에 전송)</Label>
+          <Label htmlFor={`${controlId}-description`} className="text-muted-foreground text-xs">
+            도구 설명(모델에 전송)
+          </Label>
           <Textarea
             id={`${controlId}-description`}
             className="font-sans text-xs"
@@ -254,9 +242,8 @@ function ToolEditor({
           {rows.map((r, i) => (
             <div
               key={(r.parentKey ?? "") + "." + r.name}
-              className={r.parentKey
-                ? "border-l-2 border-muted ml-3 pl-3 grid gap-2 py-2"
-                : "grid gap-2 rounded-md border p-3"
+              className={
+                r.parentKey ? "border-l-2 border-muted ml-3 pl-3 grid gap-2 py-2" : "grid gap-2 rounded-md border p-3"
               }
             >
               <div className="flex flex-wrap items-center gap-2">
@@ -270,13 +257,13 @@ function ToolEditor({
                     필수
                   </Badge>
                 )}
-                {r.parentKey && (
-                  <span className="text-muted-foreground text-[10px]">items 하위 필드</span>
-                )}
+                {r.parentKey && <span className="text-muted-foreground text-[10px]">items 하위 필드</span>}
               </div>
               <div className="grid gap-2">
                 <div className="grid gap-1">
-                  <Label htmlFor={`${controlId}-param-${i}-description`} className="text-muted-foreground text-[11px]">설명</Label>
+                  <Label htmlFor={`${controlId}-param-${i}-description`} className="text-muted-foreground text-[11px]">
+                    설명
+                  </Label>
                   <Input
                     id={`${controlId}-param-${i}-description`}
                     className="text-xs"
@@ -285,7 +272,9 @@ function ToolEditor({
                   />
                 </div>
                 <div className="grid gap-1">
-                  <Label htmlFor={`${controlId}-param-${i}-default`} className="text-muted-foreground text-[11px]">기본값</Label>
+                  <Label htmlFor={`${controlId}-param-${i}-default`} className="text-muted-foreground text-[11px]">
+                    기본값
+                  </Label>
                   <Input
                     id={`${controlId}-param-${i}-default`}
                     className="text-xs"
@@ -351,13 +340,9 @@ function ToolGridCard({ tool, onClick }: { tool: Tool; onClick: () => void }) {
           호출 {tool.calls ?? 0}
         </Badge>
       </div>
-      <p className="text-muted-foreground line-clamp-1 h-4 text-xs">
-        {tool.description || "(설명 없음)"}
-      </p>
+      <p className="text-muted-foreground line-clamp-1 h-4 text-xs">{tool.description || "(설명 없음)"}</p>
       <div className="mt-auto flex flex-wrap gap-1 pt-1">
-        {tool.agents.length === 0 && (
-          <span className="text-muted-foreground text-[10px]">(연결된 에이전트 없음)</span>
-        )}
+        {tool.agents.length === 0 && <span className="text-muted-foreground text-[10px]">(연결된 에이전트 없음)</span>}
         {tool.agents.map((a) => (
           <Badge key={a} variant="outline" className="px-1.5 py-0 text-[10px]">
             {a}
@@ -380,26 +365,39 @@ export default function ToolsPage() {
   const reload = React.useCallback(() => {
     setLoading(true);
     setLoadError("");
-    api.tools().then(setTools).catch((error: Error) => setLoadError(error.message)).finally(() => setLoading(false));
+    api
+      .tools()
+      .then(setTools)
+      .catch((error: Error) => setLoadError(error.message))
+      .finally(() => setLoading(false));
   }, []);
   React.useEffect(() => {
     reload();
-    api.agents().then(setAgents).catch((error: Error) => toast.error(`불러오기 실패: ${error.message}`));
-    api.settings().then((s) => setCaptureOn(!!s.traffic_capture)).catch((error: Error) => toast.error(`불러오기 실패: ${error.message}`));
+    api
+      .agents()
+      .then(setAgents)
+      .catch((error: Error) => toast.error(`불러오기 실패: ${error.message}`));
+    api
+      .settings()
+      .then((s) => setCaptureOn(!!s.traffic_capture))
+      .catch((error: Error) => toast.error(`불러오기 실패: ${error.message}`));
   }, [reload]);
 
   const [query, setQuery] = React.useState("");
 
   const selected = tools.find((t) => t.key === selectedKey) ?? null;
-  const matchTool = React.useCallback((t: Tool) => {
-    const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      t.key.toLowerCase().includes(q) ||
-      t.description.toLowerCase().includes(q) ||
-      t.agents.some((a) => a.toLowerCase().includes(q))
-    );
-  }, [query]);
+  const matchTool = React.useCallback(
+    (t: Tool) => {
+      const q = query.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        t.key.toLowerCase().includes(q) ||
+        t.description.toLowerCase().includes(q) ||
+        t.agents.some((a) => a.toLowerCase().includes(q))
+      );
+    },
+    [query],
+  );
   const systemTools = tools.filter((t) => t.system && matchTool(t));
   const customTools = tools.filter((t) => !t.system && matchTool(t));
   const allSystemCount = tools.filter((t) => t.system).length;
@@ -412,7 +410,9 @@ export default function ToolsPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">도구</h1>
-          <p className="text-muted-foreground text-sm">시스템 도구의 설명·에이전트 연결 및 사용자 정의 도구(command/script/http) 관리</p>
+          <p className="text-muted-foreground text-sm">
+            시스템 도구의 설명·에이전트 연결 및 사용자 정의 도구(command/script/http) 관리
+          </p>
         </div>
         <div className="relative w-64">
           <SearchIcon className="text-muted-foreground absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2" />
@@ -426,77 +426,78 @@ export default function ToolsPage() {
       </div>
 
       <DataLoadStatus loading={loading} error={loadError} label="도구 목록 불러오기" onRetry={reload} />
-      {!loading && !loadError && <Tabs defaultValue="system">
-        <TabsList>
-          <TabsTrigger value="system">시스템 도구</TabsTrigger>
-          <TabsTrigger value="custom">사용자 정의 도구</TabsTrigger>
-        </TabsList>
+      {!loading && !loadError && (
+        <Tabs defaultValue="system">
+          <TabsList>
+            <TabsTrigger value="system">시스템 도구</TabsTrigger>
+            <TabsTrigger value="custom">사용자 정의 도구</TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="system">
-          <Card>
-            <CardHeader>
-              <CardTitle>시스템 도구</CardTitle>
-              <CardDescription>
-                {query.trim()
-                  ? `${systemTools.length} / ${allSystemCount} 개 일치 · 카드를 클릭하여 설명, 매개변수 기본값, 연결 에이전트를 편집하세요`
-                  : `총 ${allSystemCount} 개 · 카드를 클릭하여 설명, 매개변수 기본값, 연결 에이전트를 편집하세요`}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {systemTools.length === 0 ? (
-                <p className="text-muted-foreground py-6 text-center text-sm">
-                  {query.trim() ? "일치하는 시스템 도구 없음" : "(시스템 도구 없음, 백엔드 초기 데이터 생성 대기)"}
-                </p>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {systemTools.map((t) => (
-                    <ToolGridCard key={t.key} tool={t} onClick={() => openTool(t)} />
-                  ))}
+          <TabsContent value="system">
+            <Card>
+              <CardHeader>
+                <CardTitle>시스템 도구</CardTitle>
+                <CardDescription>
+                  {query.trim()
+                    ? `${systemTools.length} / ${allSystemCount} 개 일치 · 카드를 클릭하여 설명, 매개변수 기본값, 연결 에이전트를 편집하세요`
+                    : `총 ${allSystemCount} 개 · 카드를 클릭하여 설명, 매개변수 기본값, 연결 에이전트를 편집하세요`}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {systemTools.length === 0 ? (
+                  <p className="text-muted-foreground py-6 text-center text-sm">
+                    {query.trim() ? "일치하는 시스템 도구 없음" : "(시스템 도구 없음, 백엔드 초기 데이터 생성 대기)"}
+                  </p>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {systemTools.map((t) => (
+                      <ToolGridCard key={t.key} tool={t} onClick={() => openTool(t)} />
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="custom">
+            <Card>
+              <CardHeader>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <CardTitle>사용자 정의 도구</CardTitle>
+                    <CardDescription>
+                      {query.trim()
+                        ? `shell/command/script/http，${customTools.length} / ${allCustomCount} 개 일치 · 카드를 클릭하여 편집하세요`
+                        : `shell(Bash 환경 선언) / command(명령) / script(Python) / http(API), 총 ${allCustomCount} 개 · 카드를 클릭하여 편집하세요`}
+                    </CardDescription>
+                  </div>
+                  <Button size="sm" onClick={() => setCustomEdit("new")}>
+                    <PlusIcon /> 사용자 정의 도구 생성
+                  </Button>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="custom">
-          <Card>
-            <CardHeader>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <CardTitle>사용자 정의 도구</CardTitle>
-                  <CardDescription>
+              </CardHeader>
+              <CardContent>
+                {customTools.length === 0 ? (
+                  <p className="text-muted-foreground py-6 text-center text-sm">
                     {query.trim()
-                      ? `shell/command/script/http，${customTools.length} / ${allCustomCount} 개 일치 · 카드를 클릭하여 편집하세요`
-                      : `shell(Bash 환경 선언) / command(명령) / script(Python) / http(API), 총 ${allCustomCount} 개 · 카드를 클릭하여 편집하세요`}
-                  </CardDescription>
-                </div>
-                <Button size="sm" onClick={() => setCustomEdit("new")}>
-                  <PlusIcon /> 사용자 정의 도구 생성
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {customTools.length === 0 ? (
-                <p className="text-muted-foreground py-6 text-center text-sm">
-                  {query.trim() ? "일치하는 사용자 정의 도구 없음" : "(사용자 정의 도구 없음, 오른쪽 위 「사용자 정의 도구 생성」으로 추가하세요)"}
-                </p>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {customTools.map((t) => (
-                    <ToolGridCard key={t.key} tool={t} onClick={() => openTool(t)} />
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>}
+                      ? "일치하는 사용자 정의 도구 없음"
+                      : "(사용자 정의 도구 없음, 오른쪽 위 「사용자 정의 도구 생성」으로 추가하세요)"}
+                  </p>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {customTools.map((t) => (
+                      <ToolGridCard key={t.key} tool={t} onClick={() => openTool(t)} />
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      )}
 
       <Sheet open={!!selected} onOpenChange={(o) => !o && setSelectedKey(null)}>
-        <SheetContent
-          side="right"
-          className="gap-0 p-0 data-[side=right]:w-[30vw] data-[side=right]:sm:max-w-[30vw]"
-        >
+        <SheetContent side="right" className="gap-0 p-0 data-[side=right]:w-[30vw] data-[side=right]:sm:max-w-[30vw]">
           {selected && (
             <>
               <SheetHeader className="px-4">
@@ -561,7 +562,15 @@ function CustomToolDialog({
   const [description, setDescription] = React.useState("");
   const [kind, setKind] = React.useState<"shell" | "command" | "script" | "http">("shell");
   const [ex, setEx] = React.useState<ExecState>({
-    command: "", code: "", method: "GET", url: "", headers: "", body: "", timeout_ms: "", proxy: "", use_recording_proxy: false,
+    command: "",
+    code: "",
+    method: "GET",
+    url: "",
+    headers: "",
+    body: "",
+    timeout_ms: "",
+    proxy: "",
+    use_recording_proxy: false,
   });
   const [schemaText, setSchemaText] = React.useState("");
   const [bound, setBound] = React.useState<string[]>([]);
@@ -575,11 +584,27 @@ function CustomToolDialog({
   // (re)load form state when opening.
   React.useEffect(() => {
     if (!edit) return;
-    setParamsText(""); setTestResult(null);
+    setParamsText("");
+    setTestResult(null);
     if (edit === "new") {
-      setKey(""); setDescription(""); setKind("shell");
-      setEx({ command: "", code: "", method: "GET", url: "", headers: "", body: "", timeout_ms: "", proxy: "", use_recording_proxy: false });
-      setSchemaText(""); setBound([]); setDeferred(false); setEnabled(true);
+      setKey("");
+      setDescription("");
+      setKind("shell");
+      setEx({
+        command: "",
+        code: "",
+        method: "GET",
+        url: "",
+        headers: "",
+        body: "",
+        timeout_ms: "",
+        proxy: "",
+        use_recording_proxy: false,
+      });
+      setSchemaText("");
+      setBound([]);
+      setDeferred(false);
+      setEnabled(true);
       return;
     }
     const t = edit;
@@ -613,9 +638,21 @@ function CustomToolDialog({
     if (kind === "script") return { code: ex.code, timeout_ms: t };
     let headers: Record<string, string> = {};
     if (ex.headers.trim()) {
-      try { headers = JSON.parse(ex.headers); } catch { /* validated on save */ }
+      try {
+        headers = JSON.parse(ex.headers);
+      } catch {
+        /* validated on save */
+      }
     }
-    return { method: ex.method, url: ex.url, headers, body: ex.body, timeout_ms: t, proxy: ex.proxy, use_recording_proxy: ex.use_recording_proxy };
+    return {
+      method: ex.method,
+      url: ex.url,
+      headers,
+      body: ex.body,
+      timeout_ms: t,
+      proxy: ex.proxy,
+      use_recording_proxy: ex.use_recording_proxy,
+    };
   }
 
   async function save() {
@@ -625,10 +662,20 @@ function CustomToolDialog({
     }
     let schema: Record<string, unknown> = {};
     if (schemaText.trim()) {
-      try { schema = JSON.parse(schemaText); } catch { toast.error("매개변수 JSON Schema 형식이 잘못되었습니다"); return; }
+      try {
+        schema = JSON.parse(schemaText);
+      } catch {
+        toast.error("매개변수 JSON Schema 형식이 잘못되었습니다");
+        return;
+      }
     }
     if (kind === "http" && ex.headers.trim()) {
-      try { JSON.parse(ex.headers); } catch { toast.error("headers JSON 형식이 잘못되었습니다"); return; }
+      try {
+        JSON.parse(ex.headers);
+      } catch {
+        toast.error("headers JSON 형식이 잘못되었습니다");
+        return;
+      }
     }
     if (kind === "http") {
       const props = (schema as { properties?: Record<string, unknown> }).properties;
@@ -638,7 +685,15 @@ function CustomToolDialog({
       }
     }
     setSaving(true);
-    const payload = { description, schema: kind === "shell" ? {} : schema, agents: bound, enabled, kind, exec: buildExec(), deferred: kind === "shell" ? false : deferred };
+    const payload = {
+      description,
+      schema: kind === "shell" ? {} : schema,
+      agents: bound,
+      enabled,
+      kind,
+      exec: buildExec(),
+      deferred: kind === "shell" ? false : deferred,
+    };
     try {
       if (isNew) await api.createCustomTool({ key: key.trim(), ...payload });
       else await api.updateCustomTool(tool!.key, payload);
@@ -665,10 +720,20 @@ function CustomToolDialog({
   async function runTest() {
     let params: Record<string, unknown> = {};
     if (paramsText.trim()) {
-      try { params = JSON.parse(paramsText); } catch { toast.error("테스트 매개변수 JSON 형식이 잘못되었습니다"); return; }
+      try {
+        params = JSON.parse(paramsText);
+      } catch {
+        toast.error("테스트 매개변수 JSON 형식이 잘못되었습니다");
+        return;
+      }
     }
     if (kind === "http" && ex.headers.trim()) {
-      try { JSON.parse(ex.headers); } catch { toast.error("headers JSON 형식이 잘못되었습니다"); return; }
+      try {
+        JSON.parse(ex.headers);
+      } catch {
+        toast.error("headers JSON 형식이 잘못되었습니다");
+        return;
+      }
     }
     setTesting(true);
     setTestResult(null);
@@ -690,24 +755,44 @@ function CustomToolDialog({
       >
         <SheetHeader className="px-4">
           <SheetTitle>{isNew ? "사용자 정의 도구 생성" : `편집 ${tool?.key}`}</SheetTitle>
-          <SheetDescription>shell은 Bash 환경 선언입니다. 이름과 설명으로 모델에 호출 가능 여부를 알립니다. command/script/http에는 실행 명세를 작성해야 합니다.</SheetDescription>
+          <SheetDescription>
+            shell은 Bash 환경 선언입니다. 이름과 설명으로 모델에 호출 가능 여부를 알립니다. command/script/http에는 실행
+            명세를 작성해야 합니다.
+          </SheetDescription>
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
           <div className="grid gap-1.5">
-            <Label htmlFor={`${controlId}-key`} className="text-xs">Key</Label>
-            <Input id={`${controlId}-key`} className="font-sans" placeholder="예: nmap_scan" value={key} disabled={!isNew}
-              onChange={(e) => setKey(e.target.value)} />
+            <Label htmlFor={`${controlId}-key`} className="text-xs">
+              Key
+            </Label>
+            <Input
+              id={`${controlId}-key`}
+              className="font-sans"
+              placeholder="예: nmap_scan"
+              value={key}
+              disabled={!isNew}
+              onChange={(e) => setKey(e.target.value)}
+            />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor={`${controlId}-description`} className="text-xs">설명(모델에 전송)</Label>
-            <Textarea id={`${controlId}-description`} rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+            <Label htmlFor={`${controlId}-description`} className="text-xs">
+              설명(모델에 전송)
+            </Label>
+            <Textarea
+              id={`${controlId}-description`}
+              rows={2}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
           </div>
 
           <div className="grid gap-1.5">
             <Label className="text-xs">유형</Label>
             <Select value={kind} onValueChange={(v) => setKind(v as "shell" | "command" | "script" | "http")}>
-              <SelectTrigger aria-label="도구 실행 방식" className="w-56"><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label="도구 실행 방식" className="w-56">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="shell">shell(Bash 환경 선언)</SelectItem>
                 <SelectItem value="command">command(Shell 명령 템플릿)</SelectItem>
@@ -716,53 +801,111 @@ function CustomToolDialog({
               </SelectContent>
             </Select>
             {kind === "shell" && (
-              <p className="text-muted-foreground text-xs">nmap, sqlmap, ffuf처럼 모델이 사용법을 아는 도구에 적합합니다. Bash에서 사용할 수 있음을 선언하면 됩니다. 이름과 설명은 Bash 도구 설명에 추가됩니다.</p>
+              <p className="text-muted-foreground text-xs">
+                nmap, sqlmap, ffuf처럼 모델이 사용법을 아는 도구에 적합합니다. Bash에서 사용할 수 있음을 선언하면
+                됩니다. 이름과 설명은 Bash 도구 설명에 추가됩니다.
+              </p>
             )}
           </div>
 
           {kind === "command" && (
             <div className="grid gap-1.5">
-              <Label htmlFor={`${controlId}-command`} className="text-xs">명령 템플릿(자리표시자 {"{param}"}, 예: nmap -p {"{ports}"} {"{target}"}）</Label>
-              <Textarea id={`${controlId}-command`} className="font-sans text-xs" rows={2} value={ex.command}
-                onChange={(e) => setEx({ ...ex, command: e.target.value })} />
+              <Label htmlFor={`${controlId}-command`} className="text-xs">
+                명령 템플릿(자리표시자 {"{param}"}, 예: nmap -p {"{ports}"} {"{target}"}）
+              </Label>
+              <Textarea
+                id={`${controlId}-command`}
+                className="font-sans text-xs"
+                rows={2}
+                value={ex.command}
+                onChange={(e) => setEx({ ...ex, command: e.target.value })}
+              />
             </div>
           )}
           {kind === "script" && (
             <div className="grid gap-1.5">
-              <Label htmlFor={`${controlId}-code`} className="text-xs">Python 본문(매개변수: stdin JSON / os.environ["TOOL_X"])</Label>
-              <Textarea id={`${controlId}-code`} className="font-sans text-xs" rows={10} value={ex.code}
-                placeholder={'import json,sys\nargs=json.load(sys.stdin)\nprint(...)'}
-                onChange={(e) => setEx({ ...ex, code: e.target.value })} />
+              <Label htmlFor={`${controlId}-code`} className="text-xs">
+                Python 본문(매개변수: stdin JSON / os.environ["TOOL_X"])
+              </Label>
+              <Textarea
+                id={`${controlId}-code`}
+                className="font-sans text-xs"
+                rows={10}
+                value={ex.code}
+                placeholder={"import json,sys\nargs=json.load(sys.stdin)\nprint(...)"}
+                onChange={(e) => setEx({ ...ex, code: e.target.value })}
+              />
             </div>
           )}
           {kind === "http" && (
             <div className="grid gap-2">
               <div className="flex gap-2">
                 <div className="grid gap-1.5">
-                  <Label htmlFor={`${controlId}-method`} className="text-xs">Method</Label>
-                  <Input id={`${controlId}-method`} className="w-24" value={ex.method} onChange={(e) => setEx({ ...ex, method: e.target.value })} />
+                  <Label htmlFor={`${controlId}-method`} className="text-xs">
+                    Method
+                  </Label>
+                  <Input
+                    id={`${controlId}-method`}
+                    className="w-24"
+                    value={ex.method}
+                    onChange={(e) => setEx({ ...ex, method: e.target.value })}
+                  />
                 </div>
                 <div className="grid flex-1 gap-1.5">
-                  <Label htmlFor={`${controlId}-url`} className="text-xs">URL(사용 가능한 자리표시자: {"{param}"}）</Label>
-                  <Input id={`${controlId}-url`} className="font-sans text-xs" value={ex.url} onChange={(e) => setEx({ ...ex, url: e.target.value })} />
+                  <Label htmlFor={`${controlId}-url`} className="text-xs">
+                    URL(사용 가능한 자리표시자: {"{param}"}）
+                  </Label>
+                  <Input
+                    id={`${controlId}-url`}
+                    className="font-sans text-xs"
+                    value={ex.url}
+                    onChange={(e) => setEx({ ...ex, url: e.target.value })}
+                  />
                 </div>
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor={`${controlId}-headers`} className="text-xs">Headers(JSON, 사용 가능한 자리표시자: {"{param}"}）</Label>
-                <Textarea id={`${controlId}-headers`} className="font-sans text-xs" rows={2} value={ex.headers}
-                  placeholder={'{"Authorization": "Bearer {token}"}'} onChange={(e) => setEx({ ...ex, headers: e.target.value })} />
+                <Label htmlFor={`${controlId}-headers`} className="text-xs">
+                  Headers(JSON, 사용 가능한 자리표시자: {"{param}"}）
+                </Label>
+                <Textarea
+                  id={`${controlId}-headers`}
+                  className="font-sans text-xs"
+                  rows={2}
+                  value={ex.headers}
+                  placeholder={'{"Authorization": "Bearer {token}"}'}
+                  onChange={(e) => setEx({ ...ex, headers: e.target.value })}
+                />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor={`${controlId}-body`} className="text-xs">Body(사용 가능한 자리표시자: {"{param}"}）</Label>
-                <Textarea id={`${controlId}-body`} className="font-sans text-xs" rows={2} value={ex.body} onChange={(e) => setEx({ ...ex, body: e.target.value })} />
+                <Label htmlFor={`${controlId}-body`} className="text-xs">
+                  Body(사용 가능한 자리표시자: {"{param}"}）
+                </Label>
+                <Textarea
+                  id={`${controlId}-body`}
+                  className="font-sans text-xs"
+                  rows={2}
+                  value={ex.body}
+                  onChange={(e) => setEx({ ...ex, body: e.target.value })}
+                />
               </div>
               <div className="flex items-center gap-4">
                 <div className="grid gap-1.5">
-                  <Label htmlFor={`${controlId}-proxy`} className="text-xs">프록시 URL(비워두면 직접 연결)</Label>
-                  <Input id={`${controlId}-proxy`} className="font-sans text-xs w-56" value={ex.proxy} onChange={(e) => setEx({ ...ex, proxy: e.target.value })} />
+                  <Label htmlFor={`${controlId}-proxy`} className="text-xs">
+                    프록시 URL(비워두면 직접 연결)
+                  </Label>
+                  <Input
+                    id={`${controlId}-proxy`}
+                    className="font-sans text-xs w-56"
+                    value={ex.proxy}
+                    onChange={(e) => setEx({ ...ex, proxy: e.target.value })}
+                  />
                 </div>
                 <label htmlFor={`${controlId}-2`} className="mt-4 flex items-center gap-2 text-sm">
-                  <Checkbox id={`${controlId}-2`} checked={ex.use_recording_proxy} onCheckedChange={(v) => setEx({ ...ex, use_recording_proxy: !!v })} />
+                  <Checkbox
+                    id={`${controlId}-2`}
+                    checked={ex.use_recording_proxy}
+                    onCheckedChange={(v) => setEx({ ...ex, use_recording_proxy: !!v })}
+                  />
                   기록 프록시 경유
                 </label>
               </div>
@@ -772,8 +915,16 @@ function CustomToolDialog({
           {kind !== "shell" && (
             <div className="flex items-center gap-3">
               <div className="grid gap-1.5">
-                <Label htmlFor={`${controlId}-timeout`} className="text-xs">시간 제한(ms, 비워두면 기본값)</Label>
-                <Input id={`${controlId}-timeout`} type="number" className="w-32" value={ex.timeout_ms} onChange={(e) => setEx({ ...ex, timeout_ms: e.target.value })} />
+                <Label htmlFor={`${controlId}-timeout`} className="text-xs">
+                  시간 제한(ms, 비워두면 기본값)
+                </Label>
+                <Input
+                  id={`${controlId}-timeout`}
+                  type="number"
+                  className="w-32"
+                  value={ex.timeout_ms}
+                  onChange={(e) => setEx({ ...ex, timeout_ms: e.target.value })}
+                />
               </div>
             </div>
           )}
@@ -781,11 +932,17 @@ function CustomToolDialog({
           {kind !== "shell" && (
             <div className="grid gap-1.5">
               <Label htmlFor={`${controlId}-schema`} className="text-xs">
-                매개변수 JSON Schema{kind === "http" ? "(http 도구 필수, properties 포함)" : "(비워두면 기본 {args} 구조 자동 제공)"}
+                매개변수 JSON Schema
+                {kind === "http" ? "(http 도구 필수, properties 포함)" : "(비워두면 기본 {args} 구조 자동 제공)"}
               </Label>
-              <Textarea id={`${controlId}-schema`} className="font-sans text-xs" rows={4} value={schemaText}
+              <Textarea
+                id={`${controlId}-schema`}
+                className="font-sans text-xs"
+                rows={4}
+                value={schemaText}
                 placeholder={'{"type":"object","properties":{"target":{"type":"string"}},"required":["target"]}'}
-                onChange={(e) => setSchemaText(e.target.value)} />
+                onChange={(e) => setSchemaText(e.target.value)}
+              />
             </div>
           )}
 
@@ -794,8 +951,13 @@ function CustomToolDialog({
             <div className="flex flex-wrap gap-3">
               {agents.map((a) => (
                 <label htmlFor={`${controlId}-3-${a.key}`} key={a.key} className="flex items-center gap-2 text-sm">
-                  <Checkbox id={`${controlId}-3-${a.key}`} checked={bound.includes(a.key)} onCheckedChange={() => toggleAgent(a.key)} />
-                  {a.name}<span className="text-muted-foreground font-sans text-xs">{a.key}</span>
+                  <Checkbox
+                    id={`${controlId}-3-${a.key}`}
+                    checked={bound.includes(a.key)}
+                    onCheckedChange={() => toggleAgent(a.key)}
+                  />
+                  {a.name}
+                  <span className="text-muted-foreground font-sans text-xs">{a.key}</span>
                 </label>
               ))}
             </div>
@@ -807,17 +969,25 @@ function CustomToolDialog({
             </label>
             {kind !== "shell" && (
               <label htmlFor={`${controlId}-5`} className="flex items-center gap-2 text-sm">
-                <Switch id={`${controlId}-5`} checked={deferred} onCheckedChange={setDeferred} /> 지연 로딩(자주 쓰지 않는 도구가 많을 때 사용)
+                <Switch id={`${controlId}-5`} checked={deferred} onCheckedChange={setDeferred} /> 지연 로딩(자주 쓰지
+                않는 도구가 많을 때 사용)
               </label>
             )}
           </div>
 
           {kind !== "shell" && (
             <div className="grid gap-1.5 rounded-md border p-3">
-              <Label htmlFor={`${controlId}-params`} className="text-xs font-medium">테스트 실행(현재 입력값 사용, 저장하지 않음)</Label>
-              <Textarea id={`${controlId}-params`} className="font-sans text-xs" rows={2} value={paramsText}
-                placeholder={"매개변수 JSON 예: {\"target\":\"example.com\"}"}
-                onChange={(e) => setParamsText(e.target.value)} />
+              <Label htmlFor={`${controlId}-params`} className="text-xs font-medium">
+                테스트 실행(현재 입력값 사용, 저장하지 않음)
+              </Label>
+              <Textarea
+                id={`${controlId}-params`}
+                className="font-sans text-xs"
+                rows={2}
+                value={paramsText}
+                placeholder={'매개변수 JSON 예: {"target":"example.com"}'}
+                onChange={(e) => setParamsText(e.target.value)}
+              />
               <div>
                 <Button size="sm" variant="outline" onClick={runTest} disabled={testing}>
                   <PlayIcon /> {testing ? "실행 중…" : "테스트 실행"}

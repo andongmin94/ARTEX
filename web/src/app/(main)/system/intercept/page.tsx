@@ -1,56 +1,24 @@
 "use client";
 
 import * as React from "react";
-import { DataLoadStatus } from "@/components/data-load-status";
-import { toast } from "sonner";
-import {
-  BotIcon,
-  ListFilterIcon,
-  PencilIcon,
-  PlusIcon,
-  ShieldAlertIcon,
-  Trash2Icon,
-} from "lucide-react";
 
+import { BotIcon, ListFilterIcon, PencilIcon, PlusIcon, ShieldAlertIcon, Trash2Icon } from "lucide-react";
+import { toast } from "sonner";
+
+import { DataLoadStatus } from "@/components/data-load-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Card, CardContent } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import type {
   InterceptAction,
@@ -110,36 +78,37 @@ function sdkTool(key: string, description: string): Tool {
 }
 
 const SDK_EXEC: Tool[] = [
-  sdkTool("Bash",        "shell에서 명령 실행"),
-  sdkTool("WebFetch",    "HTTP/HTTPS 요청 전송(프록시 지원)"),
-  sdkTool("web_search",  "웹 검색"),
-  sdkTool("shell_open",  "지속 PTY 대화형 세션 열기"),
-  sdkTool("shell_send",  "대화형 세션에 입력 전송"),
-  sdkTool("shell_read",  "대화형 세션 출력 읽기"),
+  sdkTool("Bash", "shell에서 명령 실행"),
+  sdkTool("WebFetch", "HTTP/HTTPS 요청 전송(프록시 지원)"),
+  sdkTool("web_search", "웹 검색"),
+  sdkTool("shell_open", "지속 PTY 대화형 세션 열기"),
+  sdkTool("shell_send", "대화형 세션에 입력 전송"),
+  sdkTool("shell_read", "대화형 세션 출력 읽기"),
   sdkTool("shell_close", "대화형 세션 닫기"),
-  sdkTool("shell_list",  "모든 대화형 세션 목록"),
+  sdkTool("shell_list", "모든 대화형 세션 목록"),
 ];
 
 const SDK_WRITE: Tool[] = [
-  sdkTool("Write",     "파일 쓰기"),
-  sdkTool("Edit",      "파일 편집(정확히 치환)"),
+  sdkTool("Write", "파일 쓰기"),
+  sdkTool("Edit", "파일 편집(정확히 치환)"),
   sdkTool("MultiEdit", "파일 일괄 편집"),
 ];
 
 const SDK_KEYS = new Set([...SDK_EXEC, ...SDK_WRITE].map((t) => t.key));
 
 function groupTools(dbTools: Tool[]) {
-  const sys: Tool[] = [], custom: Tool[] = [];
+  const sys: Tool[] = [],
+    custom: Tool[] = [];
   for (const t of dbTools) {
     if (SDK_KEYS.has(t.key)) continue; // already covered by hardcoded groups
     if (t.system) sys.push(t);
-    else          custom.push(t);
+    else custom.push(t);
   }
   return [
-    { label: "실행",      tools: SDK_EXEC },
+    { label: "실행", tools: SDK_EXEC },
     { label: "쓰기/편집", tools: SDK_WRITE },
-    { label: "시스템 도구",    tools: sys },
-    { label: "사용자 정의 도구",  tools: custom },
+    { label: "시스템 도구", tools: sys },
+    { label: "사용자 정의 도구", tools: custom },
   ].filter((g) => g.tools.length > 0);
 }
 
@@ -177,16 +146,18 @@ const defaultForm = (): RuleForm => ({
 
 function ActionBadge({ action }: { action: InterceptAction }) {
   if (action === "allow") return <Badge variant="secondary">허용</Badge>;
-  if (action === "deny")  return <Badge variant="destructive">차단</Badge>;
-  return <Badge variant="outline" className="border-amber-400 text-amber-600">승인 요청</Badge>;
+  if (action === "deny") return <Badge variant="destructive">차단</Badge>;
+  return (
+    <Badge variant="outline" className="border-amber-400 text-amber-600">
+      승인 요청
+    </Badge>
+  );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-        {label}
-      </Label>
+      <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</Label>
       {children}
     </div>
   );
@@ -282,7 +253,12 @@ function JudgeCard() {
 
   return (
     <div className="space-y-4">
-      <DataLoadStatus loading={loading} error={loadError} label="모델 명령 판정 설정 불러오기" onRetry={() => void load()} />
+      <DataLoadStatus
+        loading={loading}
+        error={loadError}
+        label="모델 명령 판정 설정 불러오기"
+        onRetry={() => void load()}
+      />
       <DataLoadStatus error={usageError} label="모델 명령 판정 사용량 불러오기" onRetry={() => void loadUsage()} />
       {/* 활성화开关 —— 独立高亮条 */}
       <div
@@ -295,13 +271,20 @@ function JudgeCard() {
           <div>
             <p className="text-sm font-semibold leading-tight">모델 폴백 승인</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              대상이<span className="font-medium text-foreground">차단 범위</span>에 포함되고<span className="font-medium text-foreground">어떤 차단 규칙에도 일치하지 않는</span> 명령만 모델이 의미를 판정합니다(허용 / 수동 승인 / 차단)
+              대상이<span className="font-medium text-foreground">차단 범위</span>에 포함되고
+              <span className="font-medium text-foreground">어떤 차단 규칙에도 일치하지 않는</span> 명령만 모델이 의미를
+              판정합니다(허용 / 수동 승인 / 차단)
             </p>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className="text-xs text-muted-foreground">{cfg.enabled ? "활성화됨" : "비활성화"}</span>
-          <Switch aria-label="모델 명령 판정 활성화" checked={cfg.enabled} disabled={loading || !!loadError} onCheckedChange={(v) => patch({ enabled: v })} />
+          <Switch
+            aria-label="모델 명령 판정 활성화"
+            checked={cfg.enabled}
+            disabled={loading || !!loadError}
+            onCheckedChange={(v) => patch({ enabled: v })}
+          />
         </div>
       </div>
 
@@ -347,9 +330,17 @@ function JudgeCard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium">승인 프롬프트</p>
-                  <p className="text-xs text-muted-foreground">모델이 이를 바탕으로 ALLOW / ASK / DENY를 판정하며 직접 편집할 수 있습니다</p>
+                  <p className="text-xs text-muted-foreground">
+                    모델이 이를 바탕으로 ALLOW / ASK / DENY를 판정하며 직접 편집할 수 있습니다
+                  </p>
                 </div>
-                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={restorePrompt} disabled={saving || loading || !!loadError}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={restorePrompt}
+                  disabled={saving || loading || !!loadError}
+                >
                   기본 템플릿 복원
                 </Button>
               </div>
@@ -368,10 +359,14 @@ function JudgeCard() {
           <Card className="lg:col-span-2">
             <CardContent className="space-y-5 p-4">
               <div className="space-y-4">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">판정 모델 및 정책</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  판정 모델 및 정책
+                </p>
                 <Field label="승인 모델">
                   <Select value={String(cfg.profile_id || 0)} onValueChange={(v) => patch({ profile_id: Number(v) })}>
-                    <SelectTrigger aria-label="명령 판정 모델"><SelectValue /></SelectTrigger>
+                    <SelectTrigger aria-label="명령 판정 모델">
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={FOLLOW_ACTIVE}>활성 설정 따름</SelectItem>
                       {profiles.map((p) => (
@@ -394,8 +389,13 @@ function JudgeCard() {
                   />
                 </Field>
                 <Field label="모델 실패 시(오류 / 시간 초과 / 해석 불가)">
-                  <Select value={cfg.fail_action} onValueChange={(v) => patch({ fail_action: v as JudgeConfig["fail_action"] })}>
-                    <SelectTrigger aria-label="모델 판정 실패 시 처리"><SelectValue /></SelectTrigger>
+                  <Select
+                    value={cfg.fail_action}
+                    onValueChange={(v) => patch({ fail_action: v as JudgeConfig["fail_action"] })}
+                  >
+                    <SelectTrigger aria-label="모델 판정 실패 시 처리">
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="allow">허용</SelectItem>
                       <SelectItem value="ask">수동 승인으로 전환</SelectItem>
@@ -408,7 +408,9 @@ function JudgeCard() {
               <Separator />
 
               <div className="space-y-4">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">수동 승인(모델이 「수동 승인」으로 판정한 경우)</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  수동 승인(모델이 「수동 승인」으로 판정한 경우)
+                </p>
                 <Field label="승인 대기 시간 초과(초)">
                   <Input
                     type="number"
@@ -421,8 +423,13 @@ function JudgeCard() {
                   />
                 </Field>
                 <Field label="시간 초과 후 기본 동작">
-                  <Select value={cfg.ask_timeout_action} onValueChange={(v) => patch({ ask_timeout_action: v as JudgeConfig["ask_timeout_action"] })}>
-                    <SelectTrigger aria-label="승인 시간 초과 시 처리"><SelectValue /></SelectTrigger>
+                  <Select
+                    value={cfg.ask_timeout_action}
+                    onValueChange={(v) => patch({ ask_timeout_action: v as JudgeConfig["ask_timeout_action"] })}
+                  >
+                    <SelectTrigger aria-label="승인 시간 초과 시 처리">
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="deny">차단</SelectItem>
                       <SelectItem value="allow">허용</SelectItem>
@@ -447,24 +454,24 @@ function JudgeCard() {
 // ---- page ----
 
 export default function InterceptPage() {
-  const [rules, setRules]     = React.useState<InterceptRule[]>([]);
+  const [rules, setRules] = React.useState<InterceptRule[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState("");
   const [scopeError, setScopeError] = React.useState("");
-  const [open, setOpen]       = React.useState(false);
+  const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<InterceptRule | null>(null);
-  const [form, setForm]       = React.useState<RuleForm>(defaultForm());
-  const [saving, setSaving]   = React.useState(false);
+  const [form, setForm] = React.useState<RuleForm>(defaultForm());
+  const [saving, setSaving] = React.useState(false);
   const [regexErr, setRegexErr] = React.useState("");
   const [regexWarn, setRegexWarn] = React.useState(false); // true = JS 无法解析但可能是合法 Go 语法
 
   // ---- tool scope dialog ----
-  const [scopeOpen, setScopeOpen]       = React.useState(false);
-  const [allTools, setAllTools]         = React.useState<Tool[]>([]);
+  const [scopeOpen, setScopeOpen] = React.useState(false);
+  const [allTools, setAllTools] = React.useState<Tool[]>([]);
   const [enabledTools, setEnabledTools] = React.useState<Set<string>>(new Set());
   const [scopeLoading, setScopeLoading] = React.useState(false);
-  const [scopeSaving, setScopeSaving]   = React.useState(false);
-  const [scopeTools, setScopeTools]     = React.useState<string[]>([]); // 页头信息条:当前进入차단的工具
+  const [scopeSaving, setScopeSaving] = React.useState(false);
+  const [scopeTools, setScopeTools] = React.useState<string[]>([]); // 页头信息条:当前进入차단的工具
 
   // ---- data ----
 
@@ -491,10 +498,17 @@ export default function InterceptPage() {
     }
   }, []);
 
-  React.useEffect(() => { void load(); void loadScope(); }, [load, loadScope]);
+  React.useEffect(() => {
+    void load();
+    void loadScope();
+  }, [load, loadScope]);
 
   React.useEffect(() => {
-    if (form.match_type !== "regex" || !form.pattern) { setRegexErr(""); setRegexWarn(false); return; }
+    if (form.match_type !== "regex" || !form.pattern) {
+      setRegexErr("");
+      setRegexWarn(false);
+      return;
+    }
     try {
       new RegExp(form.pattern);
       setRegexErr("");
@@ -509,7 +523,9 @@ export default function InterceptPage() {
 
   // ---- rule handlers ----
 
-  function set(patch: Partial<RuleForm>) { setForm(f => ({ ...f, ...patch })); }
+  function set(patch: Partial<RuleForm>) {
+    setForm((f) => ({ ...f, ...patch }));
+  }
 
   function openNew() {
     setEditing(null);
@@ -521,10 +537,16 @@ export default function InterceptPage() {
   function openEdit(rule: InterceptRule) {
     setEditing(rule);
     setForm({
-      name: rule.name, enabled: rule.enabled, priority: rule.priority,
-      match_target: rule.match_target, match_type: rule.match_type,
-      pattern: rule.pattern, action: rule.action, message: rule.message,
-      timeout_enabled: rule.timeout_enabled, timeout_seconds: rule.timeout_seconds,
+      name: rule.name,
+      enabled: rule.enabled,
+      priority: rule.priority,
+      match_target: rule.match_target,
+      match_type: rule.match_type,
+      pattern: rule.pattern,
+      action: rule.action,
+      message: rule.message,
+      timeout_enabled: rule.timeout_enabled,
+      timeout_seconds: rule.timeout_seconds,
       timeout_action: rule.timeout_action,
     });
     setRegexErr("");
@@ -532,9 +554,18 @@ export default function InterceptPage() {
   }
 
   async function handleSave() {
-    if (!form.name.trim())    { toast.error("이름은 비워둘 수 없습니다"); return; }
-    if (!form.pattern.trim()) { toast.error("패턴은 비워둘 수 없습니다"); return; }
-    if (regexErr)             { toast.error("정규식 문법이 올바르지 않습니다"); return; }
+    if (!form.name.trim()) {
+      toast.error("이름은 비워둘 수 없습니다");
+      return;
+    }
+    if (!form.pattern.trim()) {
+      toast.error("패턴은 비워둘 수 없습니다");
+      return;
+    }
+    if (regexErr) {
+      toast.error("정규식 문법이 올바르지 않습니다");
+      return;
+    }
     setSaving(true);
     try {
       if (editing) {
@@ -589,9 +620,10 @@ export default function InterceptPage() {
   }
 
   function toggleTool(key: string, val: boolean) {
-    setEnabledTools(prev => {
+    setEnabledTools((prev) => {
       const next = new Set(prev);
-      if (val) next.add(key); else next.delete(key);
+      if (val) next.add(key);
+      else next.delete(key);
       return next;
     });
   }
@@ -632,9 +664,7 @@ export default function InterceptPage() {
       {/* ---- 차단 범위信息条（规则匹配与模型兜底共用：不在范围内的工具两者都不介入）---- */}
       <div
         className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-2.5 ${
-          scopeTools.length === 0
-            ? "border-amber-400/60 bg-amber-50/50 dark:bg-amber-950/20"
-            : "bg-muted/40"
+          scopeTools.length === 0 ? "border-amber-400/60 bg-amber-50/50 dark:bg-amber-950/20" : "bg-muted/40"
         }`}
       >
         <div className="flex min-w-0 items-center gap-2 text-sm">
@@ -646,7 +676,9 @@ export default function InterceptPage() {
             </span>
           ) : (
             <>
-              <Badge variant="secondary" className="shrink-0">{scopeTools.length} 개 도구</Badge>
+              <Badge variant="secondary" className="shrink-0">
+                {scopeTools.length} 개 도구
+              </Badge>
               <span className="truncate text-muted-foreground" title={scopeTools.join("、")}>
                 {scopeTools.join("、")}
               </span>
@@ -677,90 +709,106 @@ export default function InterceptPage() {
               우선순위(숫자가 클수록 먼저)에 따라 순서대로 검사하며 처음 일치한 규칙이 적용됩니다
             </p>
             <Button onClick={openNew} size="sm" className="shrink-0">
-              <PlusIcon className="h-4 w-4" />
-              새 규칙
+              <PlusIcon className="h-4 w-4" />새 규칙
             </Button>
           </div>
 
           <Card>
             <CardContent className="p-0">
-          <DataLoadStatus loading={loading} error={loadError} label="명령 차단 규칙 불러오기" onRetry={() => void load()} />
-          {rules.length === 0 && (loading || loadError) ? null : rules.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-              <ShieldAlertIcon className="h-8 w-8 text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground">규칙 없음</p>
-              <Button size="sm" variant="outline" onClick={openNew}>
-                <PlusIcon className="h-4 w-4" />
-                첫 규칙 만들기
-              </Button>
-            </div>
-          ) : (
-            <Table className="table-fixed">
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-[72px]">우선순위</TableHead>
-                  <TableHead className="w-[22%]">이름</TableHead>
-                  <TableHead className="w-[90px]">대상</TableHead>
-                  <TableHead className="w-[80px]">유형</TableHead>
-                  <TableHead>패턴</TableHead>
-                  <TableHead className="w-[72px]">정책</TableHead>
-                  <TableHead className="w-[64px] text-center">활성화</TableHead>
-                  <TableHead className="w-[80px]" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rules.map((rule) => (
-                  <TableRow key={rule.id} className={!rule.enabled ? "opacity-40" : ""}>
-                    <TableCell>
-                      <span className="font-sans text-xs tabular-nums">{rule.priority}</span>
-                    </TableCell>
-                    <TableCell className="font-medium text-sm"><span className="block truncate" title={rule.name}>{rule.name}</span></TableCell>
-                    <TableCell>
-                      <span className="text-xs text-muted-foreground">
-                        {rule.match_target === "tool_name" ? "도구 이름" : "입력 내용"}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-xs text-muted-foreground">
-                        {rule.match_type === "regex" ? "정규식" : "문자열"}
-                      </span>
-                    </TableCell>
-                    <TableCell className="max-w-[220px]">
-                      <code title={rule.pattern} className="block truncate rounded bg-muted px-1.5 py-0.5 text-xs font-sans">
-                        {rule.pattern}
-                      </code>
-                    </TableCell>
-                    <TableCell>
-                      <ActionBadge action={rule.action} />
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Switch aria-label={`규칙 ${rule.pattern} 활성화`}
-                        checked={rule.enabled}
-                        onCheckedChange={() => handleToggle(rule)}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-end gap-0.5">
-                        <Button aria-label="규칙 편집"
-                          size="icon" variant="ghost" className="h-7 w-7"
-                          onClick={() => openEdit(rule)}
-                        >
-                          <PencilIcon className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button aria-label="삭제"
-                          size="icon" variant="ghost"
-                          className="h-7 w-7 text-destructive hover:text-destructive"
-                          onClick={() => handleDelete(rule.id)}
-                        >
-                          <Trash2Icon className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+              <DataLoadStatus
+                loading={loading}
+                error={loadError}
+                label="명령 차단 규칙 불러오기"
+                onRetry={() => void load()}
+              />
+              {rules.length === 0 && (loading || loadError) ? null : rules.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+                  <ShieldAlertIcon className="h-8 w-8 text-muted-foreground/40" />
+                  <p className="text-sm text-muted-foreground">규칙 없음</p>
+                  <Button size="sm" variant="outline" onClick={openNew}>
+                    <PlusIcon className="h-4 w-4" />첫 규칙 만들기
+                  </Button>
+                </div>
+              ) : (
+                <Table className="table-fixed">
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="w-[72px]">우선순위</TableHead>
+                      <TableHead className="w-[22%]">이름</TableHead>
+                      <TableHead className="w-[90px]">대상</TableHead>
+                      <TableHead className="w-[80px]">유형</TableHead>
+                      <TableHead>패턴</TableHead>
+                      <TableHead className="w-[72px]">정책</TableHead>
+                      <TableHead className="w-[64px] text-center">활성화</TableHead>
+                      <TableHead className="w-[80px]" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rules.map((rule) => (
+                      <TableRow key={rule.id} className={!rule.enabled ? "opacity-40" : ""}>
+                        <TableCell>
+                          <span className="font-sans text-xs tabular-nums">{rule.priority}</span>
+                        </TableCell>
+                        <TableCell className="font-medium text-sm">
+                          <span className="block truncate" title={rule.name}>
+                            {rule.name}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-xs text-muted-foreground">
+                            {rule.match_target === "tool_name" ? "도구 이름" : "입력 내용"}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-xs text-muted-foreground">
+                            {rule.match_type === "regex" ? "정규식" : "문자열"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="max-w-[220px]">
+                          <code
+                            title={rule.pattern}
+                            className="block truncate rounded bg-muted px-1.5 py-0.5 text-xs font-sans"
+                          >
+                            {rule.pattern}
+                          </code>
+                        </TableCell>
+                        <TableCell>
+                          <ActionBadge action={rule.action} />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Switch
+                            aria-label={`규칙 ${rule.pattern} 활성화`}
+                            checked={rule.enabled}
+                            onCheckedChange={() => handleToggle(rule)}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center justify-end gap-0.5">
+                            <Button
+                              aria-label="규칙 편집"
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7"
+                              onClick={() => openEdit(rule)}
+                            >
+                              <PencilIcon className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              aria-label="삭제"
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 text-destructive hover:text-destructive"
+                              onClick={() => handleDelete(rule.id)}
+                            >
+                              <Trash2Icon className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -805,7 +853,9 @@ export default function InterceptPage() {
                 value={form.match_target}
                 onValueChange={(v) => set({ match_target: v as RuleForm["match_target"] })}
               >
-                <SelectTrigger aria-label="규칙 일치 대상"><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-label="규칙 일치 대상">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="tool_name">도구 이름（tool_name）</SelectItem>
                   <SelectItem value="tool_input">입력 내용（tool_input JSON）</SelectItem>
@@ -814,11 +864,10 @@ export default function InterceptPage() {
             </Field>
 
             <Field label="일치 유형">
-              <Select
-                value={form.match_type}
-                onValueChange={(v) => set({ match_type: v as RuleForm["match_type"] })}
-              >
-                <SelectTrigger aria-label="규칙 일치 방식"><SelectValue /></SelectTrigger>
+              <Select value={form.match_type} onValueChange={(v) => set({ match_type: v as RuleForm["match_type"] })}>
+                <SelectTrigger aria-label="규칙 일치 방식">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="string">문자열 포함</SelectItem>
                   <SelectItem value="regex">정규식</SelectItem>
@@ -833,22 +882,22 @@ export default function InterceptPage() {
                 onChange={(e) => set({ pattern: e.target.value })}
                 className={regexErr ? "border-destructive focus-visible:ring-destructive" : ""}
               />
-              {regexErr && (
-                <p className="text-xs text-destructive mt-1">{regexErr}</p>
-              )}
+              {regexErr && <p className="text-xs text-destructive mt-1">{regexErr}</p>}
               {regexWarn && (
-                <p className="text-xs text-amber-600 mt-1">Go RE2 확장 문법(예: <code className="font-sans">(?i)</code> )이 포함되어 브라우저에서 미리 볼 수 없습니다. 제출 후 서버에서 검증합니다</p>
+                <p className="text-xs text-amber-600 mt-1">
+                  Go RE2 확장 문법(예: <code className="font-sans">(?i)</code> )이 포함되어 브라우저에서 미리 볼 수
+                  없습니다. 제출 후 서버에서 검증합니다
+                </p>
               )}
             </Field>
 
             <Separator />
 
             <Field label="차단정책">
-              <Select
-                value={form.action}
-                onValueChange={(v) => set({ action: v as InterceptAction })}
-              >
-                <SelectTrigger aria-label="규칙 일치 시 처리"><SelectValue /></SelectTrigger>
+              <Select value={form.action} onValueChange={(v) => set({ action: v as InterceptAction })}>
+                <SelectTrigger aria-label="규칙 일치 시 처리">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="allow">허용 — 즉시 통과하고 이후 규칙 건너뛰기</SelectItem>
                   <SelectItem value="deny">금지 — 실행을 막고 모델에 거부 메시지 반환</SelectItem>
@@ -875,9 +924,12 @@ export default function InterceptPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium">승인 대기 시간 제한 사용</p>
-                    <p className="text-xs text-muted-foreground">시간 초과 시 자동 처리하고 더 이상 대기하지 않습니다</p>
+                    <p className="text-xs text-muted-foreground">
+                      시간 초과 시 자동 처리하고 더 이상 대기하지 않습니다
+                    </p>
                   </div>
-                  <Switch aria-label="승인 응답 제한 시간 사용"
+                  <Switch
+                    aria-label="승인 응답 제한 시간 사용"
                     checked={form.timeout_enabled}
                     onCheckedChange={(v) => set({ timeout_enabled: v })}
                   />
@@ -901,7 +953,9 @@ export default function InterceptPage() {
                         value={form.timeout_action}
                         onValueChange={(v) => set({ timeout_action: v as "deny" | "allow" })}
                       >
-                        <SelectTrigger aria-label="규칙 시간 초과 시 처리" className="w-32"><SelectValue /></SelectTrigger>
+                        <SelectTrigger aria-label="규칙 시간 초과 시 처리" className="w-32">
+                          <SelectValue />
+                        </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="deny">자동 거부</SelectItem>
                           <SelectItem value="allow">자동 허용</SelectItem>
@@ -916,17 +970,17 @@ export default function InterceptPage() {
             <Separator />
 
             <div className="flex items-center gap-3">
-              <Switch
-                id="rule-enabled"
-                checked={form.enabled}
-                onCheckedChange={(v) => set({ enabled: v })}
-              />
-              <Label htmlFor="rule-enabled" className="cursor-pointer">이 규칙 활성화</Label>
+              <Switch id="rule-enabled" checked={form.enabled} onCheckedChange={(v) => set({ enabled: v })} />
+              <Label htmlFor="rule-enabled" className="cursor-pointer">
+                이 규칙 활성화
+              </Label>
             </div>
           </div>
 
           <SheetFooter className="border-t px-6 py-4 flex-row justify-end gap-2">
-            <Button variant="outline" onClick={() => setOpen(false)}>취소</Button>
+            <Button variant="outline" onClick={() => setOpen(false)}>
+              취소
+            </Button>
             <Button onClick={handleSave} disabled={saving || !!regexErr}>
               {saving ? "저장 중…" : "저장"}
             </Button>
@@ -936,7 +990,10 @@ export default function InterceptPage() {
 
       {/* ---- scope dialog ---- */}
       <Dialog open={scopeOpen} onOpenChange={setScopeOpen}>
-        <DialogContent className="sm:max-w-lg flex flex-col overflow-hidden p-0 gap-0" style={{ maxHeight: "min(80vh, 560px)" }}>
+        <DialogContent
+          className="sm:max-w-lg flex flex-col overflow-hidden p-0 gap-0"
+          style={{ maxHeight: "min(80vh, 560px)" }}
+        >
           <DialogHeader className="shrink-0 border-b px-6 py-4">
             <DialogTitle className="flex items-center gap-2">
               <ListFilterIcon className="h-4 w-4" />
@@ -968,8 +1025,10 @@ export default function InterceptPage() {
                         <label htmlFor={`scope-${t.key}`} className="flex-1 min-w-0 cursor-pointer">
                           <div className="flex items-center gap-1.5">
                             <span className="font-sans text-sm">{t.key}</span>
-                            {(t.kind && t.kind !== "builtin") && (
-                              <Badge variant="outline" className="px-1 py-0 text-[10px]">{t.kind}</Badge>
+                            {t.kind && t.kind !== "builtin" && (
+                              <Badge variant="outline" className="px-1 py-0 text-[10px]">
+                                {t.kind}
+                              </Badge>
                             )}
                           </div>
                           {t.description && (
@@ -985,7 +1044,9 @@ export default function InterceptPage() {
           </div>
 
           <div className="shrink-0 border-t px-6 py-3 flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => setScopeOpen(false)}>취소</Button>
+            <Button variant="outline" size="sm" onClick={() => setScopeOpen(false)}>
+              취소
+            </Button>
             <Button size="sm" onClick={saveScope} disabled={scopeSaving || scopeLoading}>
               {scopeSaving ? "저장 중…" : "저장"}
             </Button>
